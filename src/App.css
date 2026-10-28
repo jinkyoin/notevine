@@ -1,0 +1,458 @@
+/* 화면설계서 공통 규칙(SCR 공통)의 색 토큰과 크기 */
+:root {
+  --bg: #ffffff;
+  --bg-sidebar: #f4f6f3;
+  --bg-hover: #e8eee6;
+  --bg-active: #dcebdf;
+  --text: #1f2a1f;
+  --muted: #6b766a;
+  --border: #dde3db;
+  --accent: #2f855a;
+  --accent-text: #ffffff;
+  --danger: #c0392b;
+  --danger-bg: #fdecea;
+  --font: "Pretendard", "Malgun Gothic", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "D2Coding", "JetBrains Mono", Consolas, monospace;
+  --sidebar-w: 260px;
+  --right-w: 300px;
+  --editor-max: 760px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1f1b;
+    --bg-sidebar: #232823;
+    --bg-hover: #2c332c;
+    --bg-active: #2f3d31;
+    --text: #e6ece5;
+    --muted: #97a396;
+    --border: #343c34;
+    --accent: #68d391;
+    --accent-text: #10251a;
+    --danger: #f07167;
+    --danger-bg: #3a2322;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font);
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.muted {
+  color: var(--muted);
+}
+.small {
+  font-size: 12px;
+}
+.pad {
+  padding: 8px 12px;
+}
+.error {
+  color: var(--danger);
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.btn:hover {
+  background: var(--bg-hover);
+}
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+.btn.primary:hover {
+  filter: brightness(1.05);
+}
+.btn.ghost {
+  border-color: transparent;
+  background: transparent;
+}
+.btn.small {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.icon-btn {
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  color: var(--muted);
+}
+.icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* SCR-01 시작 화면 */
+.start {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: var(--bg-sidebar);
+}
+.start-card {
+  width: 520px;
+  max-width: calc(100% - 32px);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+}
+.start-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.start-brand h1 {
+  margin: 0;
+  font-size: 26px;
+}
+.logo-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #97bc62, var(--accent));
+}
+.start-actions {
+  display: flex;
+  gap: 8px;
+  margin: 20px 0 24px;
+}
+.section-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+.recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow: auto;
+}
+.recent-list li {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.recent-list li:hover {
+  background: var(--bg-hover);
+}
+.recent-list li.missing {
+  opacity: 0.5;
+  cursor: default;
+}
+.recent-name {
+  font-weight: 600;
+}
+.recent-path {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* SCR-02 메인 화면 */
+.main {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.topbar {
+  height: 40px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-sidebar);
+}
+.vault-name {
+  font-weight: 600;
+}
+.crumbs {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.crumbs .sep {
+  margin: 0 6px;
+}
+.spacer {
+  flex: 1;
+}
+.body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.sidebar,
+.rightpanel {
+  flex: none;
+  background: var(--bg-sidebar);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.sidebar {
+  width: var(--sidebar-w);
+  border-right: 1px solid var(--border);
+}
+.rightpanel {
+  width: var(--right-w);
+  border-left: 1px solid var(--border);
+}
+@media (max-width: 1100px) {
+  .rightpanel {
+    display: none;
+  }
+}
+.center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.empty {
+  margin: auto;
+  text-align: center;
+  color: var(--muted);
+}
+.pane-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 34px;
+  padding: 0 6px 0 12px;
+  flex: none;
+}
+.pane-title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* SCR-03 파일 탐색기 */
+.explorer {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.tree {
+  flex: 1;
+  overflow: auto;
+  padding-bottom: 24px;
+}
+.tree-row {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding-right: 8px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
+  margin: 0 4px;
+}
+.tree-row:hover {
+  background: var(--bg-hover);
+}
+.tree-row.active {
+  background: var(--bg-active);
+  color: var(--accent);
+  font-weight: 600;
+}
+.tree-row.file {
+  color: var(--muted);
+  cursor: default;
+}
+.tree-row.drop-target {
+  outline: 1px dashed var(--accent);
+}
+.twisty {
+  width: 14px;
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+}
+.tree-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tree-count {
+  font-size: 11px;
+  color: var(--muted);
+}
+.tree-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 1px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.menu {
+  position: fixed;
+  z-index: 50;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  min-width: 170px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+.menu li {
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.menu li:hover {
+  background: var(--bg-hover);
+}
+.menu li.danger {
+  color: var(--danger);
+}
+
+/* SCR-04 편집기 */
+.editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+.editor-head,
+.cm-host {
+  width: 100%;
+  max-width: var(--editor-max);
+  margin: 0 auto;
+  padding: 0 32px;
+}
+.editor-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding-top: 28px;
+}
+.note-title {
+  flex: 1;
+  font-size: 26px;
+  margin: 0 0 12px;
+  word-break: break-all;
+}
+.save-state {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.save-state.saved {
+  color: var(--accent);
+}
+.save-state.error {
+  color: var(--danger);
+}
+.cm-host {
+  flex: 1;
+  padding-bottom: 40vh;
+}
+.cm-host .cm-editor {
+  font-size: 16px;
+  line-height: 1.7;
+  background: transparent;
+}
+.cm-host .cm-editor.cm-focused {
+  outline: none;
+}
+.cm-host .cm-content {
+  font-family: var(--font);
+  caret-color: var(--text);
+}
+.cm-host .cm-activeLine {
+  background: transparent;
+}
+
+/* SCR-17 알림 */
+.toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 100;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 260px;
+  max-width: 420px;
+  padding: 10px 8px 10px 14px;
+  border-radius: 8px;
+  background: #1e3a23;
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+}
+.toast span {
+  flex: 1;
+}
+.toast .icon-btn {
+  color: inherit;
+}
+.toast.error {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}
