@@ -8,6 +8,8 @@
 //!   the node script it starts.)
 //! - The CLIs get no tools that could touch the user's files: they run in a
 //!   fresh empty temp directory, Claude with `--tools ""`, Codex read-only.
+//!   A web research run (`web`) adds only web search/fetch: Claude
+//!   `WebSearch,WebFetch`, Codex `--search`.
 //! - Note content goes over stdin, never on the command line.
 //! - Nothing is sent unless [`ai_run`] is called; the frontend calls it only
 //!   after the user confirmed which notes to send.
@@ -102,11 +104,26 @@ pub struct ContextNote {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AiEvent {
-    Started { model: Option<String> },
-    Delta { text: String },
-    Notice { message: String },
-    Done { text: String, cost_usd: Option<f64> },
-    Error { message: String },
+    Started {
+        model: Option<String>,
+    },
+    Delta {
+        text: String,
+    },
+    Notice {
+        message: String,
+    },
+    /// What the AI is doing during a web research run (search query, page read).
+    Progress {
+        message: String,
+    },
+    Done {
+        text: String,
+        cost_usd: Option<f64>,
+    },
+    Error {
+        message: String,
+    },
 }
 
 impl AiEvent {
@@ -256,6 +273,7 @@ pub fn ai_run(
     prompt: String,
     notes: Vec<String>,
     model: Option<String>,
+    web: Option<bool>,
     on_event: Channel<AiEvent>,
 ) -> AppResult<()> {
     let p = Provider::parse(&provider).ok_or_else(|| other_err(format!("알 수 없는 AI 제공자입니다: {provider}")))?;
@@ -279,7 +297,8 @@ pub fn ai_run(
             sink(AiEvent::Notice { message });
         }
         let model = model.map(|m| m.trim().to_string()).filter(|m| !m.is_empty());
-        run_with_model(&request_id, p, &system, &input, model.as_deref(), &cancel, &sink);
+        let job = Job { p, system: &system, input: &input, web: web == Some(true) };
+        run_with_model(&request_id, job, model.as_deref(), &cancel, &sink);
         unregister_run(&request_id);
     });
     Ok(())
@@ -345,19 +364,22 @@ fn is_model_rejected(message: &str) -> bool {
             || m.contains("invalid model"))
 }
 
+/// One request to a CLI.
+#[derive(Clone, Copy)]
+struct Job<'a> {
+    p: Provider,
+    system: &'a str,
+    /// Full stdin text (see [`build_input`]).
+    input: &'a str,
+    /// Allow web search and page reading (and nothing else).
+    web: bool,
+}
+
 /// Runs with the model the user chose in settings; if the service rejects that
 /// model before any text arrived, runs again with the CLI's default model.
-fn run_with_model(
-    request_id: &str,
-    p: Provider,
-    system: &str,
-    input: &str,
-    model: Option<&str>,
-    cancel: &Arc<AtomicBool>,
-    sink: &dyn Fn(AiEvent),
-) {
+fn run_with_model(request_id: &str, job: Job, model: Option<&str>, cancel: &Arc<AtomicBool>, sink: &dyn Fn(AiEvent)) {
     let Some(model) = model else {
-        return run_request(request_id, p, system, input, None, cancel, sink);
+        return run_request(request_id, job, None, cancel, sink);
     };
     let got_text = std::cell::Cell::new(false);
     let rejected = std::cell::RefCell::new(None::<String>);
@@ -372,26 +394,19 @@ fn run_with_model(
             sink(ev)
         }
     };
-    run_request(request_id, p, system, input, Some(model), cancel, &first);
+    run_request(request_id, job, Some(model), cancel, &first);
     if rejected.borrow().is_some() && !cancel.load(Ordering::SeqCst) {
         sink(AiEvent::Notice {
             message: format!("설정한 모델 '{model}'을(를) 이 계정에서 쓸 수 없어 기본 모델로 다시 보냈습니다"),
         });
-        run_request(request_id, p, system, input, None, cancel, sink);
+        run_request(request_id, job, None, cancel, sink);
     }
 }
 
 /// Locates the CLI, runs it in an empty temp directory and streams events to
 /// `sink`. Blocks until the run ends; always emits exactly one terminal event.
-fn run_request(
-    request_id: &str,
-    p: Provider,
-    system: &str,
-    input: &str,
-    model: Option<&str>,
-    cancel: &Arc<AtomicBool>,
-    sink: &dyn Fn(AiEvent),
-) {
+fn run_request(request_id: &str, job: Job, model: Option<&str>, cancel: &Arc<AtomicBool>, sink: &dyn Fn(AiEvent)) {
+    let p = job.p;
     let Some(launcher) = locate(p) else {
         sink(AiEvent::Error { message: p.not_installed().to_string() });
         return;
@@ -404,15 +419,15 @@ fn run_request(
         }
     };
     let mut args = match p {
-        Provider::Claude => claude_args(system),
-        Provider::Codex => codex_args(&workdir),
+        Provider::Claude => claude_args(job.system, job.web),
+        Provider::Codex => codex_args(&workdir, job.web),
     };
     if let Some(m) = model {
         // Before the trailing "-" (stdin) for codex; anywhere for claude.
         let at = if p == Provider::Codex { args.len() - 1 } else { args.len() };
         args.splice(at..at, [OsString::from(if p == Provider::Codex { "-m" } else { "--model" }), m.into()]);
     }
-    execute(request_id, p, &launcher, &args, input, &workdir, cancel, sink);
+    execute(request_id, job, &launcher, &args, &workdir, cancel, sink);
     let _ = fs::remove_dir_all(&workdir);
 }
 
@@ -429,23 +444,26 @@ fn make_workdir() -> std::io::Result<PathBuf> {
     Ok(dir)
 }
 
-fn claude_args(system: &str) -> Vec<OsString> {
-    let mut a: Vec<OsString> = [
-        "-p",
-        "--tools",
-        "",
-        "--no-session-persistence",
-        "--setting-sources",
-        "",
-        "--strict-mcp-config",
-        "--output-format",
-        "stream-json",
-        "--include-partial-messages",
-        "--verbose",
-    ]
-    .iter()
-    .map(OsString::from)
-    .collect();
+/// Claude's built-in web tools; nothing else is ever enabled.
+const CLAUDE_WEB_TOOLS: &str = "WebSearch,WebFetch";
+
+fn claude_args(system: &str, web: bool) -> Vec<OsString> {
+    let tools: &[&str] =
+        if web { &["--tools", CLAUDE_WEB_TOOLS, "--allowedTools", CLAUDE_WEB_TOOLS] } else { &["--tools", ""] };
+    let mut a: Vec<OsString> = std::iter::once("-p")
+        .chain(tools.iter().copied())
+        .chain([
+            "--no-session-persistence",
+            "--setting-sources",
+            "",
+            "--strict-mcp-config",
+            "--output-format",
+            "stream-json",
+            "--include-partial-messages",
+            "--verbose",
+        ])
+        .map(OsString::from)
+        .collect();
     if !system.trim().is_empty() {
         a.push("--system-prompt".into());
         a.push(system.into());
@@ -453,20 +471,24 @@ fn claude_args(system: &str) -> Vec<OsString> {
     a
 }
 
-fn codex_args(workdir: &Path) -> Vec<OsString> {
-    let mut a: Vec<OsString> = [
-        "exec",
-        "--json",
-        "--sandbox",
-        "read-only",
-        "--skip-git-repo-check",
-        "--ephemeral",
-        "--ignore-user-config",
-        "-C",
-    ]
-    .iter()
-    .map(OsString::from)
-    .collect();
+fn codex_args(workdir: &Path, web: bool) -> Vec<OsString> {
+    // `--search` is a top-level option, so it goes before `exec`.
+    let search: &[&str] = if web { &["--search"] } else { &[] };
+    let mut a: Vec<OsString> = search
+        .iter()
+        .copied()
+        .chain([
+            "exec",
+            "--json",
+            "--sandbox",
+            "read-only",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--ignore-user-config",
+            "-C",
+        ])
+        .map(OsString::from)
+        .collect();
     a.push(workdir.as_os_str().to_owned());
     a.push("-".into());
     a
@@ -491,14 +513,14 @@ impl Emitter<'_> {
 #[allow(clippy::too_many_arguments)]
 fn execute(
     request_id: &str,
-    p: Provider,
+    job: Job,
     launcher: &Launcher,
     args: &[OsString],
-    input: &str,
     workdir: &Path,
     cancel: &Arc<AtomicBool>,
     sink: &dyn Fn(AiEvent),
 ) {
+    let (p, input) = (job.p, job.input);
     let mut out = Emitter { sink, finished: false };
     let mut cmd = launcher.command();
     cmd.args(args).current_dir(workdir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -546,7 +568,7 @@ fn execute(
     }
 
     let deadline = Instant::now() + RUN_TIMEOUT;
-    let mut parser = Parser::new(p);
+    let mut parser = Parser::new(p, job.web);
     let mut timed_out = false;
     loop {
         if cancel.load(Ordering::SeqCst) {
@@ -656,14 +678,20 @@ fn hide_window(_c: &mut Command) {}
 /// Turns CLI output lines into [`AiEvent`]s.
 enum Parser {
     Claude,
-    Codex { texts: Vec<String>, last_error: Option<String> },
+    /// `final_only`: the answer is the last message only (web runs narrate
+    /// their steps in earlier messages).
+    Codex {
+        texts: Vec<String>,
+        last_error: Option<String>,
+        final_only: bool,
+    },
 }
 
 impl Parser {
-    fn new(p: Provider) -> Self {
+    fn new(p: Provider, web: bool) -> Self {
         match p {
             Provider::Claude => Parser::Claude,
-            Provider::Codex => Parser::Codex { texts: Vec::new(), last_error: None },
+            Provider::Codex => Parser::Codex { texts: Vec::new(), last_error: None, final_only: web },
         }
     }
 
@@ -682,12 +710,14 @@ impl Parser {
         let ty = v.get("type").and_then(Value::as_str).unwrap_or("");
         match self {
             Parser::Claude => claude_event(&v, ty).into_iter().collect(),
-            Parser::Codex { texts, last_error } => match ty {
+            Parser::Codex { texts, last_error, final_only } => match ty {
                 "thread.started" => vec![AiEvent::Started { model: None }],
                 "item.completed" => {
                     let item = &v["item"];
-                    if item.get("type").and_then(Value::as_str) != Some("agent_message") {
-                        return Vec::new();
+                    match item.get("type").and_then(Value::as_str) {
+                        Some("agent_message") => {}
+                        Some("web_search") => return codex_web_progress(item).into_iter().collect(),
+                        _ => return Vec::new(),
                     }
                     let text = item.get("text").and_then(Value::as_str).unwrap_or("").to_string();
                     let delta = if texts.is_empty() { text.clone() } else { format!("\n\n{text}") };
@@ -709,7 +739,7 @@ impl Parser {
                         .unwrap_or_else(|| "알 수 없는 오류".into());
                     vec![AiEvent::Error { message: error_message(Provider::Codex, &msg) }]
                 }
-                "turn.completed" => vec![AiEvent::Done { text: texts.join("\n\n"), cost_usd: None }],
+                "turn.completed" => vec![AiEvent::Done { text: answer(texts, *final_only), cost_usd: None }],
                 _ => Vec::new(),
             },
         }
@@ -718,9 +748,9 @@ impl Parser {
     /// The terminal event when the process ended without sending one.
     fn finish(&self, exit_ok: bool, code: Option<i32>, stderr: &str) -> AiEvent {
         let p = self.provider();
-        if let Parser::Codex { texts, last_error } = self {
+        if let Parser::Codex { texts, last_error, final_only } = self {
             if exit_ok && !texts.is_empty() {
-                return AiEvent::Done { text: texts.join("\n\n"), cost_usd: None };
+                return AiEvent::Done { text: answer(texts, *final_only), cost_usd: None };
             }
             if let Some(e) = last_error {
                 return AiEvent::Error { message: error_message(p, e) };
@@ -741,8 +771,60 @@ impl Parser {
     }
 }
 
+/// Codex's answer: all its messages, or only the last one.
+fn answer(texts: &[String], final_only: bool) -> String {
+    if final_only { texts.last().cloned().unwrap_or_default() } else { texts.join("\n\n") }
+}
+
+/// "웹 검색: …" / "페이지 읽기: …" for a step of a web research run.
+fn web_step(tool: &str, query: Option<&str>, url: Option<&str>) -> Option<AiEvent> {
+    let message = match (tool, query.filter(|q| !q.is_empty()), url.filter(|u| !u.is_empty())) {
+        ("search", Some(q), _) => format!("웹 검색: {q}"),
+        ("open", _, Some(u)) => format!("페이지 읽기: {u}"),
+        _ => return None,
+    };
+    Some(AiEvent::Progress { message })
+}
+
+fn codex_web_progress(item: &Value) -> Option<AiEvent> {
+    let action = &item["action"];
+    match action.get("type").and_then(Value::as_str) {
+        Some("search") => web_step(
+            "search",
+            action.get("query").and_then(Value::as_str).or_else(|| item.get("query").and_then(Value::as_str)),
+            None,
+        ),
+        Some("open_page") => web_step("open", None, action.get("url").and_then(Value::as_str)),
+        _ => web_step("search", item.get("query").and_then(Value::as_str), None),
+    }
+}
+
+/// Tool calls in a Claude `assistant` message, as one progress line.
+fn claude_tool_progress(v: &Value) -> Option<AiEvent> {
+    let steps: Vec<String> = v
+        .pointer("/message/content")
+        .and_then(Value::as_array)?
+        .iter()
+        .filter(|c| c.get("type").and_then(Value::as_str) == Some("tool_use"))
+        .filter_map(|c| {
+            let input = &c["input"];
+            let ev = match c.get("name").and_then(Value::as_str)? {
+                "WebSearch" => web_step("search", input.get("query").and_then(Value::as_str), None),
+                "WebFetch" => web_step("open", None, input.get("url").and_then(Value::as_str)),
+                _ => None,
+            };
+            match ev {
+                Some(AiEvent::Progress { message }) => Some(message),
+                _ => None,
+            }
+        })
+        .collect();
+    (!steps.is_empty()).then(|| AiEvent::Progress { message: steps.join("\n") })
+}
+
 fn claude_event(v: &Value, ty: &str) -> Option<AiEvent> {
     match ty {
+        "assistant" => claude_tool_progress(v),
         "system" if v.get("subtype").and_then(Value::as_str) == Some("init") => {
             Some(AiEvent::Started { model: v.get("model").and_then(Value::as_str).map(str::to_string) })
         }
@@ -1421,11 +1503,12 @@ mod tests {
 
     #[test]
     fn cli_args_keep_tools_off() {
-        let a = claude_args("시스템");
+        let a = claude_args("시스템", false);
         let s: Vec<&str> = a.iter().map(|x| x.to_str().unwrap()).collect();
         assert_eq!(&s[..3], &["-p", "--tools", ""]);
         assert!(s.ends_with(&["--system-prompt", "시스템"]));
-        let c = codex_args(Path::new("T"));
+        assert!(!s.iter().any(|x| x.contains("Web")));
+        let c = codex_args(Path::new("T"), false);
         let s: Vec<&str> = c.iter().map(|x| x.to_str().unwrap()).collect();
         assert_eq!(
             s,
@@ -1444,10 +1527,53 @@ mod tests {
         );
     }
 
+    #[test]
+    fn web_runs_add_only_web_tools() {
+        let a = claude_args("", true);
+        let s: Vec<&str> = a.iter().map(|x| x.to_str().unwrap()).collect();
+        assert_eq!(&s[..5], &["-p", "--tools", "WebSearch,WebFetch", "--allowedTools", "WebSearch,WebFetch"]);
+        let c = codex_args(Path::new("T"), true);
+        let s: Vec<&str> = c.iter().map(|x| x.to_str().unwrap()).collect();
+        assert_eq!(&s[..2], &["--search", "exec"]);
+        assert!(s.windows(2).any(|w| w == ["--sandbox", "read-only"]));
+    }
+
+    #[test]
+    fn web_steps_become_progress() {
+        let mut claude = Parser::new(Provider::Claude, true);
+        let evs = claude.feed(
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"찾아보겠습니다"},{"type":"tool_use","name":"WebSearch","input":{"query":"tauri 최신 버전"}},{"type":"tool_use","name":"WebFetch","input":{"url":"https://v2.tauri.app/release/","prompt":"x"}}]}}"#,
+        );
+        assert_eq!(
+            evs,
+            vec![AiEvent::Progress {
+                message: "웹 검색: tauri 최신 버전\n페이지 읽기: https://v2.tauri.app/release/".into()
+            }]
+        );
+        assert!(claude.feed(r#"{"type":"assistant","message":{"content":[{"type":"text","text":"답"}]}}"#).is_empty());
+
+        let mut codex = Parser::new(Provider::Codex, true);
+        let lines = [
+            r#"{"type":"item.completed","item":{"type":"agent_message","text":"확인하겠습니다."}}"#,
+            r#"{"type":"item.completed","item":{"type":"web_search","query":"q","action":{"type":"search","query":"tauri releases"}}}"#,
+            r#"{"type":"item.completed","item":{"type":"web_search","query":"u","action":{"type":"open_page","url":"https://v2.tauri.app/release/tauri/"}}}"#,
+            r#"{"type":"item.completed","item":{"type":"agent_message","text":"최신은 2.12.3입니다."}}"#,
+            r#"{"type":"turn.completed"}"#,
+        ];
+        let evs: Vec<AiEvent> = lines.iter().flat_map(|l| codex.feed(l)).collect();
+        assert!(evs.contains(&AiEvent::Progress { message: "웹 검색: tauri releases".into() }));
+        assert!(
+            evs.contains(&AiEvent::Progress {
+                message: "페이지 읽기: https://v2.tauri.app/release/tauri/".into()
+            })
+        );
+        assert_eq!(evs.last(), Some(&AiEvent::Done { text: "최신은 2.12.3입니다.".into(), cost_usd: None }));
+    }
+
     // ----- parsing -----
 
     fn feed_all(p: Provider, lines: &[&str]) -> (Parser, Vec<AiEvent>) {
-        let mut parser = Parser::new(p);
+        let mut parser = Parser::new(p, false);
         let evs = lines.iter().flat_map(|l| parser.feed(l)).collect();
         (parser, evs)
     }
@@ -1491,7 +1617,7 @@ mod tests {
             feed_all(Provider::Claude, &[r#"{"type":"result","subtype":"error_during_execution","is_error":true}"#]);
         assert_eq!(evs, vec![AiEvent::Error { message: "Claude Code 오류: error_during_execution".into() }]);
 
-        let p = Parser::new(Provider::Claude);
+        let p = Parser::new(Provider::Claude, false);
         assert_eq!(
             p.finish(false, Some(1), "Error: Invalid API key\n"),
             AiEvent::Error { message: Provider::Claude.login_hint().into() }
@@ -1557,7 +1683,7 @@ mod tests {
             AiEvent::Error { message: Provider::Codex.login_hint().into() }
         );
 
-        let parser = Parser::new(Provider::Codex);
+        let parser = Parser::new(Provider::Codex, false);
         assert_eq!(
             parser.finish(true, Some(0), ""),
             AiEvent::Error { message: "Codex (ChatGPT)이(가) 응답 없이 종료되었습니다".into() }
@@ -1711,7 +1837,8 @@ mod tests {
         let events = std::cell::RefCell::new(Vec::new());
         let sink = |e: AiEvent| events.borrow_mut().push(e);
         let started = Instant::now();
-        execute(id, Provider::Codex, &launcher, &args, "", &workdir, &cancel, &sink);
+        let job = Job { p: Provider::Codex, system: "", input: "", web: false };
+        execute(id, job, &launcher, &args, &workdir, &cancel, &sink);
         unregister_run(id);
         let _ = fs::remove_dir_all(&workdir);
         assert!(canceller.join().unwrap());
@@ -1751,7 +1878,7 @@ mod tests {
             let system = "질문에 아주 짧게 답한다.";
             let input = build_input(p, system, "", "한 단어로만 답해: 대한민국의 수도는?");
             let started = Instant::now();
-            run_request(&id, p, system, &input, None, &cancel, &sink);
+            run_request(&id, Job { p, system, input: &input, web: false }, None, &cancel, &sink);
             unregister_run(&id);
             let events = events.into_inner();
             println!("{} ({:?}): {events:?}", p.id(), started.elapsed());

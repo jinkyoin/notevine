@@ -8,6 +8,9 @@ import {
   needsLogin,
   pickProvider,
   QA_SYSTEM,
+  RESEARCH_SYSTEM,
+  researchNoteName,
+  researchPrompt,
   REVIEW_SYSTEM,
   reviewPrompt,
   runAi,
@@ -45,6 +48,8 @@ export interface SendRequest {
   extra?: { label: string; text: string };
   /** Relevant notes left out because they are tagged #비공개. */
   privateExcluded?: number;
+  /** The AI will search the web with the text in `extra`. */
+  web?: boolean;
   resolve: (paths: string[] | null) => void;
 }
 
@@ -61,6 +66,8 @@ export interface Preview {
   noteName?: string;
   noteDir?: string;
   handle?: RunHandle;
+  /** Web research run: steps so far ("웹 검색: …"). */
+  progress?: string[];
 }
 
 interface AiState {
@@ -75,6 +82,11 @@ interface AiState {
   preview: Preview | null;
   /** Provider whose login window is open. */
   loggingIn: string | null;
+  /** What the AI panel input does: ask about notes, or research the web into a new note. */
+  inputMode: "ask" | "research";
+  setInputMode(m: "ask" | "research"): void;
+  /** Researches `topic` on the web and previews the result as a new note. */
+  research(topic: string): Promise<void>;
 
   /** `refresh` probes the CLIs again now. */
   detect(refresh?: boolean): Promise<void>;
@@ -143,6 +155,11 @@ export const useAi = create<AiState>((set, get) => {
     send: null,
     preview: null,
     loggingIn: null,
+    inputMode: "ask",
+
+    setInputMode(inputMode) {
+      set({ inputMode });
+    },
 
     async detect(refresh = false) {
       const providers = await api.aiProviders(refresh).catch(() => [] as AiProvider[]);
@@ -382,6 +399,63 @@ export const useAi = create<AiState>((set, get) => {
       }
     },
 
+    async research(topic) {
+      const t = topic.trim();
+      if (!t || get().preview) return;
+      const provider = await ready();
+      if (!provider) return;
+      const ok = await get().confirmSend({
+        provider,
+        title: "자료 조사해서 새 노트로",
+        notes: [],
+        checked: [],
+        extra: { label: "조사 주제", text: t },
+        web: true,
+      });
+      if (ok === null) return;
+      const cfg = app().config;
+      const d = new Date();
+      const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const handle: RunHandle = runAi(
+        provider.id,
+        RESEARCH_SYSTEM,
+        researchPrompt(t, today),
+        [],
+        () => {}, // the steps are narrated; only the final note is shown
+        (m) => app().toast(m),
+        undefined,
+        {
+          web: true,
+          onProgress: (m) => {
+            const p = get().preview;
+            if (p?.handle === handle) set({ preview: { ...p, progress: [...(p.progress ?? []), ...m.split("\n")] } });
+          },
+        },
+      );
+      set({
+        preview: {
+          title: `자료 조사: ${t}`,
+          mode: "note",
+          original: "",
+          result: "",
+          streaming: true,
+          error: null,
+          from: 0,
+          to: 0,
+          noteName: researchNoteName(t),
+          noteDir: cfg.preset_enabled ? cfg.research_folder : "",
+          handle,
+          progress: [],
+        },
+      });
+      try {
+        const { text } = await handle.done;
+        if (get().preview?.handle === handle) set({ preview: { ...get().preview!, result: text, streaming: false } });
+      } catch (e) {
+        if (get().preview?.handle === handle) set({ preview: { ...get().preview!, streaming: false, error: errorMessage(e) } });
+      }
+    },
+
     closePreview() {
       const p = get().preview;
       if (p?.streaming) p.handle?.cancel();
@@ -393,7 +467,14 @@ export const useAi = create<AiState>((set, get) => {
       if (!p) return;
       if (how === "note") {
         try {
-          const path = await api.createNote(p.noteDir ?? "", p.noteName ?? `AI ${stamp()}`, text.endsWith("\n") ? text : text + "\n");
+          // Same topic again: "이름 1", "이름 2"… instead of failing on the taken name.
+          const dir = p.noteDir ?? "";
+          const base = p.noteName ?? `AI ${stamp()}`;
+          const taken = new Set(app().notes.map((n) => n.path.toLowerCase()));
+          const at = (name: string) => `${dir ? dir + "/" : ""}${name}.md`.toLowerCase();
+          let name = base;
+          for (let n = 1; taken.has(at(name)); n++) name = `${base} ${n}`;
+          const path = await api.createNote(dir, name, text.endsWith("\n") ? text : text + "\n");
           set({ preview: null });
           await app().refreshTree();
           app().openNote(path);

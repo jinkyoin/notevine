@@ -54,6 +54,12 @@ export function AiSendConfirm() {
         ) : (
           req.extra === undefined && <p className="muted small">보낼 노트가 없습니다.</p>
         )}
+        {req.web && (
+          <p className="small ai-web">
+            AI가 이 주제로 웹을 검색하고 페이지를 읽습니다. 주제는 검색어로 쓰이고, 내 노트는 보내지 않습니다. 1~3분쯤
+            걸립니다.
+          </p>
+        )}
         {!!req.privateExcluded && (
           <p className="small ai-private">#비공개 태그가 있는 노트 {req.privateExcluded}개는 보내지 않도록 뺐습니다.</p>
         )}
@@ -105,8 +111,16 @@ export function AiPreview() {
           )}
           <div>
             <div className="muted small">
-              결과 {p.streaming ? "· 작성 중…" : "· 고쳐 쓸 수 있습니다"}
+              결과 {p.streaming ? (p.progress ? "· 조사 중… (1~3분)" : "· 작성 중…") : "· 고쳐 쓸 수 있습니다"}
             </div>
+            {p.progress && p.streaming && (
+              <ul className="ai-progress small muted">
+                {p.progress.length === 0 && <li>시작하는 중…</li>}
+                {p.progress.map((s, i) => (
+                  <li key={i}>{s}</li>
+                ))}
+              </ul>
+            )}
             <textarea
               className="ai-result"
               value={draft}

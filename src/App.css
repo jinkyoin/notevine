@@ -1436,3 +1436,35 @@ kbd {
   user-select: all;
   word-break: break-all;
 }
+
+.ai-mode {
+  display: flex;
+  gap: 4px;
+  padding: 0 8px 4px;
+}
+.ai-mode button {
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+.ai-mode button.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.ai-web {
+  color: var(--accent);
+  margin: 0 0 6px;
+}
+.ai-progress {
+  max-height: 120px;
+  overflow: auto;
+  margin: 4px 0 6px;
+  padding-left: 18px;
+  word-break: break-all;
+}

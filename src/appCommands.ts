@@ -103,6 +103,16 @@ export function registerAppCommands(): () => void {
       run: () => useAi.getState().write(task),
     })),
     {
+      id: "ai.research",
+      title: "AI: 자료 조사해서 새 노트로",
+      keywords: "ai 웹 검색 인터넷 조사 리서치 자료 research",
+      when: hasVault,
+      run: () => {
+        useAi.getState().setInputMode("research");
+        st().focusAi();
+      },
+    },
+    {
       id: "ai.weekly",
       title: "AI: 이번 주 업무일지로 주간 회고 만들기",
       keywords: "ai 회고 주간 정리 업무일지 요약",

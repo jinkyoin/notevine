@@ -169,6 +169,7 @@ export type AiEvent =
   | { kind: "started"; model: string | null }
   | { kind: "delta"; text: string }
   | { kind: "notice"; message: string }
+  | { kind: "progress"; message: string }
   | { kind: "done"; text: string; cost_usd: number | null }
   | { kind: "error"; message: string };
 
@@ -246,11 +247,12 @@ export const api = {
     prompt: string,
     notes: string[],
     model: string | null,
+    web: boolean,
     onEvent: (e: AiEvent) => void,
   ) => {
     const ch = new Channel<AiEvent>();
     ch.onmessage = onEvent;
-    return invoke<void>("ai_run", { requestId, provider, system, prompt, notes, model, onEvent: ch });
+    return invoke<void>("ai_run", { requestId, provider, system, prompt, notes, model, web, onEvent: ch });
   },
   aiCancel: (requestId: string) => invoke<boolean>("ai_cancel", { requestId }),
   deleteEntry: (path: string) => invoke<void>("delete_entry", { path }),

@@ -126,6 +126,8 @@ export function AiPanel() {
   const loggingIn = useAi((s) => s.loggingIn);
   const providerId = useAi((s) => s.providerId);
   const models = useAi((s) => s.models);
+  const inputMode = useAi((s) => s.inputMode);
+  const { setInputMode, research } = useAi.getState();
   const [customModel, setCustomModel] = useState(false);
   const [q, setQ] = useState("");
   const bottom = useRef<HTMLDivElement>(null);
@@ -205,7 +207,13 @@ export function AiPanel() {
       )}
 
       <div className="ai-chat">
-        {chat.length === 0 && usable.length > 0 && (
+        {chat.length === 0 && usable.length > 0 && inputMode === "research" && (
+          <p className="muted small pad">
+            예: "Tauri 2 자동 업데이트 방법", "2026년 공공 SW 사업 대가 기준". AI가 웹을 검색해 출처 링크가 달린 조사
+            노트 초안을 만들고, 확인한 뒤 새 노트로 저장합니다.
+          </p>
+        )}
+        {chat.length === 0 && usable.length > 0 && inputMode === "ask" && (
           <p className="muted small pad">
             예: "지난주 회의에서 결정한 것 정리해 줘", "자동화 관련 아이디어를 모아 줘". 관련 노트를 찾아 보내기 전에 보여
             드립니다.
@@ -249,19 +257,45 @@ export function AiPanel() {
         <div ref={bottom} />
       </div>
 
+      <div className="ai-mode" role="tablist">
+        <button
+          role="tab"
+          aria-selected={inputMode === "ask"}
+          className={inputMode === "ask" ? "active" : ""}
+          onClick={() => setInputMode("ask")}
+          title="내 노트를 근거로 답합니다"
+        >
+          노트에 질문
+        </button>
+        <button
+          role="tab"
+          aria-selected={inputMode === "research"}
+          className={inputMode === "research" ? "active" : ""}
+          onClick={() => setInputMode("research")}
+          title="웹을 검색해 조사 노트를 만듭니다"
+        >
+          자료 조사 → 새 노트
+        </button>
+      </div>
       <form
         className="ai-input"
         onSubmit={(e) => {
           e.preventDefault();
           const text = q;
           setQ("");
-          void ask(text);
+          void (inputMode === "research" ? research(text) : ask(text));
         }}
       >
         <textarea
           value={q}
           rows={2}
-          placeholder={usable.length ? "노트에 대해 질문하세요 (Enter 보내기, Shift+Enter 줄바꿈)" : "AI를 연결하면 질문할 수 있습니다"}
+          placeholder={
+            !usable.length
+              ? "AI를 연결하면 질문할 수 있습니다"
+              : inputMode === "research"
+                ? "조사할 주제를 쓰세요 (Enter 시작)"
+                : "노트에 대해 질문하세요 (Enter 보내기, Shift+Enter 줄바꿈)"
+          }
           disabled={!usable.length}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => {
@@ -277,7 +311,7 @@ export function AiPanel() {
           </button>
         ) : (
           <button type="submit" className="btn primary small" disabled={!q.trim() || !usable.length}>
-            보내기
+            {inputMode === "research" ? "조사" : "보내기"}
           </button>
         )}
       </form>

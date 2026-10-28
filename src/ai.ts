@@ -113,6 +113,32 @@ export function reviewPrompt(weekLabel: string): string {
   ].join("\n");
 }
 
+export const RESEARCH_SYSTEM = [
+  "너는 웹에서 자료를 조사해 한국어 조사 노트를 쓰는 도우미다.",
+  "웹 검색과 페이지 읽기로 믿을 만한 출처(공식 문서, 기관, 원 출처)를 찾아 확인한 내용만 쓴다. 확인하지 못한 내용은 쓰지 않거나 '확인 필요'라고 밝힌다.",
+  "결과는 노트에 바로 넣을 마크다운만 출력한다. 진행 상황 설명, 인사, 코드 블록 감싸기는 쓰지 않는다.",
+].join("\n");
+
+export function researchPrompt(topic: string, today: string): string {
+  return [
+    `조사 주제: ${topic}`,
+    `조사 날짜: ${today}`,
+    "",
+    "다음 구성의 마크다운으로 조사 노트를 써라.",
+    "## 요약\n(핵심 3~5줄)",
+    "## 주요 내용\n(소제목과 목록으로 정리. 수치·날짜는 출처 그대로)",
+    "## 참고 자료\n(- [페이지 제목](URL) — 무엇을 확인했는지 한 줄)",
+    "본문의 사실마다 근거가 된 출처를 [제목](URL) 링크로 단다.",
+  ].join("\n");
+}
+
+/** File name for a research note: "조사 - 주제" without characters files can't have. */
+export function researchNoteName(topic: string): string {
+  const clean = topic.replace(/[\\/:*?"<>|#^[\]\n\r\t]+/g, " ").replace(/\s+/g, " ").trim();
+  const short = [...clean].slice(0, 40).join("").trim();
+  return `조사 - ${short || "자료"}`;
+}
+
 /** Monday–Sunday of the week containing `d`, as YYYY-MM-DD strings, plus an ISO-like label. */
 export function weekRange(d = new Date()): { from: string; to: string; label: string } {
   const day = (d.getDay() + 6) % 7; // Monday = 0
@@ -165,6 +191,7 @@ export function runAi(
   onText: (text: string) => void,
   onNotice?: (m: string) => void,
   onModel?: (model: string) => void,
+  opts: { web?: boolean; onProgress?: (m: string) => void } = {},
 ): RunHandle {
   const id = `ai-${Date.now()}-${++seq}`;
   let acc = "";
@@ -176,12 +203,13 @@ export function runAi(
         acc += e.text;
         onText(acc);
       } else if (e.kind === "notice") onNotice?.(e.message);
+      else if (e.kind === "progress") opts.onProgress?.(e.message);
       else if (e.kind === "done") {
         onText(e.text);
         resolve({ text: e.text, cost: e.cost_usd });
       } else if (e.kind === "error") reject(new Error(e.message));
     };
-    api.aiRun(id, provider, system, prompt, notes, aiPrefs.model(provider) || null, onEvent).catch((err) => reject(err instanceof Error ? err : new Error(String((err as { message?: string })?.message ?? err))));
+    api.aiRun(id, provider, system, prompt, notes, aiPrefs.model(provider) || null, !!opts.web, onEvent).catch((err) => reject(err instanceof Error ? err : new Error(String((err as { message?: string })?.message ?? err))));
   });
   return { id, done, cancel: () => void api.aiCancel(id).catch(() => {}) };
 }

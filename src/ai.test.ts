@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { chatPrompt, journalNotesInRange, pickProvider, weekRange, writePrompt } from "./ai";
+import { chatPrompt, journalNotesInRange, pickProvider, researchNoteName, researchPrompt, weekRange, writePrompt } from "./ai";
 
 describe("ai helpers", () => {
+  it("names research notes safely", () => {
+    expect(researchNoteName("Tauri 2 자동 업데이트 방법")).toBe("조사 - Tauri 2 자동 업데이트 방법");
+    expect(researchNoteName('a/b:c*d?"e"<f>|g#h[i]')).toBe("조사 - a b c d e f g h i");
+    expect(researchNoteName("  \n ")).toBe("조사 - 자료");
+    expect([...researchNoteName("가".repeat(100))].length).toBe("조사 - ".length + 40);
+    expect(researchPrompt("주제", "2026-10-29")).toContain("조사 날짜: 2026-10-29");
+  });
+
   it("computes Monday–Sunday and the ISO week", () => {
     expect(weekRange(new Date(2026, 9, 28))).toEqual({ from: "2026-10-26", to: "2026-11-01", label: "2026-W44" });
     expect(weekRange(new Date(2026, 10, 1))).toEqual({ from: "2026-10-26", to: "2026-11-01", label: "2026-W44" });
