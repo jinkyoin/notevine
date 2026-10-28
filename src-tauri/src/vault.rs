@@ -490,7 +490,7 @@ impl Vault {
 
     /// Writes a note on the app's behalf (not from the editor) and keeps history,
     /// index and known hashes in step.
-    fn write_tracked(&self, rel: &str, content: &str) -> AppResult<()> {
+    pub(crate) fn write_tracked(&self, rel: &str, content: &str) -> AppResult<()> {
         self.write_note(rel, content)?;
         self.known().insert(rel.to_string(), content_hash(content));
         self.history.record(rel, content, Origin::App, true)?;

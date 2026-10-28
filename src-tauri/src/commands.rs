@@ -22,7 +22,7 @@ pub struct AppState {
     pub recent: RecentStore,
 }
 
-fn with_vault<T>(state: &State<AppState>, f: impl FnOnce(&Vault) -> AppResult<T>) -> AppResult<T> {
+pub(crate) fn with_vault<T>(state: &State<AppState>, f: impl FnOnce(&Vault) -> AppResult<T>) -> AppResult<T> {
     let guard = state.vault.lock().expect("vault lock poisoned");
     let v = guard.as_ref().ok_or(AppError::NoVault)?;
     f(v)
