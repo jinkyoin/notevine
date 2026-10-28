@@ -1,6 +1,7 @@
 // SCR-18 AI 패널: 노트에 질문하고, 출처 링크가 달린 답을 받는다 (FR-AI-01·02·06).
 import { useEffect, useRef, useState } from "react";
 import { useAi } from "../aiStore";
+import { MODEL_OPTIONS } from "../ai";
 import { useApp } from "../store";
 
 /** Answer text: [[links]] are clickable, **bold** and "# heading" lines are styled; the rest stays plain. */
@@ -33,10 +34,69 @@ function AnswerText({ text }: { text: string }) {
   );
 }
 
+/** Model choice for the current AI: presets, or any name typed in. */
+function ModelPicker({
+  provider,
+  value,
+  custom,
+  setCustom,
+  onChange,
+}: {
+  provider: string;
+  value: string;
+  custom: boolean;
+  setCustom: (v: boolean) => void;
+  onChange: (m: string) => void;
+}) {
+  const options = MODEL_OPTIONS[provider] ?? [{ value: "", label: "기본" }];
+  const known = options.some((o) => o.value === value);
+  if (custom || !known) {
+    return (
+      <input
+        className="ai-model-input"
+        autoFocus={custom}
+        defaultValue={value}
+        placeholder="모델 이름"
+        title="CLI에 넘길 모델 이름. Enter로 정하고, 비우면 목록으로 돌아갑니다"
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+          if (e.key === "Escape") {
+            e.currentTarget.value = value;
+            e.currentTarget.blur();
+          }
+        }}
+        onBlur={(e) => {
+          onChange(e.target.value);
+          if (!e.target.value.trim()) setCustom(false);
+        }}
+      />
+    );
+  }
+  return (
+    <select
+      value={value}
+      title="모델"
+      onChange={(e) => {
+        if (e.target.value === "__custom") setCustom(true);
+        else onChange(e.target.value);
+      }}
+    >
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+      <option value="__custom">직접 입력…</option>
+    </select>
+  );
+}
+
 export function AiPanel() {
   const { enabled, providers, chat, running } = useAi();
-  const { detect, setEnabled, setProvider, current, ask, stop, newChat, saveAnswer } = useAi.getState();
+  const { detect, setEnabled, setProvider, setModel, current, ask, stop, newChat, saveAnswer } = useAi.getState();
   const providerId = useAi((s) => s.providerId);
+  const models = useAi((s) => s.models);
+  const [customModel, setCustomModel] = useState(false);
   const [q, setQ] = useState("");
   const bottom = useRef<HTMLDivElement>(null);
 
@@ -72,8 +132,14 @@ export function AiPanel() {
 
   return (
     <section className="ai-panel">
-      <div className="ai-head">
+      <div className="ai-title-row">
         <span className="panel-heading ai-title">AI 도우미</span>
+        <span className="spacer" />
+        <button className="btn ghost small" onClick={newChat} disabled={!!running || chat.length === 0}>
+          새 대화
+        </button>
+      </div>
+      <div className="ai-head">
         {providers === null ? (
           <span className="muted small">AI 찾는 중…</span>
         ) : usable.length === 0 ? (
@@ -87,10 +153,7 @@ export function AiPanel() {
             ))}
           </select>
         )}
-        <span className="spacer" />
-        <button className="btn ghost small" onClick={newChat} disabled={!!running || chat.length === 0}>
-          새 대화
-        </button>
+        {cur && <ModelPicker provider={cur.id} value={models[cur.id] ?? ""} custom={customModel} setCustom={setCustomModel} onChange={(m) => setModel(cur.id, m)} />}
       </div>
 
       {providers !== null && usable.length === 0 && (
@@ -130,6 +193,7 @@ export function AiPanel() {
                       복사
                     </button>
                     {m.sources && m.sources.length > 0 && <span className="muted small">참고 노트 {m.sources.length}개</span>}
+                    {m.model && <span className="muted small">· {m.model}</span>}
                   </div>
                 )}
               </>

@@ -25,6 +25,8 @@ export interface ChatMessage {
   text: string;
   /** Notes sent with the question (paths). */
   sources?: string[];
+  /** Model that answered, when the CLI reports it. */
+  model?: string;
   error?: string;
   streaming?: boolean;
   question?: string;
@@ -60,6 +62,8 @@ interface AiState {
   enabled: boolean;
   providers: AiProvider[] | null;
   providerId: string;
+  /** Chosen model per provider ("" = CLI default). */
+  models: Record<string, string>;
   chat: ChatMessage[];
   running: RunHandle | null;
   send: SendRequest | null;
@@ -68,6 +72,7 @@ interface AiState {
   detect(): Promise<void>;
   setEnabled(on: boolean): void;
   setProvider(id: string): void;
+  setModel(provider: string, model: string): void;
   current(): AiProvider | undefined;
   /** Shows SCR-19; resolves to the note paths to send, or null when cancelled. */
   confirmSend(req: Omit<SendRequest, "resolve">): Promise<string[] | null>;
@@ -114,6 +119,7 @@ export const useAi = create<AiState>((set, get) => {
     enabled: aiPrefs.enabled(),
     providers: null,
     providerId: aiPrefs.provider(),
+    models: { claude: aiPrefs.model("claude"), codex: aiPrefs.model("codex") },
     chat: [],
     running: null,
     send: null,
@@ -133,6 +139,11 @@ export const useAi = create<AiState>((set, get) => {
     setProvider(id) {
       aiPrefs.setProvider(id);
       set({ providerId: id });
+    },
+
+    setModel(provider, model) {
+      aiPrefs.setModel(provider, model);
+      set({ models: { ...get().models, [provider]: model.trim() } });
     },
 
     current() {
@@ -178,6 +189,7 @@ export const useAi = create<AiState>((set, get) => {
         paths,
         (text) => update({ text }),
         (m) => app().toast(m),
+        (model) => update({ model }),
       );
       set({ running: handle });
       try {

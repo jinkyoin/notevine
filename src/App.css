@@ -1370,3 +1370,42 @@ kbd {
 .ai-title {
   padding: 0 4px 0 0;
 }
+
+.ai-head select,
+.ai-model-input {
+  max-width: 120px;
+}
+.ai-model-input {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 3px 6px;
+}
+
+.ai-title-row {
+  display: flex;
+  align-items: center;
+  padding: 6px 6px 0 10px;
+}
+.ai-title-row .ai-title {
+  padding: 0;
+  white-space: nowrap;
+}
+.ai-head {
+  padding-top: 2px;
+}
+.ai-head select,
+.ai-head .ai-model-input {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+}
+.ai-actions {
+  flex-wrap: wrap;
+}
+.ai-actions .btn {
+  white-space: nowrap;
+}

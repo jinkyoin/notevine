@@ -38,6 +38,25 @@ export function pickProvider(list: AiProvider[], preferred: string): AiProvider 
 
 export const PROVIDER_COMPANY: Record<string, string> = { claude: "Anthropic", codex: "OpenAI" };
 
+/**
+ * Models offered in the picker. "" = the CLI's own default. Aliases like "opus"
+ * follow the newest model of that family; the user can also type any name.
+ * (Claude names checked against Claude Code 2.1.312 on 2026-10-28.)
+ */
+export const MODEL_OPTIONS: Record<string, { value: string; label: string }[]> = {
+  claude: [
+    { value: "", label: "기본 (Opus)" },
+    { value: "opus", label: "Opus · 가장 똑똑함" },
+    { value: "sonnet", label: "Sonnet · 균형" },
+    { value: "haiku", label: "Haiku · 가장 빠름" },
+    { value: "claude-fable-5-1", label: "Fable 5.1" },
+  ],
+  codex: [
+    { value: "", label: "기본" },
+    { value: "gpt-6.1-sol", label: "gpt-6.1-sol" },
+  ],
+};
+
 // ---------- prompts ----------
 
 export const QA_SYSTEM = [
@@ -133,12 +152,15 @@ export function runAi(
   notes: string[],
   onText: (text: string) => void,
   onNotice?: (m: string) => void,
+  onModel?: (model: string) => void,
 ): RunHandle {
   const id = `ai-${Date.now()}-${++seq}`;
   let acc = "";
   const done = new Promise<{ text: string; cost: number | null }>((resolve, reject) => {
     const onEvent = (e: AiEvent) => {
-      if (e.kind === "delta") {
+      if (e.kind === "started") {
+        if (e.model) onModel?.(e.model);
+      } else if (e.kind === "delta") {
         acc += e.text;
         onText(acc);
       } else if (e.kind === "notice") onNotice?.(e.message);
