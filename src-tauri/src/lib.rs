@@ -73,6 +73,7 @@ pub fn run() {
             ai::ai_context,
             ai::ai_run,
             ai::ai_cancel,
+            ai::ai_login,
             ai::ai_private_notes,
             commands::resolve_link,
             commands::backlinks,

@@ -5,6 +5,7 @@ import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { api, errorMessage, type VaultConfig } from "../api";
 import { useApp } from "../store";
 import { useAi } from "../aiStore";
+import { ProviderFix } from "./AiPanel";
 
 type Tab = "general" | "editor" | "files" | "preset" | "ai" | "history" | "about";
 const TABS: [Tab, string][] = [
@@ -216,7 +217,7 @@ function AiSettings() {
         <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
       </Row>
       <Row label="연결된 AI" hint="PC에 설치·로그인된 공식 CLI를 그대로 씁니다. Notevine은 로그인 정보를 읽지 않습니다">
-        <button className="btn small" onClick={() => void detect()}>
+        <button className="btn small" onClick={() => void detect(true)}>
           다시 찾기
         </button>
       </Row>
@@ -235,6 +236,7 @@ function AiSettings() {
                     : "설치됨 · 사용할 수 있음 (로그인 안 되어 있으면 질문할 때 안내합니다)"
                   : (p.detail ?? "사용할 수 없음")}
               </div>
+              {!usable && <ProviderFix p={p} />}
             </div>
             <div className="set-ctl">
               <input
@@ -259,8 +261,8 @@ function AiSettings() {
       })}
       {providers === null && <p className="muted small">AI를 찾는 중…</p>}
       <p className="muted small pad">
-        Claude Code는 Claude Pro/Max 구독, Codex는 ChatGPT 구독으로 동작합니다. 둘 다 없다면 각 서비스의 CLI를 설치한 뒤
-        터미널에서 한 번 로그인하세요 (claude / codex login). 선택: {providerId || "자동"}
+        Claude Code는 Claude Pro/Max 구독, Codex는 ChatGPT 구독으로 동작합니다. 로그인 버튼을 누르면 각 AI의 공식 로그인
+        창이 열리고, 브라우저에서 로그인을 마치면 자동으로 연결됩니다. 선택: {providerId || "자동"}
       </p>
     </>
   );

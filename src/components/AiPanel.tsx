@@ -1,7 +1,8 @@
 // SCR-18 AI 패널: 노트에 질문하고, 출처 링크가 달린 답을 받는다 (FR-AI-01·02·06).
 import { useEffect, useRef, useState } from "react";
 import { useAi } from "../aiStore";
-import { MODEL_OPTIONS } from "../ai";
+import { INSTALL_COMMAND, isLoginError, MODEL_OPTIONS, needsLogin } from "../ai";
+import type { AiProvider } from "../api";
 import { useApp } from "../store";
 
 /** Answer text: [[links]] are clickable, **bold** and "# heading" lines are styled; the rest stays plain. */
@@ -32,6 +33,34 @@ function AnswerText({ text }: { text: string }) {
       })}
     </div>
   );
+}
+
+/** What to do about an AI that cannot be used: log in, or install it. */
+export function ProviderFix({ p }: { p: AiProvider }) {
+  const loggingIn = useAi((s) => s.loggingIn);
+  const { login } = useAi.getState();
+  if (needsLogin(p)) {
+    return (
+      <button className="btn primary small" disabled={!!loggingIn} onClick={() => void login(p.id)}>
+        {loggingIn === p.id ? "로그인 창에서 진행 중…" : "로그인"}
+      </button>
+    );
+  }
+  const cmd = INSTALL_COMMAND[p.id];
+  if (p.version === null && cmd) {
+    return (
+      <div className="ai-install">
+        <span className="muted small">PowerShell에서 설치한 뒤 다시 찾기를 누르세요</span>
+        <div className="ai-install-row">
+          <code>{cmd}</code>
+          <button className="btn ghost small" onClick={() => void navigator.clipboard.writeText(cmd)}>
+            복사
+          </button>
+        </div>
+      </div>
+    );
+  }
+  return null;
 }
 
 /** Model choice for the current AI: presets, or any name typed in. */
@@ -93,7 +122,8 @@ function ModelPicker({
 
 export function AiPanel() {
   const { enabled, providers, chat, running } = useAi();
-  const { detect, setEnabled, setProvider, setModel, current, ask, stop, newChat, saveAnswer } = useAi.getState();
+  const { detect, setEnabled, setProvider, setModel, current, ask, stop, newChat, saveAnswer, login } = useAi.getState();
+  const loggingIn = useAi((s) => s.loggingIn);
   const providerId = useAi((s) => s.providerId);
   const models = useAi((s) => s.models);
   const [customModel, setCustomModel] = useState(false);
@@ -158,13 +188,17 @@ export function AiPanel() {
       </div>
 
       {providers !== null && usable.length === 0 && (
-        <div className="pad small">
+        <div className="pad small ai-connect">
           {(providers ?? []).map((p) => (
-            <p key={p.id}>
-              <b>{p.name}</b>: {p.detail ?? "사용할 수 없습니다"}
-            </p>
+            <div key={p.id} className="ai-connect-item">
+              <div>
+                <b>{p.name}</b>: {p.detail ?? "사용할 수 없습니다"}
+              </div>
+              <ProviderFix p={p} />
+            </div>
           ))}
-          <button className="btn small" onClick={() => void detect()}>
+          <p className="muted small">로그인은 각 AI의 공식 로그인 창에서 합니다. Notevine은 로그인 정보를 보지 않습니다.</p>
+          <button className="btn small" onClick={() => void detect(true)}>
             다시 찾기
           </button>
         </div>
@@ -185,6 +219,17 @@ export function AiPanel() {
               <>
                 {m.text ? <AnswerText text={m.text} /> : m.streaming && <div className="muted small">답을 기다리는 중…</div>}
                 {m.error && <div className="error small">{m.error}</div>}
+                {m.error && isLoginError(m.error) && (
+                  <div className="ai-actions">
+                    <button
+                      className="btn primary small"
+                      disabled={!!loggingIn}
+                      onClick={() => void login(m.provider ?? current()?.id ?? "claude")}
+                    >
+                      {loggingIn ? "로그인 창에서 진행 중…" : "로그인"}
+                    </button>
+                  </div>
+                )}
                 {!m.streaming && m.text && (
                   <div className="ai-actions">
                     <button className="btn ghost small" onClick={() => void saveAnswer(i)}>

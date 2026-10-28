@@ -5,6 +5,7 @@ import {
   aiPrefs,
   chatPrompt,
   journalNotesInRange,
+  needsLogin,
   pickProvider,
   QA_SYSTEM,
   REVIEW_SYSTEM,
@@ -27,6 +28,8 @@ export interface ChatMessage {
   sources?: string[];
   /** Model that answered, when the CLI reports it. */
   model?: string;
+  /** AI that answered (for the login button after a login error). */
+  provider?: string;
   error?: string;
   streaming?: boolean;
   question?: string;
@@ -70,8 +73,13 @@ interface AiState {
   running: RunHandle | null;
   send: SendRequest | null;
   preview: Preview | null;
+  /** Provider whose login window is open. */
+  loggingIn: string | null;
 
-  detect(): Promise<void>;
+  /** `refresh` probes the CLIs again now. */
+  detect(refresh?: boolean): Promise<void>;
+  /** Opens the CLI's own login window and re-checks when it closes. */
+  login(provider: string): Promise<void>;
   setEnabled(on: boolean): void;
   setProvider(id: string): void;
   setModel(provider: string, model: string): void;
@@ -108,10 +116,18 @@ export const useAi = create<AiState>((set, get) => {
     if (!get().providers) await get().detect();
     const p = get().current();
     if (!p) {
-      app().toast("사용할 수 있는 AI가 없습니다. Claude Code나 Codex CLI를 설치하고 로그인해 주세요", "error", {
-        label: "설정 열기",
-        run: () => app().setModal("settings"),
-      });
+      const loggedOut = (get().providers ?? []).find(needsLogin);
+      if (loggedOut) {
+        app().toast(`${loggedOut.name}에 로그인되어 있지 않습니다`, "error", {
+          label: "로그인",
+          run: () => void get().login(loggedOut.id),
+        });
+      } else {
+        app().toast("사용할 수 있는 AI가 없습니다. Claude Code나 Codex CLI를 설치하고 로그인해 주세요", "error", {
+          label: "설정 열기",
+          run: () => app().setModal("settings"),
+        });
+      }
       return null;
     }
     return p;
@@ -126,10 +142,39 @@ export const useAi = create<AiState>((set, get) => {
     running: null,
     send: null,
     preview: null,
+    loggingIn: null,
 
-    async detect() {
-      const providers = await api.aiProviders().catch(() => [] as AiProvider[]);
+    async detect(refresh = false) {
+      const providers = await api.aiProviders(refresh).catch(() => [] as AiProvider[]);
       set({ providers });
+    },
+
+    async login(id) {
+      if (get().loggingIn) return app().toast("이미 로그인 창이 열려 있습니다. 그 창에서 로그인을 마쳐 주세요", "error");
+      const name = get().providers?.find((p) => p.id === id)?.name ?? id;
+      set({ loggingIn: id });
+      app().toast(`${name} 로그인 창을 열었습니다. 브라우저에서 로그인을 마치면 자동으로 연결됩니다`);
+      try {
+        const p = await api.aiLogin(id);
+        set({ providers: (get().providers ?? []).map((x) => (x.id === p.id ? p : x)) });
+        if (p.logged_in === false) {
+          app().toast(`${name} 로그인이 끝나지 않았습니다. 다시 시도해 주세요`, "error", {
+            label: "다시 로그인",
+            run: () => void get().login(id),
+          });
+        } else {
+          if (get().current()?.id !== id) get().setProvider(id);
+          // The "not logged in" notices no longer apply.
+          app()
+            .toasts.filter((t) => t.message.includes("로그인되어 있지 않습니다"))
+            .forEach((t) => app().dismissToast(t.id));
+          app().toast(`${name}에 연결했습니다`);
+        }
+      } catch (e) {
+        app().toast(errorMessage(e), "error");
+      } finally {
+        set({ loggingIn: null });
+      }
     },
 
     setEnabled(on) {
@@ -188,7 +233,7 @@ export const useAi = create<AiState>((set, get) => {
         .chat.filter((m) => !m.error && !m.streaming)
         .map((m) => ({ role: m.role, text: m.text }));
       const idx = get().chat.length + 1;
-      set({ chat: [...get().chat, { role: "user", text: q, sources: paths }, { role: "ai", text: "", streaming: true, question: q, sources: paths }] });
+      set({ chat: [...get().chat, { role: "user", text: q, sources: paths }, { role: "ai", text: "", streaming: true, question: q, sources: paths, provider: provider.id }] });
       const update = (patch: Partial<ChatMessage>) =>
         set({ chat: get().chat.map((m, i) => (i === idx ? { ...m, ...patch } : m)) });
       const handle = runAi(

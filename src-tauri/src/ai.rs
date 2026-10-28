@@ -36,8 +36,10 @@ use crate::vault::Vault;
 
 /// Longest a single AI run may take.
 const RUN_TIMEOUT: Duration = Duration::from_secs(300);
-/// `--version` / `login status` probes.
+/// `--version` / login status probes.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+/// Longest a login window may stay open.
+const LOGIN_TIMEOUT: Duration = Duration::from_secs(600);
 const PROVIDER_CACHE_TTL: Duration = Duration::from_secs(60);
 /// Characters of one note sent at most.
 const NOTE_CAP: usize = 12_000;
@@ -81,7 +83,7 @@ pub struct AiProvider {
     pub name: String,
     pub available: bool,
     pub version: Option<String>,
-    /// Codex via `codex login status`; Claude: None (no cheap check).
+    /// From `claude auth status` / `codex login status`; None when the CLI did not say.
     pub logged_in: Option<bool>,
     /// Korean hint when unavailable.
     pub detail: Option<String>,
@@ -151,8 +153,31 @@ impl Provider {
 
     fn login_hint(self) -> &'static str {
         match self {
-            Provider::Claude => "Claude Code에 로그인되어 있지 않습니다. 터미널에서 claude 를 실행해 로그인하세요",
-            Provider::Codex => "Codex에 로그인되어 있지 않습니다. 터미널에서 codex login 을 실행해 로그인하세요",
+            Provider::Claude => "Claude Code에 로그인되어 있지 않습니다. 로그인 버튼을 눌러 로그인하세요",
+            Provider::Codex => "Codex에 로그인되어 있지 않습니다. 로그인 버튼을 눌러 로그인하세요",
+        }
+    }
+
+    /// The CLI's own interactive login (opens the browser).
+    fn login_args(self) -> &'static [&'static str] {
+        match self {
+            Provider::Claude => &["auth", "login"],
+            Provider::Codex => &["login"],
+        }
+    }
+
+    fn status_args(self) -> &'static [&'static str] {
+        match self {
+            Provider::Claude => &["auth", "status", "--json"],
+            Provider::Codex => &["login", "status"],
+        }
+    }
+
+    /// Logged in? from the status command's output.
+    fn parse_status(self, ok: bool, out: &str) -> Option<bool> {
+        match self {
+            Provider::Claude => parse_claude_auth(out),
+            Provider::Codex => parse_login(ok, out),
         }
     }
 }
@@ -166,10 +191,22 @@ fn other_err(msg: impl Into<String>) -> AppError {
 // ---------------------------------------------------------------------------
 
 /// Installed CLIs and their state. Probing runs off the main thread and is
-/// cached for a minute.
+/// cached for a minute; `refresh` probes again now.
 #[tauri::command]
-pub async fn ai_providers() -> AppResult<Vec<AiProvider>> {
+pub async fn ai_providers(refresh: Option<bool>) -> AppResult<Vec<AiProvider>> {
+    if refresh == Some(true) {
+        clear_provider_cache();
+    }
     tauri::async_runtime::spawn_blocking(providers_cached).await.map_err(|e| other_err(e.to_string()))
+}
+
+/// Opens the CLI's own login in a console window (it opens the browser) and
+/// waits until that window closes. Returns the provider's state afterwards.
+/// Notevine never sees what is typed there; the CLI keeps the login itself.
+#[tauri::command]
+pub async fn ai_login(provider: String) -> AppResult<AiProvider> {
+    let p = Provider::parse(&provider).ok_or_else(|| other_err(format!("알 수 없는 AI 제공자입니다: {provider}")))?;
+    tauri::async_runtime::spawn_blocking(move || login_blocking(p)).await.map_err(|e| other_err(e.to_string()))?
 }
 
 /// Notes tagged with this (or a sub-tag like `#비공개/회사`) are never sent to AI.
@@ -1137,10 +1174,17 @@ fn parse_login(ok: bool, out: &str) -> Option<bool> {
     }
 }
 
+/// `claude auth status --json` → logged in? Only the `loggedIn` flag is read;
+/// the account details it also prints are ignored. None for CLIs too old to have it.
+fn parse_claude_auth(out: &str) -> Option<bool> {
+    let (start, end) = (out.find('{')?, out.rfind('}')?);
+    serde_json::from_str::<Value>(out.get(start..=end)?).ok()?.get("loggedIn")?.as_bool()
+}
+
 /// Provider status from probe results. `installed`: binary found;
 /// `version_out`: `--version` output when it exited successfully;
-/// `login`: `(exit ok, output)` of the login check, if one ran.
-fn provider_status(p: Provider, installed: bool, version_out: Option<&str>, login: Option<(bool, &str)>) -> AiProvider {
+/// `logged_in`: what the login status check said, if anything.
+fn provider_status(p: Provider, installed: bool, version_out: Option<&str>, logged_in: Option<bool>) -> AiProvider {
     let mut s = AiProvider {
         id: p.id().into(),
         name: p.name().into(),
@@ -1158,13 +1202,10 @@ fn provider_status(p: Provider, installed: bool, version_out: Option<&str>, logi
         return s;
     };
     s.version = parse_version(out);
-    s.logged_in = login.and_then(|(ok, text)| parse_login(ok, text));
+    s.logged_in = logged_in;
     s.available = s.logged_in != Some(false);
     if s.logged_in == Some(false) {
-        s.detail = Some(match p {
-            Provider::Claude => "터미널에서 claude 를 실행해 로그인하세요".into(),
-            Provider::Codex => "터미널에서 codex login 을 실행해 로그인하세요".into(),
-        });
+        s.detail = Some("로그인이 필요합니다".into());
     }
     s
 }
@@ -1173,13 +1214,13 @@ fn probe(p: Provider) -> AiProvider {
     let Some(l) = locate(p) else {
         return provider_status(p, false, None, None);
     };
-    let login = (p == Provider::Codex).then(|| {
+    let login = {
         let l = l.clone();
-        std::thread::spawn(move || run_capture(&l, &["login", "status"], PROBE_TIMEOUT))
-    });
+        std::thread::spawn(move || run_capture(&l, p.status_args(), PROBE_TIMEOUT))
+    };
     let version = run_capture(&l, &["--version"], PROBE_TIMEOUT).filter(|c| c.ok);
-    let login = login.and_then(|h| h.join().ok().flatten());
-    provider_status(p, true, version.as_ref().map(|c| c.text.as_str()), login.as_ref().map(|c| (c.ok, c.text.as_str())))
+    let logged_in = login.join().ok().flatten().and_then(|c| p.parse_status(c.ok, &c.text));
+    provider_status(p, true, version.as_ref().map(|c| c.text.as_str()), logged_in)
 }
 
 fn detect_providers() -> Vec<AiProvider> {
@@ -1199,6 +1240,75 @@ fn providers_cached() -> Vec<AiProvider> {
     let list = detect_providers();
     *PROVIDER_CACHE.lock().expect("provider cache lock poisoned") = Some((Instant::now(), list.clone()));
     list
+}
+
+fn clear_provider_cache() {
+    *PROVIDER_CACHE.lock().expect("provider cache lock poisoned") = None;
+}
+
+/// Only one login window at a time.
+static LOGIN_OPEN: AtomicBool = AtomicBool::new(false);
+
+struct LoginSlot;
+
+impl LoginSlot {
+    fn take() -> Option<Self> {
+        (!LOGIN_OPEN.swap(true, Ordering::SeqCst)).then_some(LoginSlot)
+    }
+}
+
+impl Drop for LoginSlot {
+    fn drop(&mut self) {
+        LOGIN_OPEN.store(false, Ordering::SeqCst);
+    }
+}
+
+fn login_blocking(p: Provider) -> AppResult<AiProvider> {
+    let l = locate(p).ok_or_else(|| other_err(p.not_installed()))?;
+    let _slot =
+        LoginSlot::take().ok_or_else(|| other_err("이미 로그인 창이 열려 있습니다. 그 창에서 로그인을 마쳐 주세요"))?;
+    let title = format!("{} 로그인 - Notevine", p.name());
+    let mut child = console_command(&l, &title, p.login_args())
+        .spawn()
+        .map_err(|e| other_err(format!("{} 로그인 창을 열지 못했습니다: {e}", p.name())))?;
+    if wait_until(&mut child, Instant::now() + LOGIN_TIMEOUT).is_none() {
+        kill_tree(child.id());
+        let _ = child.wait();
+    }
+    clear_provider_cache();
+    Ok(probe(p))
+}
+
+/// The CLI with `args` in a new console window the user can type in; the
+/// returned process ends when that window closes.
+#[cfg(windows)]
+fn console_command(l: &Launcher, title: &str, args: &[&str]) -> Command {
+    use std::os::windows::process::CommandExt;
+    // `start` gives the CLI a console of its own; cmd itself stays hidden.
+    // Paths cannot contain `"`, so quoting each part is enough.
+    let program = std::iter::once(l.program.as_os_str())
+        .chain(l.pre_args.iter().map(|a| a.as_os_str()))
+        .map(|a| format!("\"{}\"", a.to_string_lossy()))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let mut c = Command::new(std::env::var_os("COMSPEC").unwrap_or_else(|| "cmd.exe".into()));
+    c.raw_arg(format!("/d /c start \"{title}\" /wait {program} {}", args.join(" ")));
+    for k in SESSION_ENV {
+        c.env_remove(k);
+    }
+    if let Some(home) = std::env::var_os("USERPROFILE") {
+        c.current_dir(home);
+    }
+    c.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    hide_window(&mut c);
+    c
+}
+
+#[cfg(not(windows))]
+fn console_command(l: &Launcher, _title: &str, args: &[&str]) -> Command {
+    let mut c = l.command();
+    c.args(args);
+    c
 }
 
 #[cfg(test)]
@@ -1490,6 +1600,12 @@ mod tests {
         assert_eq!(parse_login(false, "Not logged in\n"), Some(false));
         assert_eq!(parse_login(false, "error: something"), Some(false));
         assert_eq!(parse_login(true, ""), None);
+
+        let out = r#"{ "loggedIn": true, "authMethod": "claude.ai", "email": "a@b.c" }"#;
+        assert_eq!(parse_claude_auth(out), Some(true));
+        assert_eq!(parse_claude_auth("warning\n{\"loggedIn\": false}\n"), Some(false));
+        assert_eq!(parse_claude_auth("error: unknown command 'auth'"), None);
+        assert_eq!(Provider::Codex.parse_status(false, "Not logged in"), Some(false));
     }
 
     #[test]
@@ -1511,19 +1627,28 @@ mod tests {
             }
         );
 
-        let s =
-            provider_status(Provider::Codex, true, Some("codex-cli 0.154.0"), Some((true, "Logged in using ChatGPT")));
+        let s = provider_status(Provider::Codex, true, Some("codex-cli 0.154.0"), Some(true));
         assert!(s.available);
         assert_eq!(s.logged_in, Some(true));
         assert_eq!(s.name, "Codex (ChatGPT)");
 
-        let s = provider_status(Provider::Codex, true, Some("codex-cli 0.154.0"), Some((false, "Not logged in")));
+        let s = provider_status(Provider::Claude, true, Some("2.1.312 (Claude Code)"), Some(false));
         assert!(!s.available);
-        assert_eq!(s.detail.as_deref(), Some("터미널에서 codex login 을 실행해 로그인하세요"));
+        assert_eq!(s.detail.as_deref(), Some("로그인이 필요합니다"));
 
         let s = provider_status(Provider::Codex, true, None, None);
         assert!(!s.available);
         assert!(s.detail.unwrap().contains("--version"));
+    }
+
+    #[test]
+    #[ignore = "opens a console window; needs claude or codex installed"]
+    fn console_command_runs_and_waits() {
+        let l = locate(Provider::Codex).or_else(|| locate(Provider::Claude)).expect("no AI CLI installed");
+        let started = Instant::now();
+        let st = console_command(&l, "Notevine 테스트", &["--version"]).status().unwrap();
+        assert!(st.success(), "{st:?}");
+        assert!(started.elapsed() > Duration::from_millis(100), "returned before the CLI ran");
     }
 
     #[test]
@@ -1596,6 +1721,14 @@ mod tests {
     }
 
     // ----- live (uses the real CLIs and the user's subscription) -----
+
+    #[test]
+    #[ignore]
+    fn detect_live() {
+        let t = Instant::now();
+        let list = detect_providers();
+        println!("detection took {:?}: {list:#?}", t.elapsed());
+    }
 
     #[test]
     #[ignore]

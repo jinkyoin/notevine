@@ -82,7 +82,7 @@ npm run tauri build    # 설치 파일 만들기 → src-tauri/target/release/bu
 
 ## AI 도우미 쓰기
 
-1. [Claude Code](https://claude.com/claude-code)(Claude Pro/Max) 또는 [Codex CLI](https://github.com/openai/codex)(ChatGPT)를 설치하고, 터미널에서 한 번 로그인합니다 (`claude` / `codex login`).
+1. [Claude Code](https://claude.com/claude-code)(Claude Pro/Max) 또는 [Codex CLI](https://github.com/openai/codex)(ChatGPT)를 설치합니다. 로그인되어 있지 않으면 AI 패널이나 설정 → AI의 **로그인** 버튼을 누르세요. 각 CLI의 공식 로그인 창이 열리고, 브라우저에서 로그인을 마치면 자동으로 연결됩니다.
 2. Notevine 설정 → AI에서 AI 도우미를 켭니다. 설치된 CLI를 자동으로 찾습니다.
 3. 오른쪽 패널 AI 탭(Ctrl+J)에서 질문하거나, 명령 팔레트에서 "AI: 요약" 등을 실행합니다.
 

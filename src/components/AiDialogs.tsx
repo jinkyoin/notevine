@@ -1,7 +1,7 @@
 // SCR-19 AI 전송 확인 + SCR-20 AI 작성 결과 미리보기.
 import { useEffect, useState } from "react";
 import { useAi } from "../aiStore";
-import { PROVIDER_COMPANY } from "../ai";
+import { isLoginError, PROVIDER_COMPANY } from "../ai";
 
 export function AiSendConfirm() {
   const req = useAi((s) => s.send);
@@ -85,6 +85,7 @@ export function AiPreview() {
     if (!p) setEdited(false);
   }, [p]);
   if (!p) return null;
+  const loginId = useAi.getState().current()?.id;
 
   return (
     <div className="modal-backdrop" onKeyDown={(e) => e.key === "Escape" && closePreview()}>
@@ -117,7 +118,16 @@ export function AiPreview() {
             />
           </div>
         </div>
-        {p.error && <p className="error small">{p.error}</p>}
+        {p.error && (
+          <p className="error small">
+            {p.error}{" "}
+            {isLoginError(p.error) && loginId && (
+              <button className="btn primary small" onClick={() => void useAi.getState().login(loginId)}>
+                로그인
+              </button>
+            )}
+          </p>
+        )}
         <div className="modal-actions">
           <button className="btn ghost" onClick={closePreview}>
             {p.streaming ? "중지" : "취소"}

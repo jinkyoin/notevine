@@ -230,7 +230,10 @@ export const api = {
     invoke<string>("save_attachment", { name, data: Array.from(data), folder }),
   resolveAttachment: (target: string, from: string) => invoke<string | null>("resolve_attachment", { target, from }),
   attachmentPath: (path: string) => invoke<string>("attachment_path", { path }),
-  aiProviders: () => invoke<AiProvider[]>("ai_providers"),
+  /** `refresh` probes the CLIs again instead of using the minute-long cache. */
+  aiProviders: (refresh = false) => invoke<AiProvider[]>("ai_providers", { refresh }),
+  /** Opens the CLI's own login window; resolves with the provider's state once it closes. */
+  aiLogin: (provider: string) => invoke<AiProvider>("ai_login", { provider }),
   aiContext: (question: string, limit = 8) =>
     invoke<{ notes: ContextNote[]; private_excluded: string[] }>("ai_context", { question, limit }),
   /** The given notes that carry #비공개 (never sent to AI). */

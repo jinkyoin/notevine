@@ -38,6 +38,18 @@ export function pickProvider(list: AiProvider[], preferred: string): AiProvider 
 
 export const PROVIDER_COMPANY: Record<string, string> = { claude: "Anthropic", codex: "OpenAI" };
 
+/** Official install commands (PowerShell), shown when a CLI is missing. */
+export const INSTALL_COMMAND: Record<string, string> = {
+  claude: "irm https://claude.ai/install.ps1 | iex",
+  codex: "npm install -g @openai/codex",
+};
+
+/** Installed but logged out: the one case a login button can fix. */
+export const needsLogin = (p: AiProvider) => p.version !== null && p.logged_in === false;
+
+/** Error text the backend gives for a missing or expired login. */
+export const isLoginError = (message: string) => message.includes("로그인되어 있지 않습니다");
+
 /**
  * Models offered in the picker. "" = the CLI's own default. Aliases like "opus"
  * follow the newest model of that family; the user can also type any name.
