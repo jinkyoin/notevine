@@ -73,6 +73,7 @@ export function AiPanel() {
   return (
     <section className="ai-panel">
       <div className="ai-head">
+        <span className="panel-heading ai-title">AI 도우미</span>
         {providers === null ? (
           <span className="muted small">AI 찾는 중…</span>
         ) : usable.length === 0 ? (

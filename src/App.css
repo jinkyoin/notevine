@@ -1350,3 +1350,23 @@ kbd {
   width: 150px;
   font-size: 12px;
 }
+
+/* 오른쪽 패널: 노트 정보(위) + AI 도우미(아래, 항상 표시) */
+.rightpanel .info-scroll {
+  flex: 1 1 45%;
+  min-height: 120px;
+}
+.ai-dock {
+  flex: 1 1 55%;
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  overflow: hidden;
+}
+.ai-dock .ai-off {
+  overflow: auto;
+}
+.ai-title {
+  padding: 0 4px 0 0;
+}

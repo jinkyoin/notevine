@@ -79,7 +79,6 @@ interface AppStore {
   /** Bumped after each save so panels that depend on links refresh. */
   savedSeq: number;
   sidebarTab: SidebarTab;
-  rightTab: "info" | "ai";
   editorApi: EditorApi | null;
   /** In-app confirmation waiting for an answer (see ConfirmDialog). */
   confirm: { title: string; message: string; okLabel: string; resolve: (ok: boolean) => void } | null;
@@ -127,7 +126,8 @@ interface AppStore {
   noteSaved(): void;
   setSidebarTab(tab: SidebarTab): void;
   setModal(m: Modal): void;
-  setRightTab(t: "info" | "ai"): void;
+  /** Opens the right panel and puts the cursor in the AI question box. */
+  focusAi(): void;
   setEditorApi(e: EditorApi | null): void;
   /** Asks in an in-app dialog; resolves true when the user agrees. */
   ask(title: string, message: string, okLabel: string): Promise<boolean>;
@@ -215,7 +215,6 @@ export const useApp = create<AppStore>((set, get) => {
     jumpLine: null,
     savedSeq: 0,
     sidebarTab: "files",
-    rightTab: "info",
     editorApi: null,
     confirm: null,
     config: DEFAULT_CONFIG,
@@ -380,8 +379,10 @@ export const useApp = create<AppStore>((set, get) => {
       set({ modal });
     },
 
-    setRightTab(rightTab) {
-      set({ rightTab, rightOpen: true });
+    focusAi() {
+      set({ rightOpen: true });
+      // After the panel renders.
+      setTimeout(() => document.querySelector<HTMLTextAreaElement>(".ai-input textarea")?.focus(), 0);
     },
 
     setEditorApi(editorApi) {

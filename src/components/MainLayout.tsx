@@ -28,7 +28,6 @@ export function MainLayout() {
   const preset = useApp((s) => s.config.preset_enabled);
   const leftOpen = useApp((s) => s.leftOpen);
   const rightOpen = useApp((s) => s.rightOpen);
-  const rightTab = useApp((s) => s.rightTab);
   const canBack = useApp((s) => s.back.length > 0);
   const canForward = useApp((s) => s.forward.length > 0);
   const { setSidebarTab, focusSearch, setPanels, setModal, goBack, goForward, openTodayJournal } = useApp.getState();
@@ -123,23 +122,15 @@ export function MainLayout() {
         </main>
         {rightOpen && (
           <aside className="rightpanel">
-            <div className="side-tabs" role="tablist">
-              <button role="tab" className={rightTab === "info" ? "on" : ""} onClick={() => useApp.getState().setRightTab("info")}>
-                노트 정보
-              </button>
-              <button role="tab" className={rightTab === "ai" ? "on" : ""} onClick={() => useApp.getState().setRightTab("ai")}>
-                AI
-              </button>
+            {/* Note info on top, the AI assistant always below it (SCR-18). */}
+            <div className="info-scroll">
+              {openPath && <PropertiesPanel />}
+              <Backlinks />
+              <HistoryPanel />
             </div>
-            {rightTab === "ai" ? (
+            <div className="ai-dock">
               <AiPanel />
-            ) : (
-              <div className="info-scroll">
-                {openPath && <PropertiesPanel />}
-                <Backlinks />
-                <HistoryPanel />
-              </div>
-            )}
+            </div>
           </aside>
         )}
       </div>

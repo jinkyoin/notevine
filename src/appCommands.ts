@@ -93,7 +93,7 @@ export function registerAppCommands(): () => void {
       keys: "Ctrl+J",
       keywords: "ai 인공지능 질문 채팅 claude codex chatgpt",
       when: hasVault,
-      run: () => st().setRightTab("ai"),
+      run: () => st().focusAi(),
     },
     ...(Object.keys(WRITE_LABEL) as WriteTask[]).map((task) => ({
       id: `ai.write.${task}`,
