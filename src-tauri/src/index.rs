@@ -15,7 +15,7 @@ use crate::paths::{is_hidden, is_note, name_key, parent_rel, resolve_rel, to_rel
 
 /// Bump when the schema or what `parse` extracts changes: an index built by an
 /// older version is thrown away and rebuilt from the files.
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 const SCHEMA: &str = "
 CREATE TABLE notes (
@@ -27,7 +27,8 @@ CREATE TABLE notes (
   ctime    INTEGER NOT NULL,
   mtime    INTEGER NOT NULL,
   size     INTEGER NOT NULL,
-  fm_error TEXT
+  fm_error TEXT,
+  fm_lines INTEGER NOT NULL DEFAULT 0  -- lines before the body (frontmatter incl. delimiters)
 );
 CREATE INDEX notes_name_key ON notes(name_key);
 CREATE INDEX notes_path_key ON notes(path_key);
@@ -130,7 +131,7 @@ fn ms(t: std::io::Result<std::time::SystemTime>) -> i64 {
 }
 
 /// Escapes `%`, `_` and `\` for `LIKE ... ESCAPE '\'`.
-fn like_prefix(dir: &str) -> String {
+pub(crate) fn like_prefix(dir: &str) -> String {
     let mut s = String::new();
     for c in dir.chars() {
         if matches!(c, '%' | '_' | '\\') {
@@ -179,12 +180,23 @@ impl Index {
     /// Indexes one note from its text.
     pub fn upsert(&self, rel: &str, content: &str, ctime: i64, mtime: i64, size: i64) -> AppResult<()> {
         let parsed = parse::parse(content);
+        let fm_lines = fm_lines(content, &parsed.body);
         let tx = self.conn.unchecked_transaction()?;
         delete_note(&tx, rel)?;
         tx.execute(
-            "INSERT INTO notes (path, name_key, path_key, title, ctime, mtime, size, fm_error)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![rel, link_key(&title_of(rel)), link_key(rel), title_of(rel), ctime, mtime, size, parsed.frontmatter_error],
+            "INSERT INTO notes (path, name_key, path_key, title, ctime, mtime, size, fm_error, fm_lines)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                rel,
+                link_key(&title_of(rel)),
+                link_key(rel),
+                title_of(rel),
+                ctime,
+                mtime,
+                size,
+                parsed.frontmatter_error,
+                fm_lines
+            ],
         )?;
         let id = tx.last_insert_rowid();
         {
@@ -381,10 +393,20 @@ impl Index {
         Ok(self.conn.query_row("SELECT 1 FROM notes WHERE path = ?1", params![rel], |_| Ok(())).optional()?.is_some())
     }
 
-    #[cfg(test)]
-    pub fn conn(&self) -> &Connection {
+    /// The underlying connection, for read queries in other modules (search).
+    pub(crate) fn conn(&self) -> &Connection {
         &self.conn
     }
+}
+
+/// Number of lines before the body (frontmatter incl. delimiters): the count of
+/// '\n' in the part of `content` (BOM stripped as `parse` does) that precedes `body`.
+fn fm_lines(content: &str, body: &str) -> i64 {
+    let content = content.strip_prefix('\u{feff}').unwrap_or(content);
+    if !content.ends_with(body) {
+        return 0;
+    }
+    content[..content.len() - body.len()].bytes().filter(|&b| b == b'\n').count() as i64
 }
 
 fn delete_note(tx: &Transaction, rel: &str) -> rusqlite::Result<()> {
@@ -527,6 +549,18 @@ mod tests {
         assert_eq!(ix.name_count("회의록").unwrap(), 2);
         assert_eq!(ix.referrers("보관").unwrap(), ["b.md"]);
         assert_eq!(ix.notes_under("보관").unwrap(), ["보관/old/회의록.md"]);
+    }
+
+    #[test]
+    fn stores_frontmatter_line_count() {
+        let (_d, ix) = setup();
+        ix.upsert("a.md", "\u{feff}---\r\na: 1\r\n---\r\nbody\n", 0, 0, 0).unwrap();
+        ix.upsert("b.md", "no frontmatter\n---\nx\n", 0, 0, 0).unwrap();
+        let n = |p: &str| -> i64 {
+            ix.conn().query_row("SELECT fm_lines FROM notes WHERE path = ?1", params![p], |r| r.get(0)).unwrap()
+        };
+        assert_eq!(n("a.md"), 3);
+        assert_eq!(n("b.md"), 0);
     }
 
     #[test]

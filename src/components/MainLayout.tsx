@@ -5,12 +5,19 @@ import { Explorer } from "./Explorer";
 import { Editor } from "./Editor";
 import { Backlinks } from "./Backlinks";
 import { RelocateDialog } from "./RelocateDialog";
+import { SearchPanel } from "./SearchPanel";
+import { QuickOpen } from "./QuickOpen";
+import { PropertiesPanel } from "./PropertiesPanel";
 
 export function MainLayout() {
   const vault = useApp((s) => s.vault);
   const openPath = useApp((s) => s.openPath);
   const closeVault = useApp((s) => s.closeVault);
   const createNote = useApp((s) => s.createNote);
+  const sidebarTab = useApp((s) => s.sidebarTab);
+  const setSidebarTab = useApp((s) => s.setSidebarTab);
+  const focusSearch = useApp((s) => s.focusSearch);
+  const setQuickOpen = useApp((s) => s.setQuickOpen);
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
 
@@ -18,7 +25,12 @@ export function MainLayout() {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
       if (!mod || e.isComposing) return;
-      if (e.key === "\\" && !e.shiftKey) setLeftOpen((v) => !v);
+      const k = e.key.toLowerCase();
+      if (k === "o" && !e.shiftKey) setQuickOpen(true);
+      else if (k === "f" && e.shiftKey) {
+        setLeftOpen(true);
+        focusSearch();
+      } else if (e.key === "\\" && !e.shiftKey) setLeftOpen((v) => !v);
       else if (e.key === "|" || (e.key === "\\" && e.shiftKey)) setRightOpen((v) => !v);
       else if (e.key.toLowerCase() === "n" && !e.shiftKey) createNote("");
       else return;
@@ -26,7 +38,7 @@ export function MainLayout() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [createNote]);
+  }, [createNote, focusSearch, setQuickOpen]);
 
   const crumbs = openPath ? openPath.split("/") : [];
 
@@ -58,7 +70,15 @@ export function MainLayout() {
       <div className="body">
         {leftOpen && (
           <aside className="sidebar">
-            <Explorer />
+            <div className="side-tabs" role="tablist">
+              <button role="tab" className={sidebarTab === "files" ? "on" : ""} onClick={() => setSidebarTab("files")}>
+                파일
+              </button>
+              <button role="tab" className={sidebarTab === "search" ? "on" : ""} onClick={focusSearch} title="Ctrl+Shift+F">
+                검색
+              </button>
+            </div>
+            {sidebarTab === "files" ? <Explorer /> : <SearchPanel />}
           </aside>
         )}
         <main className="center">
@@ -75,11 +95,13 @@ export function MainLayout() {
         </main>
         {rightOpen && (
           <aside className="rightpanel">
+            {openPath && <PropertiesPanel />}
             <Backlinks />
           </aside>
         )}
       </div>
       <RelocateDialog />
+      <QuickOpen />
     </div>
   );
 }

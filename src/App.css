@@ -423,6 +423,250 @@ button {
   background: transparent;
 }
 
+/* 사이드바 탭 */
+.side-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px 0;
+  flex: none;
+}
+.side-tabs button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 6px 0;
+  border-radius: 6px 6px 0 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+.side-tabs button.on {
+  color: var(--accent);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* SCR-05 검색 */
+.search-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.search-box {
+  padding: 8px 8px 4px;
+}
+.search-input,
+.condition-form input,
+.condition-form select,
+.filter-row select,
+.prop-add input,
+.prop-value input:not([type="checkbox"]),
+.palette-input {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  min-width: 0;
+}
+.search-input {
+  width: 100%;
+}
+.filters {
+  padding: 0 8px;
+}
+.filter-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.filter-row select {
+  padding: 3px 4px;
+  font-size: 12px;
+}
+.condition-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.condition-form input {
+  flex: 1 1 80px;
+}
+.chip-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 4px;
+  padding: 2px 2px 2px 8px;
+  border-radius: 6px;
+  background: var(--bg-active);
+  font-size: 12px;
+}
+.result-summary {
+  padding-bottom: 2px;
+}
+.results {
+  list-style: none;
+  margin: 0;
+  padding: 0 4px 24px;
+  overflow: auto;
+  flex: 1;
+}
+.results li {
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.results li:hover {
+  background: var(--bg-hover);
+}
+.r-title {
+  font-weight: 600;
+}
+.r-snippet {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.r-snippet mark {
+  background: #ffe58f;
+  color: #1f2a1f;
+  border-radius: 2px;
+}
+.r-meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* SCR-11 빠른 열기 */
+.modal-backdrop.top {
+  align-items: start;
+  padding-top: 12vh;
+}
+.palette {
+  width: 560px;
+  max-width: calc(100% - 32px);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+.palette-input {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 12px 14px;
+  font-size: 15px;
+}
+.palette-input:focus-visible {
+  outline: none;
+}
+.palette-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  max-height: 50vh;
+  overflow: auto;
+}
+.palette-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.palette-list li.sel {
+  background: var(--bg-active);
+}
+.palette-list li.create {
+  color: var(--accent);
+}
+
+/* SCR-08 속성 */
+.props-panel {
+  border-bottom: 1px solid var(--border);
+}
+.props-error {
+  margin: 0 12px 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 12px;
+}
+.prop-row {
+  display: grid;
+  grid-template-columns: 76px 1fr 22px;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 2px 12px;
+}
+.prop-key {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prop-value input:not([type="checkbox"]) {
+  width: 100%;
+  padding: 3px 6px;
+  font-size: 13px;
+}
+.prop-text {
+  display: flex;
+  align-items: center;
+}
+.prop-remove {
+  width: 22px;
+  height: 22px;
+  opacity: 0;
+}
+.prop-row:hover .prop-remove {
+  opacity: 1;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 4px 1px 8px;
+  border-radius: 10px;
+  background: var(--bg-active);
+  font-size: 12px;
+}
+.chip button {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 0 2px;
+}
+.chips .chip-input {
+  width: 60px !important;
+  flex: 1;
+}
+.prop-add {
+  padding: 6px 12px 0;
+}
+.prop-add input {
+  width: 100%;
+  font-size: 12px;
+}
+
 /* SCR-07 백링크 패널 */
 .panel-section {
   padding: 4px 0 12px;

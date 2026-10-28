@@ -64,6 +64,40 @@ export interface LinkChange {
   count: number;
 }
 
+export interface PropFilter {
+  key: string;
+  op: "eq" | "ne" | "contains" | "empty";
+  value: string | null;
+}
+
+export interface DateFilter {
+  field: "created" | "modified";
+  from: number | null;
+  to: number | null;
+}
+
+export interface SearchQuery {
+  text: string[];
+  tags: string[];
+  props: PropFilter[];
+  date?: DateFilter | null;
+  limit?: number;
+}
+
+export interface SearchHit {
+  path: string;
+  title: string;
+  mtime: number;
+  parts: { text: string; hit: boolean }[];
+  line: number | null;
+}
+
+export interface SearchResult {
+  hits: SearchHit[];
+  total: number;
+  took_ms: number;
+}
+
 export interface AppError {
   code: string;
   message: string;
@@ -99,6 +133,10 @@ export const api = {
   listNotes: () => invoke<NoteRef[]>("list_notes"),
   resolveLink: (target: string) => invoke<string | null>("resolve_link", { target }),
   backlinks: (path: string) => invoke<Backlink[]>("backlinks", { path }),
+  search: (query: SearchQuery) => invoke<SearchResult>("search", { query }),
+  propertyKeys: () => invoke<string[]>("property_keys"),
+  propertyValues: (key: string) => invoke<string[]>("property_values", { key }),
+  allTags: () => invoke<{ tag: string; count: number }[]>("all_tags"),
   deleteEntry: (path: string) => invoke<void>("delete_entry", { path }),
   revealEntry: (path: string) => invoke<string>("reveal_entry", { path }),
 };

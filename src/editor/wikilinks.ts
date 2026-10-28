@@ -5,6 +5,7 @@ import { syntaxTree } from "@codemirror/language";
 import { type EditorState, type Extension, type Range, StateEffect } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type { NoteRef } from "../api";
+import { frontmatterEnd } from "./livePreview";
 
 export interface LinkEnv {
   /** Path of the note being edited. */
@@ -63,8 +64,9 @@ function buildDecorations(view: EditorView, env: LinkEnv): DecorationSet {
     for (let n = state.doc.lineAt(r.from).number; n <= state.doc.lineAt(r.to).number; n++) active.add(n);
   }
   const out: Range<Decoration>[] = [];
+  const fmEnd = frontmatterEnd(state);
   for (const { from, to } of view.visibleRanges) {
-    for (let pos = from; pos <= to; ) {
+    for (let pos = Math.max(from, fmEnd); pos <= to; ) {
       const line = state.doc.lineAt(pos);
       const isActive = active.has(line.number);
       for (const m of line.text.matchAll(WIKI)) {

@@ -6,6 +6,7 @@ mod parse;
 mod paths;
 mod recent;
 mod rewrite;
+mod search;
 mod vault;
 mod watcher;
 
@@ -53,6 +54,10 @@ pub fn run() {
             commands::backlinks,
             commands::delete_entry,
             commands::reveal_entry,
+            commands::search,
+            commands::property_keys,
+            commands::property_values,
+            commands::all_tags,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -3,6 +3,13 @@
 import { syntaxTree } from "@codemirror/language";
 import type { EditorState, Range } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
+import { splitFrontmatter } from "../lib/frontmatter";
+
+/** End of the frontmatter block (0 when none); markdown styling starts after it. */
+export function frontmatterEnd(state: EditorState): number {
+  const { yaml, bodyStart } = splitFrontmatter(state.sliceDoc(0, 65536));
+  return yaml === null ? 0 : bodyStart;
+}
 
 const hide = Decoration.replace({});
 
@@ -88,11 +95,13 @@ export function buildDecorations(view: EditorView): DecorationSet {
     }
   };
 
+  const fmEnd = frontmatterEnd(state);
   for (const { from, to } of view.visibleRanges) {
     syntaxTree(state).iterate({
-      from,
+      from: Math.max(from, fmEnd),
       to,
       enter: (node) => {
+        if (node.from < fmEnd) return; // YAML block is shown raw (frontmatterFold)
         const name = node.name;
         const heading = /^ATXHeading(\d)$/.exec(name);
         if (heading) {

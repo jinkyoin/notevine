@@ -11,6 +11,7 @@ use crate::history::VersionMeta;
 use crate::recent::{RecentStore, RecentVault};
 use crate::index::Index;
 use crate::paths::APP_DIR;
+use crate::search::{SearchQuery, SearchResult, TagCount};
 use crate::index::NoteRef;
 use crate::vault::{Backlink, LinkChange, SaveOutcome, TreeNode, Vault, VaultInfo, Workspace};
 use crate::watcher::{self, VaultWatcher};
@@ -164,4 +165,28 @@ pub fn delete_entry(state: State<AppState>, path: String) -> AppResult<()> {
 #[tauri::command]
 pub fn reveal_entry(state: State<AppState>, path: String) -> AppResult<String> {
     with_vault(&state, |v| Ok(v.abs(&path)?.display().to_string()))
+}
+
+/// Full-text search with tag/property/date filters (FR-SRC-02..05).
+#[tauri::command]
+pub fn search(state: State<AppState>, query: SearchQuery) -> AppResult<SearchResult> {
+    with_vault(&state, |v| crate::search::search(v.index(), &query))
+}
+
+/// Distinct frontmatter property keys, for the filter UI.
+#[tauri::command]
+pub fn property_keys(state: State<AppState>) -> AppResult<Vec<String>> {
+    with_vault(&state, |v| crate::search::property_keys(v.index()))
+}
+
+/// Most frequent values of a property (key compared case-insensitively), max 50.
+#[tauri::command]
+pub fn property_values(state: State<AppState>, key: String) -> AppResult<Vec<String>> {
+    with_vault(&state, |v| crate::search::property_values(v.index(), &key))
+}
+
+/// Every tag with its note count, most frequent first.
+#[tauri::command]
+pub fn all_tags(state: State<AppState>) -> AppResult<Vec<TagCount>> {
+    with_vault(&state, |v| crate::search::all_tags(v.index()))
 }

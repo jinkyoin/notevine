@@ -9,13 +9,28 @@ import { syntaxHighlighting } from "@codemirror/language";
 import { api, errorMessage } from "../api";
 import { useApp } from "../store";
 import { noteTitle } from "../lib/tree";
-import { livePreview, livePreviewTheme } from "../editor/livePreview";
+import { frontmatterEnd, livePreview, livePreviewTheme } from "../editor/livePreview";
+import { frontmatterFold } from "../editor/frontmatterFold";
 import { noteHighlight } from "../editor/highlight";
 import { refreshLinks, wikiLinks } from "../editor/wikilinks";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { findNode } from "../lib/tree";
 
 const SAVE_DELAY_MS = 1000;
+const DOC_TEXT_DELAY_MS = 250;
+
+/** Smallest single change turning `a` into `b`, so the cursor and undo history stay sensible. */
+function minimalChange(a: string, b: string) {
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start++;
+  let endA = a.length;
+  let endB = b.length;
+  while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) {
+    endA--;
+    endB--;
+  }
+  return { from: start, to: endA, insert: b.slice(start, endB) };
+}
 
 type SaveState = "saved" | "dirty" | "saving" | "error";
 
@@ -34,6 +49,9 @@ export function Editor({ path }: { path: string }) {
     let dirty = false;
     let disposed = false;
     let saving: Promise<void> = Promise.resolve();
+    let docTimer: number | undefined;
+    const { setDocText, setEditText } = useApp.getState();
+    const publishText = () => view && setDocText(view.state.doc.toString());
 
     /** Writes the note. `force` (Ctrl+S, app exit) always lands in a history version. */
     const save = (force = false) => {
@@ -113,6 +131,7 @@ export function Editor({ path }: { path: string }) {
               syntaxHighlighting(noteHighlight),
               livePreview,
               livePreviewTheme,
+              frontmatterFold,
               wikiLinks({
                 path: () => path,
                 notes: () => useApp.getState().notes,
@@ -131,7 +150,10 @@ export function Editor({ path }: { path: string }) {
                 ...historyKeymap,
               ]),
               EditorView.updateListener.of((u) => {
-                if (!u.docChanged || applyingExternal) return;
+                if (!u.docChanged) return;
+                window.clearTimeout(docTimer);
+                docTimer = window.setTimeout(publishText, DOC_TEXT_DELAY_MS);
+                if (applyingExternal) return;
                 dirty = true;
                 setSaveState("dirty");
                 window.clearTimeout(timer);
@@ -145,7 +167,20 @@ export function Editor({ path }: { path: string }) {
         if (jump && jump <= view.state.doc.lines) {
           const at = view.state.doc.line(jump).from;
           view.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: "center" }) });
+        } else {
+          // Start below the properties so they stay folded (SCR-04).
+          const fmEnd = frontmatterEnd(view.state);
+          if (fmEnd) view.dispatch({ selection: { anchor: Math.min(fmEnd, view.state.doc.length) } });
         }
+        publishText();
+        setEditText((fn) => {
+          if (!view) return false;
+          const cur = view.state.doc.toString();
+          const next = fn(cur);
+          if (next === null) return false;
+          if (next !== cur) view.dispatch({ changes: minimalChange(cur, next), userEvent: "input.properties" });
+          return true;
+        });
         // A new note opens with its name being typed in the tree; don't steal that focus.
         if (!useApp.getState().editing) view.focus();
       })
@@ -156,6 +191,9 @@ export function Editor({ path }: { path: string }) {
     return () => {
       void save();
       disposed = true;
+      window.clearTimeout(docTimer);
+      setDocText(null);
+      setEditText(() => false);
       unsubscribe();
       unsubscribeNotes();
       setFlushEditor(async () => {});

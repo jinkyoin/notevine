@@ -34,6 +34,19 @@ interface AppStore {
   jumpLine: number | null;
   /** Bumped after each save so panels that depend on links refresh. */
   savedSeq: number;
+  sidebarTab: "files" | "search";
+  /** Bumped to move focus into the search box (Ctrl+Shift+F). */
+  searchFocusSeq: number;
+  quickOpen: boolean;
+  /** Recently opened note paths, newest first (quick open ordering). */
+  recent: string[];
+  /** Current editor text (debounced), for the properties panel; null when no note is open. */
+  docText: string | null;
+  /**
+   * Edits the open note's text as if typed (undoable, autosaved). `fn` returns
+   * the new text, or null to refuse. Returns false when it was refused.
+   */
+  editText: (fn: (text: string) => string | null) => boolean;
   expanded: Set<string>;
   openPath: string | null;
   editing: Editing | null;
@@ -53,6 +66,11 @@ interface AppStore {
   followLink(target: string): Promise<void>;
   confirmRelocate(updateLinks: boolean | null): Promise<void>;
   noteSaved(): void;
+  setSidebarTab(tab: "files" | "search"): void;
+  focusSearch(): void;
+  setQuickOpen(open: boolean): void;
+  setDocText(text: string | null): void;
+  setEditText(fn: AppStore["editText"]): void;
   createNote(dir: string): Promise<void>;
   createFolder(parent: string, name: string): Promise<void>;
   rename(path: string, newName: string): Promise<void>;
@@ -121,6 +139,12 @@ export const useApp = create<AppStore>((set, get) => {
     pendingRelocate: null,
     jumpLine: null,
     savedSeq: 0,
+    sidebarTab: "files",
+    searchFocusSeq: 0,
+    quickOpen: false,
+    recent: [],
+    docText: null,
+    editText: () => false,
     expanded: new Set(),
     openPath: null,
     editing: null,
@@ -181,7 +205,11 @@ export const useApp = create<AppStore>((set, get) => {
     openNote(path, line) {
       void get().flushEditor();
       expandTo(path);
-      set({ openPath: path, jumpLine: line ?? null });
+      set({
+        openPath: path,
+        jumpLine: line ?? null,
+        recent: [path, ...get().recent.filter((p) => p !== path)].slice(0, 30),
+      });
       void api.setWorkspace(path).catch(() => {});
     },
 
@@ -228,6 +256,26 @@ export const useApp = create<AppStore>((set, get) => {
 
     noteSaved() {
       set({ savedSeq: get().savedSeq + 1 });
+    },
+
+    setSidebarTab(sidebarTab) {
+      set({ sidebarTab });
+    },
+
+    focusSearch() {
+      set({ sidebarTab: "search", searchFocusSeq: get().searchFocusSeq + 1 });
+    },
+
+    setQuickOpen(quickOpen) {
+      set({ quickOpen });
+    },
+
+    setDocText(docText) {
+      set({ docText });
+    },
+
+    setEditText(editText) {
+      set({ editText });
     },
 
     async rename(path, newName) {
