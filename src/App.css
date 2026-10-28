@@ -1167,3 +1167,181 @@ kbd {
 .confirm-msg {
   white-space: pre-line;
 }
+
+/* 오른쪽 패널 탭 */
+.rightpanel .side-tabs {
+  flex: none;
+}
+.info-scroll {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+/* SCR-18 AI 패널 */
+.ai-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.ai-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 4px;
+}
+.ai-head select {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 6px;
+}
+.ai-chat {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 10px;
+}
+.ai-msg {
+  margin: 8px 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.ai-msg.user .ai-text {
+  background: var(--bg-active);
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin-left: 24px;
+}
+.ai-msg.ai .ai-text {
+  padding: 2px 2px;
+}
+.ai-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ai-link {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.ai-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+.ai-input {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--border);
+}
+.ai-input textarea {
+  flex: 1;
+  resize: none;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+/* SCR-19 전송 확인 */
+.modal.ai-send {
+  width: 560px;
+}
+.ai-extra {
+  margin: 0 0 10px;
+}
+.ai-extra-text {
+  max-height: 120px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 12px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-sidebar);
+}
+.ai-notes label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  cursor: pointer;
+}
+.ai-notes li {
+  flex-direction: column;
+  align-items: stretch !important;
+}
+.ai-note-title {
+  flex: 1;
+}
+.ai-snippet {
+  padding-left: 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* SCR-20 결과 미리보기 */
+.modal.ai-preview {
+  width: 900px;
+  height: 70vh;
+}
+.ai-compare {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.ai-single {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  margin-bottom: 10px;
+}
+.ai-compare > div,
+.ai-single > div {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.ai-original,
+.ai-result {
+  flex: 1;
+  margin: 4px 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--bg-sidebar);
+  resize: none;
+}
+.ai-result {
+  background: var(--bg);
+}
+
+.ai-h {
+  font-weight: 700;
+  margin-top: 4px;
+}

@@ -28,6 +28,7 @@ npm run tauri dev
 | `src-tauri/src/parse.rs`, `rewrite.rs` | 마크다운에서 속성·태그·링크 추출, 이름 변경 시 링크 고쳐 쓰기 |
 | `src-tauri/src/watcher.rs` | 외부 변경 감시 |
 | `src-tauri/src/workspace.rs`, `extras.rs` | 설정·프리셋·템플릿, 히스토리 복원·비교, 첨부 |
+| `src-tauri/src/ai.rs`, `src/ai.ts`, `src/aiStore.ts` | AI 도우미: Claude Code·Codex CLI 감지·실행, 관련 노트 찾기, 질의·작성 흐름 |
 | `src-tauri/src/commands.rs` ↔ `src/api.ts` | Tauri 명령과 그 TypeScript 래퍼 (이름·인자를 함께 바꿀 것) |
 | `src/editor/` | CodeMirror 6 확장: 라이브 미리보기, 위키링크, 첨부, frontmatter 접기 |
 | `src/components/` | 화면 (주석에 화면설계서의 SCR 번호) |
@@ -38,7 +39,7 @@ npm run tauri dev
 1. **노트를 잃으면 안 됩니다.** 저장은 임시 파일 → 교체로 하고, 다른 프로그램이 바꾼 내용을 덮어쓰지 않습니다.
    파일 I/O·링크 치환·히스토리 로직을 바꾸면 테스트를 함께 추가해 주세요.
 2. **원본은 `.md` 파일뿐입니다.** 독자 형식을 만들지 않습니다. `.app/` 안의 데이터는 볼트 밖으로 나가지 않습니다.
-3. **네트워크를 쓰지 않습니다.** 텔레메트리, 원격 이미지 로딩 등을 넣지 않습니다.
+3. **네트워크를 쓰지 않습니다.** 텔레메트리, 원격 이미지 로딩 등을 넣지 않습니다. 유일한 예외인 AI 도우미(`src-tauri/src/ai.rs`, `src/aiStore.ts`)는 사용자가 켜고, 보낼 노트를 확인한 것만 공식 CLI로 보냅니다. 다른 앱의 로그인 정보(토큰·쿠키)는 절대 읽지 않습니다.
 4. **한글 우선.** 경로는 NFC로 정규화하고, 한글 입력(IME) 조합 중에는 단축키·자동완성을 보류합니다.
 
 ## 풀 리퀘스트

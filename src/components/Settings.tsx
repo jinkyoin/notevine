@@ -4,13 +4,15 @@ import { getVersion } from "@tauri-apps/api/app";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { api, errorMessage, type VaultConfig } from "../api";
 import { useApp } from "../store";
+import { useAi } from "../aiStore";
 
-type Tab = "general" | "editor" | "files" | "preset" | "history" | "about";
+type Tab = "general" | "editor" | "files" | "preset" | "ai" | "history" | "about";
 const TABS: [Tab, string][] = [
   ["general", "일반"],
   ["editor", "편집기"],
   ["files", "파일·링크"],
   ["preset", "프리셋"],
+  ["ai", "AI"],
   ["history", "히스토리"],
   ["about", "정보"],
 ];
@@ -139,6 +141,7 @@ function SettingsDialog({ close }: { close: () => void }) {
                 />
               </>
             )}
+            {tab === "ai" && <AiSettings />}
             {tab === "history" && (
               <>
                 <Row label="묶음 간격" hint="같은 노트를 이어서 저장하면 5분 단위로 한 버전으로 묶습니다">
@@ -197,6 +200,61 @@ function SettingsDialog({ close }: { close: () => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function AiSettings() {
+  const { enabled, providers, providerId } = useAi();
+  const { setEnabled, setProvider, detect, current } = useAi.getState();
+  useEffect(() => {
+    if (!providers) void detect();
+  }, [providers, detect]);
+  const cur = current();
+  return (
+    <>
+      <Row label="AI 도우미" hint="켜도 질문할 때마다 보낼 노트를 먼저 보여 주고, 확인한 것만 보냅니다">
+        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+      </Row>
+      <Row label="연결된 AI" hint="PC에 설치·로그인된 공식 CLI를 그대로 씁니다. Notevine은 로그인 정보를 읽지 않습니다">
+        <button className="btn small" onClick={() => void detect()}>
+          다시 찾기
+        </button>
+      </Row>
+      {(providers ?? []).map((p) => {
+        const usable = p.available && p.logged_in !== false;
+        return (
+          <div key={p.id} className="set-row">
+            <div>
+              <div>
+                {p.name} {p.version && <span className="muted small">{p.version}</span>}
+              </div>
+              <div className={`small ${usable ? "muted" : "error"}`}>
+                {usable
+                  ? p.logged_in
+                    ? "로그인됨 · 사용할 수 있음"
+                    : "설치됨 · 사용할 수 있음 (로그인 안 되어 있으면 질문할 때 안내합니다)"
+                  : (p.detail ?? "사용할 수 없음")}
+              </div>
+            </div>
+            <div className="set-ctl">
+              <input
+                type="radio"
+                name="ai-provider"
+                disabled={!usable}
+                checked={cur?.id === p.id}
+                onChange={() => setProvider(p.id)}
+                title="이 AI 사용"
+              />
+            </div>
+          </div>
+        );
+      })}
+      {providers === null && <p className="muted small">AI를 찾는 중…</p>}
+      <p className="muted small pad">
+        Claude Code는 Claude Pro/Max 구독, Codex는 ChatGPT 구독으로 동작합니다. 둘 다 없다면 각 서비스의 CLI를 설치한 뒤
+        터미널에서 한 번 로그인하세요 (claude / codex login). 선택: {providerId || "자동"}
+      </p>
+    </>
   );
 }
 

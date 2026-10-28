@@ -1,6 +1,6 @@
 // Typed wrappers for the Tauri commands in src-tauri/src/commands.rs.
 // Keep names and argument shapes in sync with the Rust side.
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 
 export type EntryKind = "folder" | "note" | "file";
 
@@ -149,6 +149,29 @@ export interface DeletedNote {
   versions: number;
 }
 
+export interface AiProvider {
+  id: "claude" | "codex";
+  name: string;
+  available: boolean;
+  version: string | null;
+  logged_in: boolean | null;
+  detail: string | null;
+}
+
+export interface ContextNote {
+  path: string;
+  title: string;
+  snippet: string;
+  chars: number;
+}
+
+export type AiEvent =
+  | { kind: "started"; model: string | null }
+  | { kind: "delta"; text: string }
+  | { kind: "notice"; message: string }
+  | { kind: "done"; text: string; cost_usd: number | null }
+  | { kind: "error"; message: string };
+
 export interface AppError {
   code: string;
   message: string;
@@ -207,6 +230,15 @@ export const api = {
     invoke<string>("save_attachment", { name, data: Array.from(data), folder }),
   resolveAttachment: (target: string, from: string) => invoke<string | null>("resolve_attachment", { target, from }),
   attachmentPath: (path: string) => invoke<string>("attachment_path", { path }),
+  aiProviders: () => invoke<AiProvider[]>("ai_providers"),
+  aiContext: (question: string, limit = 8) => invoke<ContextNote[]>("ai_context", { question, limit }),
+  /** Starts an AI run; events arrive on `onEvent`. Resolves once the CLI has been started. */
+  aiRun: (requestId: string, provider: string, system: string, prompt: string, notes: string[], onEvent: (e: AiEvent) => void) => {
+    const ch = new Channel<AiEvent>();
+    ch.onmessage = onEvent;
+    return invoke<void>("ai_run", { requestId, provider, system, prompt, notes, onEvent: ch });
+  },
+  aiCancel: (requestId: string) => invoke<boolean>("ai_cancel", { requestId }),
   deleteEntry: (path: string) => invoke<void>("delete_entry", { path }),
   revealEntry: (path: string) => invoke<string>("reveal_entry", { path }),
 };

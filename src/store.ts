@@ -31,6 +31,14 @@ export interface PendingRelocate {
   changes: LinkChange[];
 }
 
+/** What the editor exposes to AI writing (SCR-20). */
+export interface EditorApi {
+  /** Selected text, or the paragraph around the cursor when nothing is selected (`whole`). */
+  selection(): { from: number; to: number; text: string; whole: boolean };
+  /** Replaces [from, to) if it still holds `expect`; an undoable edit. */
+  replace(from: number, to: number, text: string, expect: string): boolean;
+}
+
 export type Modal = "palette" | "quickMemo" | "template" | "settings" | "deleted" | null;
 export type SidebarTab = "files" | "search" | "ideas";
 
@@ -71,6 +79,8 @@ interface AppStore {
   /** Bumped after each save so panels that depend on links refresh. */
   savedSeq: number;
   sidebarTab: SidebarTab;
+  rightTab: "info" | "ai";
+  editorApi: EditorApi | null;
   /** In-app confirmation waiting for an answer (see ConfirmDialog). */
   confirm: { title: string; message: string; okLabel: string; resolve: (ok: boolean) => void } | null;
   config: VaultConfig;
@@ -117,6 +127,8 @@ interface AppStore {
   noteSaved(): void;
   setSidebarTab(tab: SidebarTab): void;
   setModal(m: Modal): void;
+  setRightTab(t: "info" | "ai"): void;
+  setEditorApi(e: EditorApi | null): void;
   /** Asks in an in-app dialog; resolves true when the user agrees. */
   ask(title: string, message: string, okLabel: string): Promise<boolean>;
   setVersionView(v: { path: string; id: number | null } | null): void;
@@ -203,6 +215,8 @@ export const useApp = create<AppStore>((set, get) => {
     jumpLine: null,
     savedSeq: 0,
     sidebarTab: "files",
+    rightTab: "info",
+    editorApi: null,
     confirm: null,
     config: DEFAULT_CONFIG,
     modal: null,
@@ -364,6 +378,14 @@ export const useApp = create<AppStore>((set, get) => {
 
     setModal(modal) {
       set({ modal });
+    },
+
+    setRightTab(rightTab) {
+      set({ rightTab, rightOpen: true });
+    },
+
+    setEditorApi(editorApi) {
+      set({ editorApi });
     },
 
     ask(title, message, okLabel) {

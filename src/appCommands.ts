@@ -1,6 +1,8 @@
 // 앱 기본 명령. 단축키는 화면설계서 '단축키' 표를 따른다.
 import { registerCommands } from "./commands";
 import { useApp } from "./store";
+import { useAi } from "./aiStore";
+import { WRITE_LABEL, type WriteTask } from "./ai";
 
 const st = () => useApp.getState();
 const hasVault = () => !!st().vault;
@@ -85,5 +87,27 @@ export function registerAppCommands(): () => void {
       },
     },
     { id: "vault.switch", title: "볼트 바꾸기", when: hasVault, run: () => st().closeVault() },
+    {
+      id: "ai.panel",
+      title: "AI: 노트에 질문하기",
+      keys: "Ctrl+J",
+      keywords: "ai 인공지능 질문 채팅 claude codex chatgpt",
+      when: hasVault,
+      run: () => st().setRightTab("ai"),
+    },
+    ...(Object.keys(WRITE_LABEL) as WriteTask[]).map((task) => ({
+      id: `ai.write.${task}`,
+      title: `AI: ${WRITE_LABEL[task]} (선택한 글)`,
+      keywords: "ai 인공지능 글쓰기 작성",
+      when: hasNote,
+      run: () => useAi.getState().write(task),
+    })),
+    {
+      id: "ai.weekly",
+      title: "AI: 이번 주 업무일지로 주간 회고 만들기",
+      keywords: "ai 회고 주간 정리 업무일지 요약",
+      when: hasVault,
+      run: () => useAi.getState().weeklyReview(),
+    },
   ]);
 }

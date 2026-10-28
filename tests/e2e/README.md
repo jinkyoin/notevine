@@ -11,6 +11,7 @@ WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=9222" npm run tau
 node tests/e2e/day4.cjs   # 링크 자동완성·이동·백링크·이름 변경 시 링크 갱신
 node tests/e2e/day5.cjs   # 검색·필터, 빠른 열기, 속성 패널
 node tests/e2e/day6.cjs   # 프리셋·업무일지·빠른 메모·아이디어 보드·첨부·히스토리·설정
+node tests/e2e/ai.cjs     # AI 도우미 (Claude Code·Codex CLI로 실제 질의, 구독 사용량을 조금 씀)
 ```
 
 - 개발 모드에서만 열리는 `window.__notevine`(앱 상태)으로 폴더 선택 대화상자 같은 OS 창을 건너뛴다.

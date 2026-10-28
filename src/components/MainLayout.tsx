@@ -18,6 +18,8 @@ import { QuickMemo } from "./QuickMemo";
 import { TemplatePicker } from "./TemplatePicker";
 import { Settings } from "./Settings";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { AiPanel } from "./AiPanel";
+import { AiPreview, AiSendConfirm } from "./AiDialogs";
 
 export function MainLayout() {
   const vault = useApp((s) => s.vault);
@@ -26,6 +28,7 @@ export function MainLayout() {
   const preset = useApp((s) => s.config.preset_enabled);
   const leftOpen = useApp((s) => s.leftOpen);
   const rightOpen = useApp((s) => s.rightOpen);
+  const rightTab = useApp((s) => s.rightTab);
   const canBack = useApp((s) => s.back.length > 0);
   const canForward = useApp((s) => s.forward.length > 0);
   const { setSidebarTab, focusSearch, setPanels, setModal, goBack, goForward, openTodayJournal } = useApp.getState();
@@ -120,9 +123,23 @@ export function MainLayout() {
         </main>
         {rightOpen && (
           <aside className="rightpanel">
-            {openPath && <PropertiesPanel />}
-            <Backlinks />
-            <HistoryPanel />
+            <div className="side-tabs" role="tablist">
+              <button role="tab" className={rightTab === "info" ? "on" : ""} onClick={() => useApp.getState().setRightTab("info")}>
+                노트 정보
+              </button>
+              <button role="tab" className={rightTab === "ai" ? "on" : ""} onClick={() => useApp.getState().setRightTab("ai")}>
+                AI
+              </button>
+            </div>
+            {rightTab === "ai" ? (
+              <AiPanel />
+            ) : (
+              <div className="info-scroll">
+                {openPath && <PropertiesPanel />}
+                <Backlinks />
+                <HistoryPanel />
+              </div>
+            )}
           </aside>
         )}
       </div>
@@ -135,6 +152,8 @@ export function MainLayout() {
       <DeletedNotes />
       <VersionView />
       <ConfirmDialog />
+      <AiSendConfirm />
+      <AiPreview />
     </div>
   );
 }

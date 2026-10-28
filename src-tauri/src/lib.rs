@@ -1,3 +1,4 @@
+mod ai;
 mod commands;
 mod error;
 mod extras;
@@ -68,6 +69,10 @@ pub fn run() {
             extras::cmd::save_attachment,
             extras::cmd::resolve_attachment,
             extras::cmd::attachment_path,
+            ai::ai_providers,
+            ai::ai_context,
+            ai::ai_run,
+            ai::ai_cancel,
             commands::resolve_link,
             commands::backlinks,
             commands::delete_entry,

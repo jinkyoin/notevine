@@ -190,6 +190,29 @@ export function Editor({ path }: { path: string }) {
           if (fmEnd) view.dispatch({ selection: { anchor: Math.min(fmEnd, view.state.doc.length) } });
         }
         publishText();
+        useApp.getState().setEditorApi({
+          selection: () => {
+            if (!view) return { from: 0, to: 0, text: "", whole: false };
+            const s = view.state.selection.main;
+            if (!s.empty) return { from: s.from, to: s.to, text: view.state.sliceDoc(s.from, s.to), whole: false };
+            // No selection: the paragraph around the cursor (lines up to blank lines).
+            const doc = view.state.doc;
+            let a = doc.lineAt(s.head).number;
+            let b = a;
+            if (!doc.line(a).text.trim()) return { from: s.head, to: s.head, text: "", whole: true };
+            while (a > 1 && doc.line(a - 1).text.trim()) a--;
+            while (b < doc.lines && doc.line(b + 1).text.trim()) b++;
+            const from = doc.line(a).from;
+            const to = doc.line(b).to;
+            return { from, to, text: doc.sliceString(from, to), whole: true };
+          },
+          replace: (from, to, text, expect) => {
+            if (!view || to > view.state.doc.length || view.state.sliceDoc(from, to) !== expect) return false;
+            view.dispatch({ changes: { from, to, insert: text }, selection: { anchor: from + text.length }, userEvent: "input.ai" });
+            view.focus();
+            return true;
+          },
+        });
         setEditText((fn) => {
           if (!view) return false;
           const cur = view.state.doc.toString();
@@ -211,6 +234,7 @@ export function Editor({ path }: { path: string }) {
       window.clearTimeout(docTimer);
       setDocText(null);
       setEditText(() => false);
+      useApp.getState().setEditorApi(null);
       unsubscribe();
       unsubscribeNotes();
       setFlushEditor(async () => {});
