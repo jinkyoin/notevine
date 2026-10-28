@@ -1,0 +1,106 @@
+// SCR-14 템플릿 선택 (Ctrl+N): 빈 노트 + 템플릿 폴더의 노트. 템플릿의 folder 속성을 기본 위치로 제안한다.
+import { useEffect, useState } from "react";
+import { api, type TemplateRef } from "../api";
+import { useApp } from "../store";
+import { findNode } from "../lib/tree";
+
+export function TemplatePicker() {
+  const modal = useApp((s) => s.modal);
+  const setModal = useApp((s) => s.setModal);
+  if (modal !== "template") return null;
+  return <Picker close={() => setModal(null)} />;
+}
+
+function Picker({ close }: { close: () => void }) {
+  const [templates, setTemplates] = useState<TemplateRef[]>([]);
+  const [sel, setSel] = useState(0);
+  /** Second step: the chosen option, waiting for a name so {{title}} renders right. */
+  const [chosen, setChosen] = useState<number | null>(null);
+  const [name, setName] = useState("");
+  const { createFromTemplate, currentDir, tree } = useApp.getState();
+  const here = currentDir();
+
+  useEffect(() => {
+    api.listTemplates().then(setTemplates).catch(() => setTemplates([]));
+  }, []);
+
+  const options: { label: string; preview: string; template: string | null; dir: string }[] = [
+    { label: "빈 노트", preview: "", template: null, dir: here },
+    ...templates.map((t) => ({
+      label: t.title,
+      preview: t.preview,
+      template: t.path,
+      // Suggested folder from the template, if it exists; else where the user is.
+      dir: t.folder && findNode(tree, t.folder) ? t.folder : here,
+    })),
+  ];
+
+  const choose = (i: number) => {
+    if (options[i]) setChosen(i);
+  };
+  const create = () => {
+    const o = chosen === null ? undefined : options[chosen];
+    if (!o) return;
+    close();
+    void createFromTemplate(o.dir, o.template, name);
+  };
+
+  if (chosen !== null) {
+    const o = options[chosen];
+    return (
+      <div className="modal-backdrop top" onMouseDown={close}>
+        <div className="palette" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="memo-head">
+            {o.label} <span className="muted small">→ {o.dir || "볼트 최상위"}</span>
+          </div>
+          <input
+            className="palette-input"
+            autoFocus
+            placeholder="노트 이름 (비우면 제목 없음)"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return;
+              if (e.key === "Escape") setChosen(null);
+              else if (e.key === "Enter") create();
+              else return;
+              e.preventDefault();
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="modal-backdrop top"
+      onMouseDown={close}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") close();
+        else if (e.key === "ArrowDown") setSel((s) => Math.min(s + 1, options.length - 1));
+        else if (e.key === "ArrowUp") setSel((s) => Math.max(s - 1, 0));
+        else if (e.key === "Enter") choose(sel);
+        else return;
+        e.preventDefault();
+      }}
+    >
+      <div className="palette" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="memo-head">
+          새 노트 <span className="muted small">↑↓ 선택 · Enter 만들기</span>
+        </div>
+        <ul className="palette-list templates" tabIndex={-1} ref={(el) => el?.focus()}>
+          {options.map((o, i) => (
+            <li key={o.label + i} className={i === sel ? "sel" : ""} onMouseEnter={() => setSel(i)} onClick={() => choose(i)}>
+              <div>
+                <div>{o.label}</div>
+                {o.preview && <div className="muted small tpl-preview">{o.preview}</div>}
+              </div>
+              <span className="muted small">{o.dir || "볼트 최상위"}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}

@@ -1,6 +1,16 @@
 import { create } from "zustand";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { api, errorMessage, type LinkChange, type NoteRef, type TreeNode, type VaultChanged, type VaultInfo } from "./api";
+import { openPath as openWithOs, revealItemInDir } from "@tauri-apps/plugin-opener";
+import {
+  api,
+  errorMessage,
+  type LinkChange,
+  type NoteRef,
+  type TreeNode,
+  type VaultChanged,
+  type VaultConfig,
+  type VaultInfo,
+} from "./api";
 import { ancestors, findNode, remapPath } from "./lib/tree";
 
 export type ToastKind = "info" | "error";
@@ -21,6 +31,32 @@ export interface PendingRelocate {
   changes: LinkChange[];
 }
 
+export type Modal = "palette" | "quickMemo" | "template" | "settings" | "deleted" | null;
+export type SidebarTab = "files" | "search" | "ideas";
+
+/** Defaults used until the vault's config is loaded (mirrors the backend defaults). */
+export const DEFAULT_CONFIG: VaultConfig = {
+  preset_enabled: false,
+  inbox_folder: "00 Inbox",
+  journal_folder: "10 업무일지",
+  idea_folder: "20 아이디어",
+  research_folder: "30 조사자료",
+  template_folder: "90 템플릿",
+  attachment_folder: "첨부",
+  journal_path: "10 업무일지/{{YYYY}}/{{YYYY-MM-DD}}.md",
+  idea_statuses: ["아이디어", "검토", "진행", "완료", "보류"],
+  link_click: "ctrl",
+  update_links_on_rename: true,
+  autosave_ms: 1000,
+  theme: "system",
+  language: "ko",
+};
+
+/** Applies the theme setting (FR-UI-02) to the document. */
+export function applyTheme(theme: VaultConfig["theme"]) {
+  document.documentElement.dataset.theme = theme;
+}
+
 /** A tree row currently being named inline (new note/folder or rename). */
 export type Editing = { mode: "rename"; path: string } | { mode: "new-folder"; parent: string };
 
@@ -34,7 +70,16 @@ interface AppStore {
   jumpLine: number | null;
   /** Bumped after each save so panels that depend on links refresh. */
   savedSeq: number;
-  sidebarTab: "files" | "search";
+  sidebarTab: SidebarTab;
+  config: VaultConfig;
+  modal: Modal;
+  /** Version viewer (SCR-10): the note and the version to select first. */
+  versionView: { path: string; id: number | null } | null;
+  leftOpen: boolean;
+  rightOpen: boolean;
+  /** Back/forward note navigation (Alt+←/→). */
+  back: string[];
+  forward: string[];
   /** Bumped to move focus into the search box (Ctrl+Shift+F). */
   searchFocusSeq: number;
   quickOpen: boolean;
@@ -64,9 +109,23 @@ interface AppStore {
   openNote(path: string, line?: number): void;
   /** Opens the note a link points at, creating it when it doesn't exist (FR-LNK-02). */
   followLink(target: string): Promise<void>;
+  /** Opens a non-note file with its default program (FR-ATT-05). */
+  openAttachment(target: string): Promise<void>;
   confirmRelocate(updateLinks: boolean | null): Promise<void>;
   noteSaved(): void;
-  setSidebarTab(tab: "files" | "search"): void;
+  setSidebarTab(tab: SidebarTab): void;
+  setModal(m: Modal): void;
+  setVersionView(v: { path: string; id: number | null } | null): void;
+  setPanels(p: { leftOpen?: boolean; rightOpen?: boolean }): void;
+  goBack(): void;
+  goForward(): void;
+  saveConfig(c: VaultConfig): Promise<void>;
+  applyPreset(): Promise<void>;
+  openTodayJournal(): Promise<void>;
+  /** Folder new notes go to: the open note's folder, else the vault root. */
+  currentDir(): string;
+  /** Creates a note (optionally from a template); without a name it starts renaming it in the tree. */
+  createFromTemplate(dir: string, template: string | null, name?: string): Promise<void>;
   focusSearch(): void;
   setQuickOpen(open: boolean): void;
   setDocText(text: string | null): void;
@@ -140,6 +199,13 @@ export const useApp = create<AppStore>((set, get) => {
     jumpLine: null,
     savedSeq: 0,
     sidebarTab: "files",
+    config: DEFAULT_CONFIG,
+    modal: null,
+    versionView: null,
+    leftOpen: true,
+    rightOpen: true,
+    back: [],
+    forward: [],
     searchFocusSeq: 0,
     quickOpen: false,
     recent: [],
@@ -156,7 +222,10 @@ export const useApp = create<AppStore>((set, get) => {
     async openVault(path) {
       const info = await attempt(() => api.openVault(path));
       if (!info) return;
-      set({ vault: info, tree: [], expanded: new Set(), openPath: null, editing: null });
+      set({ vault: info, tree: [], expanded: new Set(), openPath: null, editing: null, back: [], forward: [] });
+      const config = await api.getConfig().catch(() => DEFAULT_CONFIG);
+      set({ config, sidebarTab: get().sidebarTab === "ideas" && !config.preset_enabled ? "files" : get().sidebarTab });
+      applyTheme(config.theme);
       await get().refreshTree();
 
       unlistenChanges?.();
@@ -205,7 +274,10 @@ export const useApp = create<AppStore>((set, get) => {
     openNote(path, line) {
       void get().flushEditor();
       expandTo(path);
+      const prev = get().openPath;
       set({
+        back: prev && prev !== path ? [...get().back, prev].slice(-50) : get().back,
+        forward: prev && prev !== path ? [] : get().forward,
         openPath: path,
         jumpLine: line ?? null,
         recent: [path, ...get().recent.filter((p) => p !== path)].slice(0, 30),
@@ -218,7 +290,8 @@ export const useApp = create<AppStore>((set, get) => {
       if (!path) return;
       await get().refreshTree();
       get().openNote(path);
-      set({ editing: { mode: "rename", path } });
+      // Name it inline in the file tree, so make sure the tree is showing.
+      set({ editing: { mode: "rename", path }, sidebarTab: "files", leftOpen: true });
     },
 
     async createFolder(parent, name) {
@@ -228,7 +301,29 @@ export const useApp = create<AppStore>((set, get) => {
       expandTo(path + "/");
     },
 
+    async openAttachment(target) {
+      const rel = await api.resolveAttachment(target, get().openPath ?? "").catch(() => null);
+      const folder = get().config.attachment_folder;
+      if (!rel) {
+        get().toast(`첨부 파일을 찾을 수 없음: ${target}`, "error", {
+          label: "폴더 열기",
+          run: () => {
+            const root = get().vault?.root;
+            if (root) void revealItemInDir(`${root}\\${folder.replace(/\//g, "\\")}`).catch(() => {});
+          },
+        });
+        return;
+      }
+      try {
+        await openWithOs(await api.attachmentPath(rel));
+      } catch (e) {
+        get().toast(`파일을 열지 못했습니다: ${errorMessage(e)}`, "error");
+      }
+    },
+
     async followLink(target) {
+      // [[견적서.xlsx]] and other non-note files open in their own program.
+      if (/\.[a-z0-9]{1,8}$/i.test(target) && !/\.md$/i.test(target)) return get().openAttachment(target);
       const found = await attempt(() => api.resolveLink(target));
       if (found === undefined) return;
       if (found) return get().openNote(found);
@@ -262,6 +357,89 @@ export const useApp = create<AppStore>((set, get) => {
       set({ sidebarTab });
     },
 
+    setModal(modal) {
+      set({ modal });
+    },
+
+    setVersionView(versionView) {
+      set({ versionView });
+    },
+
+    setPanels(p) {
+      set(p);
+    },
+
+    goBack() {
+      const { back, openPath, tree } = get();
+      const target = [...back].reverse().find((p) => findNode(tree, p));
+      if (!target) return;
+      void get().flushEditor();
+      set({
+        back: back.slice(0, back.lastIndexOf(target)),
+        forward: openPath ? [openPath, ...get().forward] : get().forward,
+        openPath: target,
+        jumpLine: null,
+      });
+      expandTo(target);
+    },
+
+    goForward() {
+      const { forward, openPath, tree } = get();
+      const target = forward.find((p) => findNode(tree, p));
+      if (!target) return;
+      void get().flushEditor();
+      set({
+        forward: forward.slice(forward.indexOf(target) + 1),
+        back: openPath ? [...get().back, openPath] : get().back,
+        openPath: target,
+        jumpLine: null,
+      });
+      expandTo(target);
+    },
+
+    async saveConfig(config) {
+      const ok = await attempt(() => api.setConfig(config).then(() => true));
+      if (!ok) return;
+      set({ config });
+      applyTheme(config.theme);
+    },
+
+    async applyPreset() {
+      const r = await attempt(() => api.applyPreset());
+      if (!r) return;
+      const config = await api.getConfig().catch(() => get().config);
+      set({ config });
+      await get().refreshTree();
+      const made = r.created_folders.length + r.created_templates.length;
+      get().toast(
+        made
+          ? `기록 관리 프리셋을 켰습니다 · 폴더 ${r.created_folders.length}개, 템플릿 ${r.created_templates.length}개를 만들었습니다`
+          : "기록 관리 프리셋을 켰습니다 · 이미 있는 폴더와 템플릿은 그대로 두었습니다",
+      );
+    },
+
+    async openTodayJournal() {
+      const path = await attempt(() => api.openTodayJournal());
+      if (!path) return;
+      await get().refreshTree();
+      get().openNote(path);
+    },
+
+    currentDir() {
+      const p = get().openPath;
+      return p ? parentOf(p) : "";
+    },
+
+    async createFromTemplate(dir, template, name) {
+      const path = await attempt(() => api.createFromTemplate(dir, name?.trim() || null, template));
+      if (!path) return;
+      await get().refreshTree();
+      get().openNote(path);
+      if (name?.trim()) return;
+      // Name it inline in the file tree, so make sure the tree is showing.
+      set({ editing: { mode: "rename", path }, sidebarTab: "files", leftOpen: true });
+    },
+
     focusSearch() {
       set({ sidebarTab: "search", searchFocusSeq: get().searchFocusSeq + 1 });
     },
@@ -280,6 +458,7 @@ export const useApp = create<AppStore>((set, get) => {
 
     async rename(path, newName) {
       await get().flushEditor();
+      if (!get().config.update_links_on_rename) return doRename(path, newName, false);
       const changes = await attempt(() => api.previewRename(path, newName));
       if (!changes) return;
       if (changes.length) return set({ pendingRelocate: { kind: "rename", path, arg: newName, changes } });
@@ -288,6 +467,7 @@ export const useApp = create<AppStore>((set, get) => {
 
     async move(path, newParent) {
       await get().flushEditor();
+      if (!get().config.update_links_on_rename) return doMove(path, newParent, false);
       const changes = await attempt(() => api.previewMove(path, newParent));
       if (!changes) return;
       if (changes.length) return set({ pendingRelocate: { kind: "move", path, arg: newParent, changes } });

@@ -1,0 +1,114 @@
+{
+  "description": "기록 관리 프리셋: 업무일지·아이디어·조사 자료 (FR-PRS-02, DR-05). folders는 볼트 설정(config.json)의 폴더 키를 가리키고, 템플릿은 template_folder에 만든다. 템플릿 본문의 {{idea_folder}}·{{idea_status}}(첫 번째 아이디어 상태) 같은 설정 키는 프리셋을 적용할 때 실제 폴더 이름으로 바뀌고, {{date}}·{{title}} 같은 변수는 템플릿을 쓸 때 치환된다.",
+  "folders": [
+    "inbox_folder",
+    "journal_folder",
+    "idea_folder",
+    "research_folder",
+    "template_folder",
+    "attachment_folder"
+  ],
+  "templates": [
+    {
+      "name": "업무일지",
+      "lines": [
+        "---",
+        "type: journal",
+        "date: {{date}}",
+        "---",
+        "",
+        "# {{date}} ({{weekday}}) 업무일지",
+        "",
+        "## 오늘 할 일",
+        "",
+        "- [ ] ",
+        "",
+        "## 한 일",
+        "",
+        "## 회의·결정 사항",
+        "",
+        "## 메모",
+        "",
+        "## 내일 할 일",
+        "",
+        "- [ ] ",
+        ""
+      ]
+    },
+    {
+      "name": "회의록",
+      "lines": [
+        "---",
+        "type: meeting",
+        "date: {{date}}",
+        "participants: []",
+        "---",
+        "",
+        "# {{title}}",
+        "",
+        "- 일시: {{datetime}}",
+        "- 장소: ",
+        "- 참석자: ",
+        "",
+        "## 안건",
+        "",
+        "## 논의 내용",
+        "",
+        "## 결정 사항",
+        "",
+        "## 할 일",
+        "",
+        "- [ ] (담당 / 기한)",
+        ""
+      ]
+    },
+    {
+      "name": "아이디어",
+      "lines": [
+        "---",
+        "type: idea",
+        "status: {{idea_status}}",
+        "tags: []",
+        "created: {{date}}",
+        "folder: {{idea_folder}}",
+        "---",
+        "",
+        "# {{title}}",
+        "",
+        "## 아이디어",
+        "",
+        "## 배경·문제",
+        "",
+        "## 기대 효과",
+        "",
+        "## 다음 단계",
+        "",
+        "- [ ] ",
+        ""
+      ]
+    },
+    {
+      "name": "자료",
+      "lines": [
+        "---",
+        "type: research",
+        "source: ",
+        "created: {{date}}",
+        "tags: []",
+        "folder: {{research_folder}}",
+        "---",
+        "",
+        "# {{title}}",
+        "",
+        "## 요약",
+        "",
+        "## 핵심 내용",
+        "",
+        "## 출처 메모",
+        "",
+        "## 관련 노트",
+        ""
+      ]
+    }
+  ]
+}

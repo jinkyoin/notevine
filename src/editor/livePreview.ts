@@ -96,12 +96,26 @@ export function buildDecorations(view: EditorView): DecorationSet {
   };
 
   const fmEnd = frontmatterEnd(state);
+  // [[wiki links]] and ![[embeds]] belong to the wikilinks/attachments extensions;
+  // markdown sees "[...]" inside them as a link and must not hide anything there.
+  const wiki: [number, number][] = [];
+  for (const { from, to } of view.visibleRanges) {
+    for (let pos = from; pos <= to; ) {
+      const line = state.doc.lineAt(pos);
+      for (const m of line.text.matchAll(/!?\[\[[^[\]\n]+?\]\]/g)) {
+        wiki.push([line.from + m.index!, line.from + m.index! + m[0].length]);
+      }
+      pos = line.to + 1;
+    }
+  }
+  const inWiki = (a: number, b: number) => wiki.some(([s, e]) => a >= s && b <= e);
   for (const { from, to } of view.visibleRanges) {
     syntaxTree(state).iterate({
       from: Math.max(from, fmEnd),
       to,
       enter: (node) => {
         if (node.from < fmEnd) return; // YAML block is shown raw (frontmatterFold)
+        if (inWiki(node.from, node.to)) return false;
         const name = node.name;
         const heading = /^ATXHeading(\d)$/.exec(name);
         if (heading) {

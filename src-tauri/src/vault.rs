@@ -210,7 +210,13 @@ impl Vault {
     pub fn read_note(&self, rel: &str) -> AppResult<String> {
         let p = self.existing(rel)?;
         let content = fs::read_to_string(p)?;
-        self.known().insert(normalize_rel(rel), content_hash(&content));
+        let rel = normalize_rel(rel);
+        self.known().insert(rel.clone(), content_hash(&content));
+        // A note made before the vault was opened (or by another program) gets its
+        // current text as the first version, so the first edit can be undone (FR-HIS-05).
+        if is_note(&rel) && !self.history.has_versions(&rel).unwrap_or(true) {
+            let _ = self.history.record(&rel, &content, Origin::External, true);
+        }
         Ok(content)
     }
 
@@ -708,6 +714,19 @@ mod tests {
         v.move_to("a/x.md", "a/sub", true).unwrap();
         assert_eq!(fs::read_to_string(dir.path().join("a/sub/x.md")).unwrap(), "[y](../../b/y.md)");
         assert_eq!(v.backlinks("b/y.md").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn opening_a_note_without_history_records_its_text_first() {
+        let (dir, v) = vault();
+        fs::write(dir.path().join("old.md"), "원래 내용").unwrap();
+        v.read_note("old.md").unwrap();
+        v.save_note("old.md", "고친 내용", false).unwrap();
+        let versions = v.history().list("old.md").unwrap();
+        assert_eq!(versions.len(), 2);
+        assert_eq!(v.history().content(versions[1].id).unwrap(), "원래 내용");
+        v.read_note("old.md").unwrap();
+        assert_eq!(v.history().list("old.md").unwrap().len(), 2, "only once");
     }
 
     #[test]

@@ -324,6 +324,12 @@ impl Index {
         Ok(self.conn.query_row("SELECT count(*) FROM notes", [], |r| r.get(0))?)
     }
 
+    /// Drops every row so the next scan re-reads all notes (settings → 인덱스 다시 만들기).
+    pub fn clear(&self) -> AppResult<()> {
+        self.conn.execute_batch("BEGIN; DELETE FROM notes_fts; DELETE FROM notes; COMMIT;")?;
+        Ok(())
+    }
+
     /// Every note, for quick open and `[[` completion.
     pub fn notes(&self) -> AppResult<Vec<NoteRef>> {
         let mut st = self.conn.prepare("SELECT path, title FROM notes ORDER BY title, path")?;

@@ -1,6 +1,7 @@
-// SCR-02 메인 화면: 상단바 + 왼쪽 사이드바 + 편집기 + 오른쪽 패널(4일 차부터 내용).
-import { useEffect, useState } from "react";
+// SCR-02 메인 화면: 상단바 + 왼쪽 사이드바(파일·검색·아이디어) + 편집기 + 오른쪽 패널(속성·백링크·히스토리).
+import { useEffect } from "react";
 import { useApp } from "../store";
+import { dispatchKey } from "../commands";
 import { Explorer } from "./Explorer";
 import { Editor } from "./Editor";
 import { Backlinks } from "./Backlinks";
@@ -8,45 +9,46 @@ import { RelocateDialog } from "./RelocateDialog";
 import { SearchPanel } from "./SearchPanel";
 import { QuickOpen } from "./QuickOpen";
 import { PropertiesPanel } from "./PropertiesPanel";
+import { HistoryPanel } from "./HistoryPanel";
+import { VersionView } from "./VersionView";
+import { DeletedNotes } from "./DeletedNotes";
+import { IdeaBoard } from "./IdeaBoard";
+import { CommandPalette } from "./CommandPalette";
+import { QuickMemo } from "./QuickMemo";
+import { TemplatePicker } from "./TemplatePicker";
+import { Settings } from "./Settings";
 
 export function MainLayout() {
   const vault = useApp((s) => s.vault);
   const openPath = useApp((s) => s.openPath);
-  const closeVault = useApp((s) => s.closeVault);
-  const createNote = useApp((s) => s.createNote);
   const sidebarTab = useApp((s) => s.sidebarTab);
-  const setSidebarTab = useApp((s) => s.setSidebarTab);
-  const focusSearch = useApp((s) => s.focusSearch);
-  const setQuickOpen = useApp((s) => s.setQuickOpen);
-  const [leftOpen, setLeftOpen] = useState(true);
-  const [rightOpen, setRightOpen] = useState(true);
+  const preset = useApp((s) => s.config.preset_enabled);
+  const leftOpen = useApp((s) => s.leftOpen);
+  const rightOpen = useApp((s) => s.rightOpen);
+  const canBack = useApp((s) => s.back.length > 0);
+  const canForward = useApp((s) => s.forward.length > 0);
+  const { setSidebarTab, focusSearch, setPanels, setModal, goBack, goForward, openTodayJournal } = useApp.getState();
 
+  // All shortcuts go through the command registry (FR-EXT-01).
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const mod = e.ctrlKey || e.metaKey;
-      if (!mod || e.isComposing) return;
-      const k = e.key.toLowerCase();
-      if (k === "o" && !e.shiftKey) setQuickOpen(true);
-      else if (k === "f" && e.shiftKey) {
-        setLeftOpen(true);
-        focusSearch();
-      } else if (e.key === "\\" && !e.shiftKey) setLeftOpen((v) => !v);
-      else if (e.key === "|" || (e.key === "\\" && e.shiftKey)) setRightOpen((v) => !v);
-      else if (e.key.toLowerCase() === "n" && !e.shiftKey) createNote("");
-      else return;
-      e.preventDefault();
-    };
+    const onKey = (e: KeyboardEvent) => void dispatchKey(e);
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [createNote, focusSearch, setQuickOpen]);
+  }, []);
 
   const crumbs = openPath ? openPath.split("/") : [];
 
   return (
     <div className="main">
       <header className="topbar">
-        <button className="icon-btn" title="왼쪽 사이드바 (Ctrl+\)" onClick={() => setLeftOpen((v) => !v)}>
+        <button className="icon-btn" title="왼쪽 사이드바 (Ctrl+\)" onClick={() => setPanels({ leftOpen: !leftOpen })}>
           ☰
+        </button>
+        <button className="icon-btn" title="이전 노트 (Alt+←)" disabled={!canBack} onClick={goBack}>
+          ‹
+        </button>
+        <button className="icon-btn" title="다음 노트 (Alt+→)" disabled={!canForward} onClick={goForward}>
+          ›
         </button>
         <span className="vault-name" title={vault?.root}>
           {vault?.name}
@@ -60,10 +62,18 @@ export function MainLayout() {
           ))}
         </nav>
         <span className="spacer" />
-        <button className="btn ghost small" onClick={closeVault} title="볼트 닫고 시작 화면으로">
-          볼트 바꾸기
+        {preset && (
+          <button className="btn ghost small" onClick={() => void openTodayJournal()} title="Ctrl+Shift+D">
+            오늘 업무일지
+          </button>
+        )}
+        <button className="icon-btn" title="명령 팔레트 (Ctrl+P)" onClick={() => setModal("palette")}>
+          ⌘
         </button>
-        <button className="icon-btn" title="오른쪽 패널 (Ctrl+Shift+\)" onClick={() => setRightOpen((v) => !v)}>
+        <button className="icon-btn" title="설정 (Ctrl+,)" onClick={() => setModal("settings")}>
+          ⚙
+        </button>
+        <button className="icon-btn" title="오른쪽 패널 (Ctrl+Shift+\)" onClick={() => setPanels({ rightOpen: !rightOpen })}>
           ▤
         </button>
       </header>
@@ -77,8 +87,13 @@ export function MainLayout() {
               <button role="tab" className={sidebarTab === "search" ? "on" : ""} onClick={focusSearch} title="Ctrl+Shift+F">
                 검색
               </button>
+              {preset && (
+                <button role="tab" className={sidebarTab === "ideas" ? "on" : ""} onClick={() => setSidebarTab("ideas")}>
+                  아이디어
+                </button>
+              )}
             </div>
-            {sidebarTab === "files" ? <Explorer /> : <SearchPanel />}
+            {sidebarTab === "search" ? <SearchPanel /> : sidebarTab === "ideas" && preset ? <IdeaBoard /> : <Explorer />}
           </aside>
         )}
         <main className="center">
@@ -87,9 +102,17 @@ export function MainLayout() {
           ) : (
             <div className="empty">
               <p>열린 노트가 없습니다.</p>
-              <button className="btn primary" onClick={() => createNote("")}>
+              <button className="btn primary" onClick={() => setModal("template")}>
                 새 노트 (Ctrl+N)
               </button>
+              {!preset && (
+                <p className="muted small">
+                  업무일지·아이디어·조사자료를 정리하려면{" "}
+                  <button className="link-btn" onClick={() => void useApp.getState().applyPreset()}>
+                    기록 관리 프리셋 켜기
+                  </button>
+                </p>
+              )}
             </div>
           )}
         </main>
@@ -97,11 +120,18 @@ export function MainLayout() {
           <aside className="rightpanel">
             {openPath && <PropertiesPanel />}
             <Backlinks />
+            <HistoryPanel />
           </aside>
         )}
       </div>
       <RelocateDialog />
       <QuickOpen />
+      <CommandPalette />
+      <QuickMemo />
+      <TemplatePicker />
+      <Settings />
+      <DeletedNotes />
+      <VersionView />
     </div>
   );
 }

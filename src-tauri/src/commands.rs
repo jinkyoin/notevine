@@ -141,6 +141,16 @@ pub fn preview_move(state: State<AppState>, path: String, new_parent: String) ->
     with_vault(&state, |v| v.preview_relocate(&path, &v.move_target(&path, &new_parent)?))
 }
 
+/// Rebuilds the search index from the files (NFR-REL-03). Returns the note count.
+#[tauri::command]
+pub fn rebuild_index(state: State<AppState>) -> AppResult<usize> {
+    with_vault(&state, |v| {
+        v.index().clear()?;
+        let s = v.index().scan(v.root())?;
+        Ok(s.indexed + s.unchanged)
+    })
+}
+
 #[tauri::command]
 pub fn list_notes(state: State<AppState>) -> AppResult<Vec<NoteRef>> {
     with_vault(&state, |v| v.index().notes())

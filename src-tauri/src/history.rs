@@ -156,6 +156,11 @@ impl History {
         Ok(())
     }
 
+    /// True when `path` has at least one version.
+    pub fn has_versions(&self, path: &str) -> AppResult<bool> {
+        Ok(self.conn.query_row("SELECT EXISTS(SELECT 1 FROM versions WHERE path = ?1)", params![path], |r| r.get(0))?)
+    }
+
     /// Versions of one note, newest first.
     pub fn list(&self, path: &str) -> AppResult<Vec<VersionMeta>> {
         let mut st = self.conn.prepare(
@@ -172,6 +177,15 @@ impl History {
                 origin: Origin::parse(&r.get::<_, String>(5)?),
             })
         })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Every path that has history: (path, newest saved_at, version count), newest first.
+    pub(crate) fn paths(&self) -> AppResult<Vec<(String, i64, u32)>> {
+        let mut st = self.conn.prepare(
+            "SELECT path, MAX(saved_at) AS last, COUNT(*) FROM versions GROUP BY path ORDER BY last DESC, path",
+        )?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
         Ok(rows.collect::<Result<_, _>>()?)
     }
 

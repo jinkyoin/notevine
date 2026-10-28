@@ -1,5 +1,6 @@
 mod commands;
 mod error;
+mod extras;
 mod history;
 mod index;
 mod parse;
@@ -9,6 +10,7 @@ mod rewrite;
 mod search;
 mod vault;
 mod watcher;
+mod workspace;
 
 use std::sync::Mutex;
 
@@ -50,6 +52,22 @@ pub fn run() {
             commands::preview_rename,
             commands::preview_move,
             commands::list_notes,
+            commands::rebuild_index,
+            workspace::get_config,
+            workspace::set_config,
+            workspace::apply_preset,
+            workspace::list_templates,
+            workspace::create_from_template,
+            workspace::open_today_journal,
+            workspace::quick_memo,
+            workspace::ideas,
+            extras::cmd::restore_version,
+            extras::cmd::version_diff,
+            extras::cmd::deleted_notes,
+            extras::cmd::import_attachment,
+            extras::cmd::save_attachment,
+            extras::cmd::resolve_attachment,
+            extras::cmd::attachment_path,
             commands::resolve_link,
             commands::backlinks,
             commands::delete_entry,

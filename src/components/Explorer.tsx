@@ -192,7 +192,7 @@ function NewFolderRow({ parent, depth }: { parent: string; depth: number }) {
 }
 
 function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
-  const { createNote, setEditing, remove, toggleFolder, toast } = useApp.getState();
+  const { createNote, setEditing, remove, toggleFolder, toast, setVersionView, setModal } = useApp.getState();
   const node = menu.node;
   const dir = !node ? "" : node.kind === "folder" ? node.path : parentPath(node.path);
 
@@ -219,6 +219,7 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
   if (node) {
     items.push(
       ["이름 변경", () => setEditing({ mode: "rename", path: node.path })],
+      ...(node.kind === "note" ? ([["히스토리 보기", () => setVersionView({ path: node.path, id: null })]] as [string, () => void][]) : []),
       [
         "탐색기에서 보기",
         async () => {
@@ -242,6 +243,8 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
       ],
     );
   }
+
+  items.push(["삭제된 노트 히스토리", () => setModal("deleted")]);
 
   return (
     <ul className="menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>

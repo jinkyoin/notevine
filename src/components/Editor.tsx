@@ -11,6 +11,8 @@ import { useApp } from "../store";
 import { noteTitle } from "../lib/tree";
 import { frontmatterEnd, livePreview, livePreviewTheme } from "../editor/livePreview";
 import { frontmatterFold } from "../editor/frontmatterFold";
+import { attachments } from "../editor/attachments";
+import { openPath as openWithOs } from "@tauri-apps/plugin-opener";
 import { noteHighlight } from "../editor/highlight";
 import { refreshLinks, wikiLinks } from "../editor/wikilinks";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -138,10 +140,25 @@ export function Editor({ path }: { path: string }) {
                 follow: (target) => void useApp.getState().followLink(target),
                 openPath: (p) => {
                   const st = useApp.getState();
-                  if (findNode(st.tree, p)) st.openNote(p);
-                  else st.toast(`파일을 찾을 수 없습니다: ${p}`, "error");
+                  const node = findNode(st.tree, p);
+                  if (node?.kind === "note") st.openNote(p);
+                  else if (node) void api.attachmentPath(p).then(openWithOs).catch((e) => st.toast(errorMessage(e), "error"));
+                  else st.toast(`첨부 파일을 찾을 수 없음: ${p}`, "error");
                 },
                 openUrl: (url) => void openUrl(url).catch(() => {}),
+                clickMode: () => useApp.getState().config.link_click,
+              }),
+              attachments({
+                path: () => path,
+                folder: () => useApp.getState().config.attachment_folder,
+                save: async (name, data) => {
+                  const rel = await api.saveAttachment(name, data, useApp.getState().config.attachment_folder);
+                  void useApp.getState().refreshTree();
+                  return rel;
+                },
+                resolve: (target) => api.resolveAttachment(target, path),
+                absPath: (rel) => api.attachmentPath(rel),
+                error: (m) => useApp.getState().toast(m, "error"),
               }),
               keymap.of([
                 { key: "Mod-s", run: () => (void save(true), true), preventDefault: true },
@@ -157,7 +174,7 @@ export function Editor({ path }: { path: string }) {
                 dirty = true;
                 setSaveState("dirty");
                 window.clearTimeout(timer);
-                timer = window.setTimeout(() => save(), SAVE_DELAY_MS);
+                timer = window.setTimeout(() => save(), useApp.getState().config.autosave_ms || SAVE_DELAY_MS);
               }),
             ],
           }),

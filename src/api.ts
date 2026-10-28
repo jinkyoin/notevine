@@ -98,6 +98,57 @@ export interface SearchResult {
   took_ms: number;
 }
 
+export interface VaultConfig {
+  preset_enabled: boolean;
+  inbox_folder: string;
+  journal_folder: string;
+  idea_folder: string;
+  research_folder: string;
+  template_folder: string;
+  attachment_folder: string;
+  journal_path: string;
+  idea_statuses: string[];
+  link_click: "ctrl" | "click";
+  update_links_on_rename: boolean;
+  autosave_ms: number;
+  theme: "system" | "light" | "dark";
+  language: "ko" | "en";
+}
+
+export interface PresetResult {
+  created_folders: string[];
+  created_templates: string[];
+  skipped: string[];
+}
+
+export interface TemplateRef {
+  path: string;
+  title: string;
+  preview: string;
+  folder: string | null;
+}
+
+export interface IdeaItem {
+  path: string;
+  title: string;
+  status: string;
+  mtime: number;
+}
+
+export interface DiffLine {
+  kind: "same" | "add" | "del";
+  text: string;
+  old_no: number | null;
+  new_no: number | null;
+}
+
+export interface DeletedNote {
+  path: string;
+  title: string;
+  last_saved_at: number;
+  versions: number;
+}
+
 export interface AppError {
   code: string;
   message: string;
@@ -131,12 +182,31 @@ export const api = {
   previewRename: (path: string, newName: string) => invoke<LinkChange[]>("preview_rename", { path, newName }),
   previewMove: (path: string, newParent: string) => invoke<LinkChange[]>("preview_move", { path, newParent }),
   listNotes: () => invoke<NoteRef[]>("list_notes"),
+  rebuildIndex: () => invoke<number>("rebuild_index"),
   resolveLink: (target: string) => invoke<string | null>("resolve_link", { target }),
   backlinks: (path: string) => invoke<Backlink[]>("backlinks", { path }),
   search: (query: SearchQuery) => invoke<SearchResult>("search", { query }),
   propertyKeys: () => invoke<string[]>("property_keys"),
   propertyValues: (key: string) => invoke<string[]>("property_values", { key }),
   allTags: () => invoke<{ tag: string; count: number }[]>("all_tags"),
+  getConfig: () => invoke<VaultConfig>("get_config"),
+  setConfig: (config: VaultConfig) => invoke<void>("set_config", { config }),
+  applyPreset: () => invoke<PresetResult>("apply_preset"),
+  listTemplates: () => invoke<TemplateRef[]>("list_templates"),
+  createFromTemplate: (dir: string, name: string | null, template: string | null) =>
+    invoke<string>("create_from_template", { dir, name, template }),
+  openTodayJournal: () => invoke<string>("open_today_journal"),
+  quickMemo: (text: string, title: string | null) => invoke<string>("quick_memo", { text, title }),
+  ideas: () => invoke<IdeaItem[]>("ideas"),
+  restoreVersion: (path: string, id: number) => invoke<void>("restore_version", { path, id }),
+  versionDiff: (path: string, fromId: number | null, toId: number | null) =>
+    invoke<DiffLine[]>("version_diff", { path, fromId, toId }),
+  deletedNotes: () => invoke<DeletedNote[]>("deleted_notes"),
+  importAttachment: (src: string, folder: string) => invoke<string>("import_attachment", { src, folder }),
+  saveAttachment: (name: string, data: Uint8Array, folder: string) =>
+    invoke<string>("save_attachment", { name, data: Array.from(data), folder }),
+  resolveAttachment: (target: string, from: string) => invoke<string | null>("resolve_attachment", { target, from }),
+  attachmentPath: (path: string) => invoke<string>("attachment_path", { path }),
   deleteEntry: (path: string) => invoke<void>("delete_entry", { path }),
   revealEntry: (path: string) => invoke<string>("reveal_entry", { path }),
 };
