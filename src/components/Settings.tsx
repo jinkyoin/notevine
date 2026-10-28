@@ -5,6 +5,7 @@ import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { api, errorMessage, type VaultConfig } from "../api";
 import { useApp } from "../store";
 import { useAi } from "../aiStore";
+import { aiPrefs } from "../ai";
 
 type Tab = "general" | "editor" | "files" | "preset" | "ai" | "history" | "about";
 const TABS: [Tab, string][] = [
@@ -237,6 +238,13 @@ function AiSettings() {
               </div>
             </div>
             <div className="set-ctl">
+              <input
+                className="model-input"
+                placeholder="모델 (비우면 기본)"
+                defaultValue={aiPrefs.model(p.id)}
+                title="CLI에 넘길 모델 이름. 계정에서 쓸 수 없는 모델이면 기본 모델로 다시 보냅니다"
+                onBlur={(e) => aiPrefs.setModel(p.id, e.target.value)}
+              />
               <input
                 type="radio"
                 name="ai-provider"

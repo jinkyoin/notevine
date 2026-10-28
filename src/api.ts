@@ -233,10 +233,18 @@ export const api = {
   aiProviders: () => invoke<AiProvider[]>("ai_providers"),
   aiContext: (question: string, limit = 8) => invoke<ContextNote[]>("ai_context", { question, limit }),
   /** Starts an AI run; events arrive on `onEvent`. Resolves once the CLI has been started. */
-  aiRun: (requestId: string, provider: string, system: string, prompt: string, notes: string[], onEvent: (e: AiEvent) => void) => {
+  aiRun: (
+    requestId: string,
+    provider: string,
+    system: string,
+    prompt: string,
+    notes: string[],
+    model: string | null,
+    onEvent: (e: AiEvent) => void,
+  ) => {
     const ch = new Channel<AiEvent>();
     ch.onmessage = onEvent;
-    return invoke<void>("ai_run", { requestId, provider, system, prompt, notes, onEvent: ch });
+    return invoke<void>("ai_run", { requestId, provider, system, prompt, notes, model, onEvent: ch });
   },
   aiCancel: (requestId: string) => invoke<boolean>("ai_cancel", { requestId }),
   deleteEntry: (path: string) => invoke<void>("delete_entry", { path }),

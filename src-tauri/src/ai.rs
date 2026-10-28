@@ -180,6 +180,8 @@ pub fn ai_context(state: State<AppState>, question: String, limit: u32) -> AppRe
 
 /// Starts a run and returns right away; progress arrives on `on_event`, ending
 /// with exactly one `done` or `error`.
+/// Tauri passes each argument separately, so this mirrors the TS call 1:1.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn ai_run(
     state: State<AppState>,
@@ -188,6 +190,7 @@ pub fn ai_run(
     system: String,
     prompt: String,
     notes: Vec<String>,
+    model: Option<String>,
     on_event: Channel<AiEvent>,
 ) -> AppResult<()> {
     let p = Provider::parse(&provider).ok_or_else(|| other_err(format!("알 수 없는 AI 제공자입니다: {provider}")))?;
@@ -206,7 +209,8 @@ pub fn ai_run(
         if let Some(message) = notice {
             sink(AiEvent::Notice { message });
         }
-        run_request(&request_id, p, &system, &input, &cancel, &sink);
+        let model = model.map(|m| m.trim().to_string()).filter(|m| !m.is_empty());
+        run_with_model(&request_id, p, &system, &input, model.as_deref(), &cancel, &sink);
         unregister_run(&request_id);
     });
     Ok(())
@@ -260,6 +264,54 @@ fn unregister_run(request_id: &str) {
     RUNS.lock().expect("ai runs lock poisoned").remove(request_id);
 }
 
+/// True when the service refused the requested model (e.g. a ChatGPT account
+/// asking Codex for a model it doesn't offer), so retrying without it may work.
+fn is_model_rejected(message: &str) -> bool {
+    let m = message.to_lowercase();
+    m.contains("model")
+        && (m.contains("not supported")
+            || m.contains("does not exist")
+            || m.contains("not found")
+            || m.contains("unknown model")
+            || m.contains("invalid model"))
+}
+
+/// Runs with the model the user chose in settings; if the service rejects that
+/// model before any text arrived, runs again with the CLI's default model.
+fn run_with_model(
+    request_id: &str,
+    p: Provider,
+    system: &str,
+    input: &str,
+    model: Option<&str>,
+    cancel: &Arc<AtomicBool>,
+    sink: &dyn Fn(AiEvent),
+) {
+    let Some(model) = model else {
+        return run_request(request_id, p, system, input, None, cancel, sink);
+    };
+    let got_text = std::cell::Cell::new(false);
+    let rejected = std::cell::RefCell::new(None::<String>);
+    let first = |ev: AiEvent| match ev {
+        AiEvent::Error { message } if !got_text.get() && is_model_rejected(&message) => {
+            *rejected.borrow_mut() = Some(message);
+        }
+        ev => {
+            if matches!(ev, AiEvent::Delta { .. } | AiEvent::Done { .. }) {
+                got_text.set(true);
+            }
+            sink(ev)
+        }
+    };
+    run_request(request_id, p, system, input, Some(model), cancel, &first);
+    if rejected.borrow().is_some() && !cancel.load(Ordering::SeqCst) {
+        sink(AiEvent::Notice {
+            message: format!("설정한 모델 '{model}'을(를) 이 계정에서 쓸 수 없어 기본 모델로 다시 보냈습니다"),
+        });
+        run_request(request_id, p, system, input, None, cancel, sink);
+    }
+}
+
 /// Locates the CLI, runs it in an empty temp directory and streams events to
 /// `sink`. Blocks until the run ends; always emits exactly one terminal event.
 fn run_request(
@@ -267,6 +319,7 @@ fn run_request(
     p: Provider,
     system: &str,
     input: &str,
+    model: Option<&str>,
     cancel: &Arc<AtomicBool>,
     sink: &dyn Fn(AiEvent),
 ) {
@@ -281,10 +334,15 @@ fn run_request(
             return;
         }
     };
-    let args = match p {
+    let mut args = match p {
         Provider::Claude => claude_args(system),
         Provider::Codex => codex_args(&workdir),
     };
+    if let Some(m) = model {
+        // Before the trailing "-" (stdin) for codex; anywhere for claude.
+        let at = if p == Provider::Codex { args.len() - 1 } else { args.len() };
+        args.splice(at..at, [OsString::from(if p == Provider::Codex { "-m" } else { "--model" }), m.into()]);
+    }
     execute(request_id, p, &launcher, &args, input, &workdir, cancel, sink);
     let _ = fs::remove_dir_all(&workdir);
 }
@@ -1111,6 +1169,16 @@ fn providers_cached() -> Vec<AiProvider> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn recognizes_model_rejections_only() {
+        assert!(super::is_model_rejected(
+            "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account."
+        ));
+        assert!(super::is_model_rejected("model: does not exist"));
+        assert!(!super::is_model_rejected("unexpected status 401 Unauthorized"));
+        assert!(!super::is_model_rejected("요청을 취소했습니다"));
+    }
+
     use super::*;
 
     // ----- keywords -----
@@ -1495,7 +1563,7 @@ mod tests {
             let system = "질문에 아주 짧게 답한다.";
             let input = build_input(p, system, "", "한 단어로만 답해: 대한민국의 수도는?");
             let started = Instant::now();
-            run_request(&id, p, system, &input, &cancel, &sink);
+            run_request(&id, p, system, &input, None, &cancel, &sink);
             unregister_run(&id);
             let events = events.into_inner();
             println!("{} ({:?}): {events:?}", p.id(), started.elapsed());

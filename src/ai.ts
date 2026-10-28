@@ -26,6 +26,9 @@ export const aiPrefs = {
   setEnabled: (on: boolean) => save(KEY_ENABLED, on ? "1" : "0"),
   provider: () => load(KEY_PROVIDER) ?? "",
   setProvider: (id: string) => save(KEY_PROVIDER, id),
+  /** Model name passed to the CLI (empty = the CLI's default). */
+  model: (provider: string) => load(`notevine.ai.model.${provider}`) ?? "",
+  setModel: (provider: string, model: string) => save(`notevine.ai.model.${provider}`, model.trim()),
 };
 
 export function pickProvider(list: AiProvider[], preferred: string): AiProvider | undefined {
@@ -144,7 +147,7 @@ export function runAi(
         resolve({ text: e.text, cost: e.cost_usd });
       } else if (e.kind === "error") reject(new Error(e.message));
     };
-    api.aiRun(id, provider, system, prompt, notes, onEvent).catch((err) => reject(err instanceof Error ? err : new Error(String((err as { message?: string })?.message ?? err))));
+    api.aiRun(id, provider, system, prompt, notes, aiPrefs.model(provider) || null, onEvent).catch((err) => reject(err instanceof Error ? err : new Error(String((err as { message?: string })?.message ?? err))));
   });
   return { id, done, cancel: () => void api.aiCancel(id).catch(() => {}) };
 }

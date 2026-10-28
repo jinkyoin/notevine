@@ -1345,3 +1345,8 @@ kbd {
   font-weight: 700;
   margin-top: 4px;
 }
+
+.set-ctl input.model-input {
+  width: 150px;
+  font-size: 12px;
+}
