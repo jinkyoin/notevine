@@ -12,11 +12,11 @@ use serde::Serialize;
 use crate::error::{AppError, AppResult};
 use crate::history::{History, Origin};
 use crate::index::{Index, LinkRef};
-use crate::rewrite::{rebase_own_links, rewrite_links, Move};
 use crate::paths::{
-    self, check_rel, file_name, is_hidden, is_note, join_rel, name_key, normalize_rel, parent_rel,
-    validate_name, APP_DIR,
+    self, APP_DIR, check_rel, file_name, is_hidden, is_note, join_rel, name_key, normalize_rel, parent_rel,
+    validate_name,
 };
+use crate::rewrite::{Move, rebase_own_links, rewrite_links};
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -142,11 +142,7 @@ impl Vault {
         if rel.split('/').next() == Some(APP_DIR) {
             return Err(AppError::OutsideVault(rel));
         }
-        Ok(if rel.is_empty() {
-            self.root.clone()
-        } else {
-            self.root.join(rel)
-        })
+        Ok(if rel.is_empty() { self.root.clone() } else { self.root.join(rel) })
     }
 
     fn existing(&self, rel: &str) -> AppResult<PathBuf> {
@@ -453,7 +449,9 @@ impl Vault {
         sources.dedup();
         let mut plan = Vec::new();
         for src in sources {
-            let Ok(content) = fs::read_to_string(self.abs(&src)?) else { continue };
+            let Ok(content) = fs::read_to_string(self.abs(&src)?) else {
+                continue;
+            };
             let (text, count) = if moved.contains(&src) {
                 // Re-base its own relative links first, then fix links to other moved notes.
                 let new_src = format!("{to}{}", &src[from.len()..]);

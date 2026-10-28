@@ -12,11 +12,13 @@ use chrono::{DateTime, Datelike, Local};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use crate::commands::{with_vault, AppState};
+use crate::commands::{AppState, with_vault};
 use crate::error::{AppError, AppResult};
 use crate::parse;
-use crate::paths::{file_name, is_hidden, is_note, join_rel, name_key, normalize_rel, parent_rel, validate_name, APP_DIR};
-use crate::vault::{Vault, UNTITLED};
+use crate::paths::{
+    APP_DIR, file_name, is_hidden, is_note, join_rel, name_key, normalize_rel, parent_rel, validate_name,
+};
+use crate::vault::{UNTITLED, Vault};
 
 const PRESET_JSON: &str = include_str!("../presets/default.json");
 
@@ -167,13 +169,11 @@ fn yaml_scalar(s: &str) -> String {
         || s.contains(": ")
         || s.contains(" #")
         || s.ends_with(':')
-        || s.starts_with(['-', '?', ':', ',', '[', ']', '{', '}', '#', '&', '*', '!', '|', '>', '\'', '"', '%', '@', '`'])
+        || s.starts_with([
+            '-', '?', ':', ',', '[', ']', '{', '}', '#', '&', '*', '!', '|', '>', '\'', '"', '%', '@', '`',
+        ])
         || s.contains(['\n', '\r', '\t']);
-    if needs_quotes {
-        serde_json::to_string(s).unwrap_or_default()
-    } else {
-        s.to_string()
-    }
+    if needs_quotes { serde_json::to_string(s).unwrap_or_default() } else { s.to_string() }
 }
 
 /// Splits `content` into its frontmatter block (with delimiters) and the rest.
@@ -201,7 +201,9 @@ fn strip_folder_key(content: &str) -> String {
         Some(rest) => ("\u{feff}", rest),
         None => ("", content),
     };
-    let Some((fm, rest)) = split_frontmatter(body) else { return content.to_string() };
+    let Some((fm, rest)) = split_frontmatter(body) else {
+        return content.to_string();
+    };
     let mut out = String::from(bom);
     let mut skipping = false;
     for (i, line) in fm.split_inclusive('\n').enumerate() {
@@ -324,7 +326,9 @@ fn stem(name: &str) -> &str {
 }
 
 fn collect_notes(dir: &Path, root: &Path, out: &mut Vec<String>) {
-    let Ok(entries) = fs::read_dir(dir) else { return };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
     for e in entries.flatten() {
         let name = e.file_name().to_string_lossy().into_owned();
         if is_hidden(&name) {
@@ -447,9 +451,7 @@ fn memo_name(title: &str) -> Option<String> {
 /// note in the vault root. Named after `title` when usable, else "메모 YYYY-MM-DD HHmm".
 pub fn quick_memo_at(v: &Vault, text: &str, title: Option<&str>, now: DateTime<Local>) -> AppResult<String> {
     let config = load_config(v)?;
-    let base = title
-        .and_then(memo_name)
-        .unwrap_or_else(|| format!("메모 {}", now.format("%Y-%m-%d %H%M")));
+    let base = title.and_then(memo_name).unwrap_or_else(|| format!("메모 {}", now.format("%Y-%m-%d %H%M")));
     let (dir, content) = if config.preset_enabled {
         let mut fm = String::from("---\ntype: idea\n");
         if !config.first_status().is_empty() {
@@ -488,9 +490,8 @@ pub fn idea_list(v: &Vault) -> AppResult<Vec<IdeaItem>> {
                        WHERE p.note_id = n.id AND lower(p.key) = 'type' AND lower(trim(p.value)) = 'idea')
          ORDER BY n.mtime DESC, n.title, n.path",
     )?;
-    let rows = st.query_map([], |r| {
-        Ok(IdeaItem { path: r.get(0)?, title: r.get(1)?, mtime: r.get(2)?, status: r.get(3)? })
-    })?;
+    let rows =
+        st.query_map([], |r| Ok(IdeaItem { path: r.get(0)?, title: r.get(1)?, mtime: r.get(2)?, status: r.get(3)? }))?;
     Ok(rows.collect::<Result<_, _>>()?)
 }
 
@@ -573,10 +574,7 @@ mod tests {
             "회의록",
             now(),
         );
-        assert_eq!(
-            out,
-            "회의록|2026-10-28|09:05|2026-10-28 09:05|2026/10/28|2026-10-28|수|2026-10-28|{{x}}|{{y"
-        );
+        assert_eq!(out, "회의록|2026-10-28|09:05|2026-10-28 09:05|2026/10/28|2026-10-28|수|2026-10-28|{{x}}|{{y");
         let sunday = Local.with_ymd_and_hms(2026, 11, 1, 0, 0, 0).unwrap();
         assert_eq!(render_template("{{weekday}}", "", sunday), "일");
     }
@@ -628,7 +626,9 @@ mod tests {
 
         let idea = read(&dir, "90 템플릿/아이디어.md");
         assert!(
-            idea.starts_with("---\ntype: idea\nstatus: 아이디어\ntags: []\ncreated: {{date}}\nfolder: 20 아이디어\n---\n"),
+            idea.starts_with(
+                "---\ntype: idea\nstatus: 아이디어\ntags: []\ncreated: {{date}}\nfolder: 20 아이디어\n---\n"
+            ),
             "{idea}"
         );
         let research = read(&dir, "90 템플릿/자료.md");
@@ -665,7 +665,8 @@ mod tests {
         let (dir, v) = vault();
         apply_preset_to(&v).unwrap();
         fs::create_dir_all(dir.path().join("90 템플릿/내 양식")).unwrap();
-        fs::write(dir.path().join("90 템플릿/내 양식/가 주간보고.md"), "\n\n# 주간보고\n\n- 한 일\n- 할 일\n- 이슈\n").unwrap();
+        fs::write(dir.path().join("90 템플릿/내 양식/가 주간보고.md"), "\n\n# 주간보고\n\n- 한 일\n- 할 일\n- 이슈\n")
+            .unwrap();
         fs::write(dir.path().join("90 템플릿/그림.png"), "x").unwrap();
         let t = templates_in(&v).unwrap();
         let titles: Vec<_> = t.iter().map(|t| t.title.as_str()).collect();
@@ -682,7 +683,8 @@ mod tests {
     fn create_from_template_renders_and_numbers_untitled() {
         let (dir, v) = vault();
         apply_preset_to(&v).unwrap();
-        let p = create_from_template_at(&v, "30 조사자료", Some("자동화 도구"), Some("90 템플릿/자료.md"), now()).unwrap();
+        let p =
+            create_from_template_at(&v, "30 조사자료", Some("자동화 도구"), Some("90 템플릿/자료.md"), now()).unwrap();
         assert_eq!(p, "30 조사자료/자동화 도구.md");
         assert_eq!(
             read(&dir, &p),
@@ -723,7 +725,10 @@ mod tests {
         apply_preset_to(&v).unwrap();
         let p = open_journal_at(&v, now()).unwrap();
         let text = read(&dir, &p);
-        assert!(text.starts_with("---\ntype: journal\ndate: 2026-10-28\n---\n\n# 2026-10-28 (수) 업무일지\n"), "{text}");
+        assert!(
+            text.starts_with("---\ntype: journal\ndate: 2026-10-28\n---\n\n# 2026-10-28 (수) 업무일지\n"),
+            "{text}"
+        );
     }
 
     #[test]

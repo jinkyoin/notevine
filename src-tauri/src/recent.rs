@@ -31,10 +31,7 @@ impl RecentStore {
     }
 
     fn load(&self) -> Vec<RecentVault> {
-        fs::read_to_string(&self.file)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+        fs::read_to_string(&self.file).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
     }
 
     fn save(&self, list: &[RecentVault]) -> AppResult<()> {

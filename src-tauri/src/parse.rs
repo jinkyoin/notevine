@@ -134,7 +134,9 @@ fn read_properties(yaml: &str, out: &mut Parsed, tags: &mut TagSet) {
         }
     };
     for (k, v) in map {
-        let Some(key) = scalar(&k).map(|(s, _)| nfc(s.trim())) else { continue };
+        let Some(key) = scalar(&k).map(|(s, _)| nfc(s.trim())) else {
+            continue;
+        };
         if key.is_empty() {
             continue;
         }
@@ -152,20 +154,16 @@ fn read_properties(yaml: &str, out: &mut Parsed, tags: &mut TagSet) {
                     if is_tags {
                         tags.add(value.trim().trim_start_matches('#'));
                     }
-                    out.properties.push(Property {
-                        key: key.clone(),
-                        value: nfc(&value),
-                        value_type: ValueType::List,
-                    });
+                    out.properties.push(Property { key: key.clone(), value: nfc(&value), value_type: ValueType::List });
                 }
             }
-            Yaml::Hash(_) => out.properties.push(Property {
-                key,
-                value: nfc(&to_json(&v).to_string()),
-                value_type: ValueType::Text,
-            }),
+            Yaml::Hash(_) => {
+                out.properties.push(Property { key, value: nfc(&to_json(&v).to_string()), value_type: ValueType::Text })
+            }
             _ => {
-                let Some((value, value_type)) = scalar(&v) else { continue };
+                let Some((value, value_type)) = scalar(&v) else {
+                    continue;
+                };
                 if is_tags {
                     for t in value.split(|c: char| c == ',' || c.is_whitespace()) {
                         tags.add(t.trim_start_matches('#'));
@@ -204,10 +202,7 @@ fn is_date(s: &str) -> bool {
     if b.len() < 10 {
         return false;
     }
-    let shape = b[..10]
-        .iter()
-        .enumerate()
-        .all(|(i, c)| if i == 4 || i == 7 { *c == b'-' } else { c.is_ascii_digit() });
+    let shape = b[..10].iter().enumerate().all(|(i, c)| if i == 4 || i == 7 { *c == b'-' } else { c.is_ascii_digit() });
     shape
         && match b.get(10) {
             None => true,
@@ -275,11 +270,8 @@ fn scan_body(body: &str, lines_before: usize, links: &mut Vec<Link>, tags: &mut 
             fence = Some(f);
             continue;
         }
-        let ctx = Line {
-            text: line,
-            code: code_spans(line),
-            no: u32::try_from(lines_before + i + 1).unwrap_or(u32::MAX),
-        };
+        let ctx =
+            Line { text: line, code: code_spans(line), no: u32::try_from(lines_before + i + 1).unwrap_or(u32::MAX) };
         ctx.scan(0, line.len(), links, tags);
     }
 }
@@ -395,13 +387,7 @@ impl Line<'_> {
     }
 
     /// `[text](dest)` or `![alt](dest)`; returns the byte after `)`.
-    fn markdown(
-        &self,
-        i: usize,
-        end: usize,
-        links: &mut Vec<Link>,
-        tags: &mut TagSet,
-    ) -> Option<usize> {
+    fn markdown(&self, i: usize, end: usize, links: &mut Vec<Link>, tags: &mut TagSet) -> Option<usize> {
         let b = self.text.as_bytes();
         let image = b[i] == b'!';
         let text_start = i + if image { 2 } else { 1 };
@@ -440,9 +426,7 @@ impl Line<'_> {
     /// `#tag`; returns the byte after the tag.
     fn tag(&self, i: usize, end: usize, tags: &mut TagSet) -> Option<usize> {
         let prev_ok = self.text[..i].chars().next_back().is_none_or(|p| {
-            p.is_whitespace()
-                || !(p.is_alphanumeric()
-                    || matches!(p, '_' | '#' | '&' | '/' | '-' | '\\' | ':' | '.'))
+            p.is_whitespace() || !(p.is_alphanumeric() || matches!(p, '_' | '#' | '&' | '/' | '-' | '\\' | ':' | '.'))
         });
         if !prev_ok {
             return None;
@@ -505,13 +489,11 @@ fn local_target(dest: &str) -> Option<&str> {
     if dest.is_empty() || dest.starts_with('#') || dest.starts_with("//") {
         return None;
     }
-    let scheme_len = dest
-        .find(':')
-        .filter(|&n| {
-            n > 0
-                && dest[..n].starts_with(|c: char| c.is_ascii_alphabetic())
-                && dest[..n].chars().all(|c| c.is_ascii_alphanumeric() || "+.-".contains(c))
-        });
+    let scheme_len = dest.find(':').filter(|&n| {
+        n > 0
+            && dest[..n].starts_with(|c: char| c.is_ascii_alphabetic())
+            && dest[..n].chars().all(|c| c.is_ascii_alphanumeric() || "+.-".contains(c))
+    });
     if scheme_len.is_some() {
         return None;
     }
@@ -544,21 +526,11 @@ mod tests {
     use super::*;
 
     fn prop<'a>(p: &'a Parsed, key: &str) -> Vec<(&'a str, &'a ValueType)> {
-        p.properties
-            .iter()
-            .filter(|x| x.key == key)
-            .map(|x| (x.value.as_str(), &x.value_type))
-            .collect()
+        p.properties.iter().filter(|x| x.key == key).map(|x| (x.value.as_str(), &x.value_type)).collect()
     }
 
     fn link(target: &str, anchor: Option<&str>, alias: Option<&str>, kind: LinkKind, line: u32) -> Link {
-        Link {
-            target: target.into(),
-            anchor: anchor.map(Into::into),
-            alias: alias.map(Into::into),
-            kind,
-            line,
-        }
+        Link { target: target.into(), anchor: anchor.map(Into::into), alias: alias.map(Into::into), kind, line }
     }
 
     #[test]
@@ -582,10 +554,7 @@ meta:\n  a: 1\n  b: [x, y]\n\
         assert_eq!(p.frontmatter_error, None);
         assert_eq!(prop(&p, "type"), [("회의록", &ValueType::Text)]);
         assert_eq!(prop(&p, "status"), [("진행중", &ValueType::Text)]);
-        assert_eq!(
-            prop(&p, "tags"),
-            [("업무", &ValueType::List), ("#프로젝트/notevine", &ValueType::List)]
-        );
+        assert_eq!(prop(&p, "tags"), [("업무", &ValueType::List), ("#프로젝트/notevine", &ValueType::List)]);
         assert_eq!(prop(&p, "source"), [("https://example.com/a", &ValueType::Url)]);
         assert_eq!(prop(&p, "created"), [("2026-10-28", &ValueType::Date)]);
         assert_eq!(prop(&p, "updated"), [("2026-10-28T09:30:00", &ValueType::Date)]);
@@ -701,7 +670,8 @@ meta:\n  a: 1\n  b: [x, y]\n\
 
     #[test]
     fn crlf_and_line_numbers() {
-        let src = "---\r\ntags: [x]\r\n---\r\n\r\n첫 줄 [[A]]\r\n#태그 [b](b.md)\r\n```\r\n[[숨김]]\r\n```\r\n![[C]]\r\n";
+        let src =
+            "---\r\ntags: [x]\r\n---\r\n\r\n첫 줄 [[A]]\r\n#태그 [b](b.md)\r\n```\r\n[[숨김]]\r\n```\r\n![[C]]\r\n";
         let p = parse(src);
         assert_eq!(p.tags, ["x", "태그"]);
         assert_eq!(

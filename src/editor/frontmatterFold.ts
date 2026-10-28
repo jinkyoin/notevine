@@ -30,8 +30,11 @@ class SummaryWidget extends WidgetType {
   }
 }
 
+/** Frontmatter never needs more than the start of the note; don't copy a 1 MB doc per keystroke. */
+const HEAD = 65536;
+
 function build(state: EditorState): DecorationSet {
-  const text = state.doc.toString();
+  const text = state.sliceDoc(0, HEAD);
   const { yaml, bodyStart } = splitFrontmatter(text);
   if (yaml === null) return Decoration.none;
   // The block ends at the closing delimiter line; keep its trailing newline out.
@@ -64,7 +67,15 @@ export const frontmatterFold: Extension = [
   StateField.define<DecorationSet>({
     create: build,
     update(deco, tr) {
-      return tr.docChanged || tr.selection ? build(tr.state) : deco;
+      if (!tr.docChanged && !tr.selection) return deco;
+      // Typing far below the block (most edits in a long note) can't change it: just map the ranges.
+      let touchesHead = false;
+      tr.changes.iterChangedRanges((fromA) => {
+        if (fromA < HEAD) touchesHead = true;
+      });
+      const far = (s: EditorState) => s.selection.main.from >= HEAD;
+      if (!touchesHead && far(tr.startState) && far(tr.state)) return deco.map(tr.changes);
+      return build(tr.state);
     },
     provide: (f) => EditorView.decorations.from(f),
   }),

@@ -28,11 +28,7 @@ pub fn rewrite_links(content: &str, src: &str, mv: &Move, name_unique: bool) -> 
         Hit::Markdown { path, angle } => {
             let decoded = percent_decode(path);
             let new_vault = moved(&resolve(dir, &decoded)?, mv)?;
-            let new = if path.starts_with('/') {
-                format!("/{new_vault}")
-            } else {
-                relative(dir, &new_vault, &decoded)
-            };
+            let new = if path.starts_with('/') { format!("/{new_vault}") } else { relative(dir, &new_vault, &decoded) };
             encode_dest(path, &decoded, &new, angle)
         }
     })
@@ -99,7 +95,8 @@ fn moved(path: &str, mv: &Move) -> Option<String> {
     let (last_from, last) = (fs[n - 1], ps[n - 1]);
     if ps.len() == n {
         let from_note = is_note(&from);
-        let same = if from_note { link_key(last) == link_key(last_from) } else { name_key(last) == name_key(last_from) };
+        let same =
+            if from_note { link_key(last) == link_key(last_from) } else { name_key(last) == name_key(last_from) };
         if !same {
             return None;
         }
@@ -235,7 +232,8 @@ fn rewrite(content: &str, visit: &mut Visit<'_>) -> (String, usize) {
             fence = Some(f);
             continue;
         }
-        let mut ctx = Line { text: line, base: line_start, code: code_spans(line), edits: &mut edits, visit: &mut *visit };
+        let mut ctx =
+            Line { text: line, base: line_start, code: code_spans(line), edits: &mut edits, visit: &mut *visit };
         ctx.scan(0, line.len());
     }
     edits.sort_by_key(|e| e.0);
@@ -259,7 +257,9 @@ fn rewrite(content: &str, visit: &mut Visit<'_>) -> (String, usize) {
 fn body_start(content: &str) -> usize {
     let bom = if content.starts_with('\u{feff}') { '\u{feff}'.len_utf8() } else { 0 };
     let mut lines = content[bom..].split_inclusive('\n');
-    let Some(first) = lines.next() else { return bom };
+    let Some(first) = lines.next() else {
+        return bom;
+    };
     if trim_eol(first) != "---" {
         return bom;
     }
@@ -608,10 +608,32 @@ mod tests {
     #[test]
     fn never_panics() {
         let nasty = [
-            "", "---", "---\n", "\u{feff}", "[[", "]]", "[[[[]]]]", "![[", "![](", "[a](<b", "[a](b",
-            "[[x|", "`", "```", "~~~~\n~~~", "%", "[a](%)", "[a](%E", "[a](%E2%82)", "[한](글%ZZ)",
-            "\r\r\n\n\r", "[[한|]] [[#]] [[|]] ![[ ]] [[/]] [[../]]", "[](#) [x](//h/a) [y](C:/a.md)",
-            "[x](../../../..) [y](/) [z](./) [w](<>) [v](< >)", "[[a/b/c/d]] [x](a/b/c/d)", "한글[[a",
+            "",
+            "---",
+            "---\n",
+            "\u{feff}",
+            "[[",
+            "]]",
+            "[[[[]]]]",
+            "![[",
+            "![](",
+            "[a](<b",
+            "[a](b",
+            "[[x|",
+            "`",
+            "```",
+            "~~~~\n~~~",
+            "%",
+            "[a](%)",
+            "[a](%E",
+            "[a](%E2%82)",
+            "[한](글%ZZ)",
+            "\r\r\n\n\r",
+            "[[한|]] [[#]] [[|]] ![[ ]] [[/]] [[../]]",
+            "[](#) [x](//h/a) [y](C:/a.md)",
+            "[x](../../../..) [y](/) [z](./) [w](<>) [v](< >)",
+            "[[a/b/c/d]] [x](a/b/c/d)",
+            "한글[[a",
         ];
         let moves = [mv("a", "b"), mv("a/b", ""), mv("", "x"), mv("a.md", "b.md"), mv("/", "/"), mv("a/b/c", "a")];
         for s in nasty {

@@ -10,12 +10,12 @@ use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use rusqlite::types::Value;
-use rusqlite::{params, params_from_iter, Connection};
+use rusqlite::{Connection, params, params_from_iter};
 use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
 
 use crate::error::AppResult;
-use crate::index::{like_prefix, Index};
+use crate::index::{Index, like_prefix};
 use crate::paths::name_key;
 
 const DEFAULT_LIMIT: u32 = 100;
@@ -371,10 +371,8 @@ fn snippet(body: &str, terms: &[Vec<char>], fm_lines: i64) -> (Vec<SnippetPart>,
     for (i, raw) in body.split('\n').enumerate() {
         let chars = line_chars(raw);
         let folded: Vec<char> = chars.iter().copied().map(fold).collect();
-        let Some((s, e)) = terms
-            .iter()
-            .filter_map(|t| find(&folded, t, 0).map(|p| (p, p + t.len())))
-            .min_by_key(|&(p, _)| p)
+        let Some((s, e)) =
+            terms.iter().filter_map(|t| find(&folded, t, 0).map(|p| (p, p + t.len()))).min_by_key(|&(p, _)| p)
         else {
             continue;
         };
@@ -442,9 +440,9 @@ pub fn property_values(ix: &Index, key: &str) -> AppResult<Vec<String>> {
 
 /// Every tag with the number of notes carrying it, most frequent first, then by name.
 pub fn all_tags(ix: &Index) -> AppResult<Vec<TagCount>> {
-    let mut st = ix.conn().prepare(
-        "SELECT min(tag), count(DISTINCT note_id) AS c FROM tags GROUP BY tag_key ORDER BY c DESC, tag_key",
-    )?;
+    let mut st = ix
+        .conn()
+        .prepare("SELECT min(tag), count(DISTINCT note_id) AS c FROM tags GROUP BY tag_key ORDER BY c DESC, tag_key")?;
     let rows = st.query_map([], |r| Ok(TagCount { tag: r.get(0)?, count: r.get(1)? }))?;
     Ok(rows.collect::<Result<_, _>>()?)
 }
@@ -542,7 +540,8 @@ mod tests {
         ix.upsert("b.md", "---\ntags: [프로젝트, 회의]\n---\n본문", 0, 2, 0).unwrap();
         ix.upsert("c.md", "#프로젝트팀 은 다른 태그", 0, 3, 0).unwrap();
         ix.upsert("d.md", "#회의", 0, 4, 0).unwrap();
-        let q = |tags: &[&str]| SearchQuery { tags: tags.iter().map(|s| s.to_string()).collect(), ..Default::default() };
+        let q =
+            |tags: &[&str]| SearchQuery { tags: tags.iter().map(|s| s.to_string()).collect(), ..Default::default() };
         assert_eq!(sorted(paths(&ix, &q(&["프로젝트"]))), ["a.md", "b.md"]);
         assert_eq!(paths(&ix, &q(&["#프로젝트/NoteVine"])), ["a.md"]);
         assert_eq!(paths(&ix, &q(&["프로젝트", "회의"])), ["b.md"]);
@@ -591,7 +590,10 @@ mod tests {
         assert_eq!(paths(&ix, &q(DateField::Modified, Some(200), Some(300))), ["ctime.md", "time.md"]);
         assert_eq!(paths(&ix, &q(DateField::Modified, None, Some(100))), ["prop.md"]);
         // property date and ctime fallback
-        assert_eq!(sorted(paths(&ix, &q(DateField::Created, Some(d2026), Some(d2026 + day - 1)))), ["ctime.md", "prop.md"]);
+        assert_eq!(
+            sorted(paths(&ix, &q(DateField::Created, Some(d2026), Some(d2026 + day - 1)))),
+            ["ctime.md", "prop.md"]
+        );
         assert_eq!(paths(&ix, &q(DateField::Created, Some(d2026 - 30 * day), Some(d2026 - 1))), ["time.md"]);
         assert_eq!(paths(&ix, &q(DateField::Created, None, Some(10))), ["none.md"]);
         assert_eq!(date_ms("1970-01-02"), Some(day));
@@ -644,7 +646,10 @@ mod tests {
         ix.upsert("a.md", "\u{feff}---\r\ntitle: x\r\ntags: [a]\r\n---\r\n\r\n본문\r\n찾을 단어\r\n", 0, 0, 0).unwrap();
         let h = &search(&ix, &text(&["단어"])).unwrap().hits[0];
         assert_eq!(h.line, Some(7));
-        assert_eq!(h.parts, [SnippetPart { text: "찾을 ".into(), hit: false }, SnippetPart { text: "단어".into(), hit: true }]);
+        assert_eq!(
+            h.parts,
+            [SnippetPart { text: "찾을 ".into(), hit: false }, SnippetPart { text: "단어".into(), hit: true }]
+        );
         // frontmatter values are not searchable body text
         assert!(search(&ix, &text(&["title"])).unwrap().hits.is_empty());
     }
@@ -681,8 +686,31 @@ mod tests {
         let (_d, ix) = setup();
         ix.upsert("a.md", "100% 완료_됨 \"인용\" 🎉🎉 a\\b", 0, 0, 0).unwrap();
         let nasty = [
-            "", " ", "\"", "\"\"\"", "%", "_", "\\", "'", "*", "NEAR(", "a OR b", "AND", "-", "^", "🎉", "🎉🎉🎉", "\u{0}",
-            "\"인용\"", "100%", "완료_", "a\\b", "(\"))", "col:x", "\u{301}", "İ",
+            "",
+            " ",
+            "\"",
+            "\"\"\"",
+            "%",
+            "_",
+            "\\",
+            "'",
+            "*",
+            "NEAR(",
+            "a OR b",
+            "AND",
+            "-",
+            "^",
+            "🎉",
+            "🎉🎉🎉",
+            "\u{0}",
+            "\"인용\"",
+            "100%",
+            "완료_",
+            "a\\b",
+            "(\"))",
+            "col:x",
+            "\u{301}",
+            "İ",
         ];
         for t in nasty {
             let r = search(&ix, &text(&[t])).unwrap();
@@ -743,7 +771,20 @@ mod tests {
     #[ignore]
     fn perf_10k_notes() {
         let (_d, ix) = setup();
-        let words = ["업무개선", "회의록", "프로젝트", "일정", "검토", "보고서", "자동화", "노트", "정리", "아이디어", "고객", "요구사항"];
+        let words = [
+            "업무개선",
+            "회의록",
+            "프로젝트",
+            "일정",
+            "검토",
+            "보고서",
+            "자동화",
+            "노트",
+            "정리",
+            "아이디어",
+            "고객",
+            "요구사항",
+        ];
         let mut seed: u64 = 42;
         let mut next = || {
             seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);

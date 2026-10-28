@@ -6,12 +6,12 @@ use std::fs;
 use std::path::Path;
 use std::time::{Duration, UNIX_EPOCH};
 
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::Serialize;
 
 use crate::error::AppResult;
 use crate::parse::{self, LinkKind, ValueType};
-use crate::paths::{is_hidden, is_note, name_key, parent_rel, resolve_rel, to_rel, APP_DIR};
+use crate::paths::{APP_DIR, is_hidden, is_note, name_key, parent_rel, resolve_rel, to_rel};
 
 /// Bump when the schema or what `parse` extracts changes: an index built by an
 /// older version is thrown away and rebuilt from the files.
@@ -179,45 +179,8 @@ impl Index {
 
     /// Indexes one note from its text.
     pub fn upsert(&self, rel: &str, content: &str, ctime: i64, mtime: i64, size: i64) -> AppResult<()> {
-        let parsed = parse::parse(content);
-        let fm_lines = fm_lines(content, &parsed.body);
         let tx = self.conn.unchecked_transaction()?;
-        delete_note(&tx, rel)?;
-        tx.execute(
-            "INSERT INTO notes (path, name_key, path_key, title, ctime, mtime, size, fm_error, fm_lines)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            params![
-                rel,
-                link_key(&title_of(rel)),
-                link_key(rel),
-                title_of(rel),
-                ctime,
-                mtime,
-                size,
-                parsed.frontmatter_error,
-                fm_lines
-            ],
-        )?;
-        let id = tx.last_insert_rowid();
-        {
-            let mut st = tx.prepare_cached(
-                "INSERT INTO links (src_id, target, target_key, anchor, alias, kind, line) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            )?;
-            for l in &parsed.links {
-                let key = stored_target_key(rel, &l.target, &l.kind);
-                st.execute(params![id, l.target, key, l.anchor, l.alias, kind_str(&l.kind), l.line])?;
-            }
-            let mut st = tx.prepare_cached("INSERT INTO tags (note_id, tag, tag_key) VALUES (?1, ?2, ?3)")?;
-            for t in &parsed.tags {
-                st.execute(params![id, t, name_key(t)])?;
-            }
-            let mut st =
-                tx.prepare_cached("INSERT INTO properties (note_id, key, value, value_type) VALUES (?1, ?2, ?3, ?4)")?;
-            for p in &parsed.properties {
-                st.execute(params![id, p.key, p.value, value_type_str(&p.value_type)])?;
-            }
-        }
-        tx.execute("INSERT INTO notes_fts (rowid, title, body) VALUES (?1, ?2, ?3)", params![id, title_of(rel), parsed.body])?;
+        upsert_in(&tx, rel, content, ctime, mtime, size)?;
         tx.commit()?;
         Ok(())
     }
@@ -251,8 +214,7 @@ impl Index {
         let tx = self.conn.unchecked_transaction()?;
         let rows: Vec<(i64, String)> = {
             let mut st = tx.prepare("SELECT id, path FROM notes WHERE path = ?1 OR path LIKE ?2 ESCAPE '\\'")?;
-            st.query_map(params![from, like_prefix(from)], |r| Ok((r.get(0)?, r.get(1)?)))?
-                .collect::<Result<_, _>>()?
+            st.query_map(params![from, like_prefix(from)], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<Result<_, _>>()?
         };
         for (id, path) in rows {
             let new_path = format!("{to}{}", &path[from.len()..]);
@@ -282,9 +244,12 @@ impl Index {
             st.query_map([], |r| Ok((r.get(0)?, (r.get(1)?, r.get(2)?))))?.collect::<Result<_, _>>()?
         };
         let mut stats = ScanStats::default();
+        let mut changed: Vec<(String, std::path::PathBuf, i64, i64, i64)> = Vec::new();
         let mut stack = vec![root.to_path_buf()];
         while let Some(dir) = stack.pop() {
-            let Ok(entries) = fs::read_dir(&dir) else { continue };
+            let Ok(entries) = fs::read_dir(&dir) else {
+                continue;
+            };
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().into_owned();
                 if is_hidden(&name) || name == APP_DIR {
@@ -299,19 +264,50 @@ impl Index {
                 if !is_note(&name) {
                     continue;
                 }
-                let Some(rel) = to_rel(root, &path) else { continue };
+                let Some(rel) = to_rel(root, &path) else {
+                    continue;
+                };
                 let stamp = (ms(meta.modified()), meta.len() as i64);
                 if known.remove(&rel) == Some(stamp) {
                     stats.unchanged += 1;
                     continue;
                 }
-                // Unreadable files (locked, not UTF-8) are skipped, not fatal.
-                if let Ok(content) = fs::read_to_string(&path) {
-                    self.upsert(&rel, &content, ms(meta.created()), stamp.0, stamp.1)?;
-                    stats.indexed += 1;
-                }
+                changed.push((rel, path, ms(meta.created()), stamp.0, stamp.1));
             }
         }
+
+        // Read and parse in parallel: on a first scan most of the time goes to file
+        // reads (antivirus checks each new file) and parsing, not to SQLite.
+        let workers = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(1, 8);
+        let mut done = 0;
+        for chunk in changed.chunks(SCAN_BATCH) {
+            let per = chunk.len().div_ceil(workers);
+            let prepared: Vec<Prepared> = std::thread::scope(|sc| {
+                let handles: Vec<_> = chunk
+                    .chunks(per.max(1))
+                    .map(|part| {
+                        sc.spawn(move || {
+                            part.iter()
+                                // Unreadable files (locked, not UTF-8) are skipped, not fatal.
+                                .filter_map(|(rel, path, ctime, mtime, size)| {
+                                    let content = fs::read_to_string(path).ok()?;
+                                    Some(Prepared::new(rel.clone(), &content, *ctime, *mtime, *size))
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                    })
+                    .collect();
+                handles.into_iter().flat_map(|h| h.join().unwrap_or_default()).collect()
+            });
+            // One transaction per batch: committing per note made a 10k-note first scan take minutes.
+            let tx = self.conn.unchecked_transaction()?;
+            for p in &prepared {
+                write_prepared(&tx, p)?;
+            }
+            tx.commit()?;
+            done += prepared.len();
+        }
+        stats.indexed = done;
         for gone in known.keys() {
             self.remove(gone)?;
             stats.removed += 1;
@@ -352,7 +348,9 @@ impl Index {
 
     /// Number of notes whose file name (without .md) is `name`.
     pub fn name_count(&self, name: &str) -> AppResult<i64> {
-        Ok(self.conn.query_row("SELECT count(*) FROM notes WHERE name_key = ?1", params![link_key(name)], |r| r.get(0))?)
+        Ok(self
+            .conn
+            .query_row("SELECT count(*) FROM notes WHERE name_key = ?1", params![link_key(name)], |r| r.get(0))?)
     }
 
     /// Links in other notes that point at `rel` (FR-LNK-03·04).
@@ -389,7 +387,8 @@ impl Index {
 
     /// Notes at `rel` or under it.
     pub fn notes_under(&self, rel: &str) -> AppResult<Vec<String>> {
-        let mut st = self.conn.prepare("SELECT path FROM notes WHERE path = ?1 OR path LIKE ?2 ESCAPE '\\' ORDER BY path")?;
+        let mut st =
+            self.conn.prepare("SELECT path FROM notes WHERE path = ?1 OR path LIKE ?2 ESCAPE '\\' ORDER BY path")?;
         let rows = st.query_map(params![rel, like_prefix(rel)], |r| r.get(0))?;
         Ok(rows.collect::<Result<_, _>>()?)
     }
@@ -413,6 +412,76 @@ fn fm_lines(content: &str, body: &str) -> i64 {
         return 0;
     }
     content[..content.len() - body.len()].bytes().filter(|&b| b == b'\n').count() as i64
+}
+
+const SCAN_BATCH: usize = 500;
+
+/// Writes one note's rows inside an open transaction.
+fn upsert_in(tx: &Transaction, rel: &str, content: &str, ctime: i64, mtime: i64, size: i64) -> AppResult<()> {
+    write_prepared(tx, &Prepared::new(rel.to_string(), content, ctime, mtime, size))
+}
+
+/// A note parsed off the database thread, ready to be written.
+struct Prepared {
+    rel: String,
+    parsed: parse::Parsed,
+    fm_lines: i64,
+    ctime: i64,
+    mtime: i64,
+    size: i64,
+}
+
+impl Prepared {
+    fn new(rel: String, content: &str, ctime: i64, mtime: i64, size: i64) -> Self {
+        let parsed = parse::parse(content);
+        let fm_lines = fm_lines(content, &parsed.body);
+        Self { rel, parsed, fm_lines, ctime, mtime, size }
+    }
+}
+
+fn write_prepared(tx: &Transaction, p: &Prepared) -> AppResult<()> {
+    let Prepared { rel, parsed, fm_lines, ctime, mtime, size } = p;
+    let rel = rel.as_str();
+    delete_note(tx, rel)?;
+    tx.execute(
+        "INSERT INTO notes (path, name_key, path_key, title, ctime, mtime, size, fm_error, fm_lines)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![
+            rel,
+            link_key(&title_of(rel)),
+            link_key(rel),
+            title_of(rel),
+            ctime,
+            mtime,
+            size,
+            parsed.frontmatter_error,
+            fm_lines
+        ],
+    )?;
+    let id = tx.last_insert_rowid();
+    {
+        let mut st = tx.prepare_cached(
+            "INSERT INTO links (src_id, target, target_key, anchor, alias, kind, line) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        )?;
+        for l in &parsed.links {
+            let key = stored_target_key(rel, &l.target, &l.kind);
+            st.execute(params![id, l.target, key, l.anchor, l.alias, kind_str(&l.kind), l.line])?;
+        }
+        let mut st = tx.prepare_cached("INSERT INTO tags (note_id, tag, tag_key) VALUES (?1, ?2, ?3)")?;
+        for t in &parsed.tags {
+            st.execute(params![id, t, name_key(t)])?;
+        }
+        let mut st =
+            tx.prepare_cached("INSERT INTO properties (note_id, key, value, value_type) VALUES (?1, ?2, ?3, ?4)")?;
+        for p in &parsed.properties {
+            st.execute(params![id, p.key, p.value, value_type_str(&p.value_type)])?;
+        }
+    }
+    tx.execute(
+        "INSERT INTO notes_fts (rowid, title, body) VALUES (?1, ?2, ?3)",
+        params![id, title_of(rel), parsed.body],
+    )?;
+    Ok(())
 }
 
 fn delete_note(tx: &Transaction, rel: &str) -> rusqlite::Result<()> {
@@ -493,7 +562,8 @@ mod tests {
         assert!(ix.has("f_x/c.md").unwrap(), "LIKE wildcard must not match f_x");
         ix.remove("g").unwrap();
         assert_eq!(ix.note_count().unwrap(), 2);
-        let title: String = ix.conn().query_row("SELECT title FROM notes WHERE path='fx.md'", [], |r| r.get(0)).unwrap();
+        let title: String =
+            ix.conn().query_row("SELECT title FROM notes WHERE path='fx.md'", [], |r| r.get(0)).unwrap();
         assert_eq!(title, "fx");
     }
 

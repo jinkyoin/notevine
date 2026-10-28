@@ -36,17 +36,11 @@ pub fn check_rel(rel: &str) -> AppResult<()> {
 
 /// Builds a vault-relative path from an absolute path under `root`.
 pub fn to_rel(root: &Path, abs: &Path) -> Option<String> {
-    abs.strip_prefix(root)
-        .ok()
-        .map(|p| normalize_rel(&p.to_string_lossy()))
+    abs.strip_prefix(root).ok().map(|p| normalize_rel(&p.to_string_lossy()))
 }
 
 pub fn join_rel(dir: &str, name: &str) -> String {
-    if dir.is_empty() {
-        name.to_string()
-    } else {
-        format!("{dir}/{name}")
-    }
+    if dir.is_empty() { name.to_string() } else { format!("{dir}/{name}") }
 }
 
 pub fn parent_rel(rel: &str) -> &str {
@@ -92,8 +86,8 @@ pub fn name_key(name: &str) -> String {
 }
 
 const RESERVED: [&str; 22] = [
-    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
-    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2",
+    "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
 ];
 
 /// A single file or folder name that is valid on Windows (the strictest target).
@@ -106,10 +100,7 @@ pub fn validate_name(name: &str) -> AppResult<()> {
     if name.ends_with('.') {
         return bad();
     }
-    if name
-        .chars()
-        .any(|c| matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control())
-    {
+    if name.chars().any(|c| matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control()) {
         return bad();
     }
     let stem = name.split('.').next().unwrap_or("").to_uppercase();

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use notify_debouncer_full::notify::{RecommendedWatcher, RecursiveMode};
-use notify_debouncer_full::{new_debouncer, DebounceEventResult, Debouncer, RecommendedCache};
+use notify_debouncer_full::{DebounceEventResult, Debouncer, RecommendedCache, new_debouncer};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -36,9 +36,7 @@ pub fn start(app: AppHandle, root: PathBuf) -> AppResult<VaultWatcher> {
         }
     })
     .map_err(|e| AppError::Io(std::io::Error::other(e)))?;
-    debouncer
-        .watch(&watch_root, RecursiveMode::Recursive)
-        .map_err(|e| AppError::Io(std::io::Error::other(e)))?;
+    debouncer.watch(&watch_root, RecursiveMode::Recursive).map_err(|e| AppError::Io(std::io::Error::other(e)))?;
     Ok(debouncer)
 }
 
@@ -54,7 +52,9 @@ fn handle(app: &AppHandle, root: &Path, paths: BTreeSet<PathBuf>) {
             return; // a vault that has since been closed
         }
         for abs in paths {
-            let Some(rel) = to_rel(root, &abs) else { continue };
+            let Some(rel) = to_rel(root, &abs) else {
+                continue;
+            };
             if rel.is_empty() || rel.split('/').any(is_hidden) {
                 continue; // .app/, temp files, .git, ...
             }

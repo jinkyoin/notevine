@@ -8,11 +8,11 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::error::{AppError, AppResult};
 use crate::history::VersionMeta;
-use crate::recent::{RecentStore, RecentVault};
 use crate::index::Index;
-use crate::paths::APP_DIR;
-use crate::search::{SearchQuery, SearchResult, TagCount};
 use crate::index::NoteRef;
+use crate::paths::APP_DIR;
+use crate::recent::{RecentStore, RecentVault};
+use crate::search::{SearchQuery, SearchResult, TagCount};
 use crate::vault::{Backlink, LinkChange, SaveOutcome, TreeNode, Vault, VaultInfo, Workspace};
 use crate::watcher::{self, VaultWatcher};
 
@@ -91,7 +91,12 @@ pub fn read_note(state: State<AppState>, path: String) -> AppResult<String> {
 /// Saves a note. `force` = manual save or app exit: always lands in a history
 /// version. See [`SaveOutcome`] for warnings and conflicts.
 #[tauri::command]
-pub fn write_note(state: State<AppState>, path: String, content: String, force: Option<bool>) -> AppResult<SaveOutcome> {
+pub fn write_note(
+    state: State<AppState>,
+    path: String,
+    content: String,
+    force: Option<bool>,
+) -> AppResult<SaveOutcome> {
     with_vault(&state, |v| v.save_note(&path, &content, force.unwrap_or(false)))
 }
 
@@ -121,12 +126,22 @@ pub fn create_folder(state: State<AppState>, parent: String, name: String) -> Ap
 }
 
 #[tauri::command]
-pub fn rename_entry(state: State<AppState>, path: String, new_name: String, update_links: Option<bool>) -> AppResult<String> {
+pub fn rename_entry(
+    state: State<AppState>,
+    path: String,
+    new_name: String,
+    update_links: Option<bool>,
+) -> AppResult<String> {
     with_vault(&state, |v| v.rename(&path, &new_name, update_links.unwrap_or(true)))
 }
 
 #[tauri::command]
-pub fn move_entry(state: State<AppState>, path: String, new_parent: String, update_links: Option<bool>) -> AppResult<String> {
+pub fn move_entry(
+    state: State<AppState>,
+    path: String,
+    new_parent: String,
+    update_links: Option<bool>,
+) -> AppResult<String> {
     with_vault(&state, |v| v.move_to(&path, &new_parent, update_links.unwrap_or(true)))
 }
 

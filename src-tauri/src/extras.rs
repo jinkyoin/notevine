@@ -18,8 +18,7 @@ use unicode_normalization::UnicodeNormalization;
 use crate::error::{AppError, AppResult};
 use crate::history::Origin;
 use crate::paths::{
-    file_name, is_hidden, is_note, join_rel, name_key, normalize_rel, parent_rel, resolve_rel, to_rel,
-    validate_name,
+    file_name, is_hidden, is_note, join_rel, name_key, normalize_rel, parent_rel, resolve_rel, to_rel, validate_name,
 };
 use crate::vault::Vault;
 
@@ -104,10 +103,8 @@ fn diff_side(vault: &Vault, rel: &str, id: Option<i64>) -> AppResult<String> {
 pub fn diff_lines(old: &str, new: &str) -> Vec<DiffLine> {
     let old: Vec<&str> = old.lines().collect();
     let new: Vec<&str> = new.lines().collect();
-    let diff = TextDiff::configure()
-        .algorithm(Algorithm::Patience)
-        .timeout(Duration::from_secs(2))
-        .diff_slices(&old, &new);
+    let diff =
+        TextDiff::configure().algorithm(Algorithm::Patience).timeout(Duration::from_secs(2)).diff_slices(&old, &new);
     diff.iter_all_changes()
         .map(|c| DiffLine {
             kind: match c.tag() {
@@ -294,7 +291,9 @@ impl NameMap {
         let mut by_name: HashMap<String, Vec<String>> = HashMap::new();
         let mut stack = vec![root.to_path_buf()];
         while let Some(dir) = stack.pop() {
-            let Ok(entries) = fs::read_dir(&dir) else { continue };
+            let Ok(entries) = fs::read_dir(&dir) else {
+                continue;
+            };
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().into_owned();
                 if is_hidden(&name) {
@@ -405,7 +404,7 @@ pub mod cmd {
     use tauri::State;
 
     use super::{DeletedNote, DiffLine, RESOLVER};
-    use crate::commands::{with_vault, AppState};
+    use crate::commands::{AppState, with_vault};
     use crate::error::AppResult;
 
     #[tauri::command]
@@ -641,7 +640,8 @@ mod tests {
     fn resolve_by_name_path_and_preference() {
         let (dir, v) = vault();
         let r = AttachmentResolver::new();
-        for p in ["첨부/그림.png", "a/b/그림.png", "노트/그림.png", "z/그림.png", ".git/그림.png", "자료/표.xlsx"] {
+        for p in ["첨부/그림.png", "a/b/그림.png", "노트/그림.png", "z/그림.png", ".git/그림.png", "자료/표.xlsx"]
+        {
             let abs = dir.path().join(p);
             fs::create_dir_all(abs.parent().unwrap()).unwrap();
             fs::write(abs, b"").unwrap();
