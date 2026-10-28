@@ -4,8 +4,10 @@
 //! - identical content to the latest version is never stored again;
 //! - app saves of the same note within 5 minutes of a bundle's start update that
 //!   bundle instead of adding a row, so 30 minutes of typing leaves ~6 versions;
-//! - a forced save (Ctrl+S, app exit) always lands in a version and closes the
-//!   bundle, so the next edit starts a new one.
+//! - a pause of a minute or more ends the bundle: coming back to edit later
+//!   always keeps what was there before (usability test, 2026-10-28);
+//! - a forced save (Ctrl+S, leaving the note, app exit, creating a note) always
+//!   lands in a version and closes the bundle, so the next edit starts a new one.
 
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -16,6 +18,8 @@ use serde::Serialize;
 use crate::error::AppResult;
 
 pub const BUNDLE_MS: i64 = 5 * 60 * 1000;
+/// Saves further apart than this are separate edits, not one burst of typing.
+pub const IDLE_MS: i64 = 60 * 1000;
 const ZSTD_LEVEL: i32 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -100,17 +104,17 @@ impl History {
 
     pub fn record_at(&self, path: &str, content: &str, origin: Origin, force: bool, now: i64) -> AppResult<Recorded> {
         let hash = blake3::hash(content.as_bytes()).to_hex().to_string();
-        let last: Option<(i64, i64, String, String, bool)> = self
+        let last: Option<(i64, i64, String, String, bool, i64)> = self
             .conn
             .query_row(
-                "SELECT id, started_at, hash, origin, sealed FROM versions
+                "SELECT id, started_at, hash, origin, sealed, saved_at FROM versions
                  WHERE path = ?1 ORDER BY saved_at DESC, id DESC LIMIT 1",
                 params![path],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?)),
             )
             .optional()?;
 
-        if let Some((id, _, last_hash, _, _)) = &last
+        if let Some((id, _, last_hash, _, _, _)) = &last
             && *last_hash == hash
         {
             if force {
@@ -122,11 +126,12 @@ impl History {
         let blob = zstd::encode_all(content.as_bytes(), ZSTD_LEVEL)?;
         let size = content.len() as i64;
 
-        let open_bundle = last.filter(|(_, started, _, last_origin, sealed)| {
+        let open_bundle = last.filter(|(_, started, _, last_origin, sealed, saved)| {
             origin == Origin::App
                 && Origin::parse(last_origin) == Origin::App
                 && !sealed
                 && now.saturating_sub(*started) < BUNDLE_MS
+                && now.saturating_sub(*saved) < IDLE_MS
         });
 
         if let Some((id, ..)) = open_bundle {
@@ -235,12 +240,25 @@ mod tests {
     fn forced_save_closes_the_bundle() {
         let (_d, h) = history();
         h.record_at("a.md", "1", Origin::App, false, 0).unwrap();
-        assert!(matches!(h.record_at("a.md", "2", Origin::App, true, MIN).unwrap(), Recorded::Updated(_)));
-        assert!(matches!(h.record_at("a.md", "3", Origin::App, false, 2 * MIN).unwrap(), Recorded::Created(_)));
+        // saves 10 s apart: one burst of typing, so only forcing splits it
+        assert!(matches!(h.record_at("a.md", "2", Origin::App, true, 10_000).unwrap(), Recorded::Updated(_)));
+        assert!(matches!(h.record_at("a.md", "3", Origin::App, false, 20_000).unwrap(), Recorded::Created(_)));
         // forcing with unchanged text seals without adding a row
-        assert_eq!(h.record_at("a.md", "3", Origin::App, true, 3 * MIN).unwrap(), Recorded::Skipped);
-        assert!(matches!(h.record_at("a.md", "4", Origin::App, false, 4 * MIN).unwrap(), Recorded::Created(_)));
+        assert_eq!(h.record_at("a.md", "3", Origin::App, true, 30_000).unwrap(), Recorded::Skipped);
+        assert!(matches!(h.record_at("a.md", "4", Origin::App, false, 40_000).unwrap(), Recorded::Created(_)));
         assert_eq!(h.list("a.md").unwrap().len(), 3);
+    }
+
+    #[test]
+    fn a_pause_starts_a_new_version() {
+        let (_d, h) = history();
+        h.record_at("a.md", "김, 이, 박", Origin::App, false, 0).unwrap();
+        h.record_at("a.md", "김, 이, 박!", Origin::App, false, 30_000).unwrap(); // still typing
+        // two minutes later the user comes back and edits
+        h.record_at("a.md", "김, 이, 박, 최", Origin::App, false, 150_000).unwrap();
+        let v = h.list("a.md").unwrap();
+        assert_eq!(v.len(), 2);
+        assert_eq!(h.content(v[1].id).unwrap(), "김, 이, 박!");
     }
 
     #[test]

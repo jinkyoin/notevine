@@ -71,6 +71,8 @@ interface AppStore {
   /** Bumped after each save so panels that depend on links refresh. */
   savedSeq: number;
   sidebarTab: SidebarTab;
+  /** In-app confirmation waiting for an answer (see ConfirmDialog). */
+  confirm: { title: string; message: string; okLabel: string; resolve: (ok: boolean) => void } | null;
   config: VaultConfig;
   modal: Modal;
   /** Version viewer (SCR-10): the note and the version to select first. */
@@ -115,6 +117,8 @@ interface AppStore {
   noteSaved(): void;
   setSidebarTab(tab: SidebarTab): void;
   setModal(m: Modal): void;
+  /** Asks in an in-app dialog; resolves true when the user agrees. */
+  ask(title: string, message: string, okLabel: string): Promise<boolean>;
   setVersionView(v: { path: string; id: number | null } | null): void;
   setPanels(p: { leftOpen?: boolean; rightOpen?: boolean }): void;
   goBack(): void;
@@ -199,6 +203,7 @@ export const useApp = create<AppStore>((set, get) => {
     jumpLine: null,
     savedSeq: 0,
     sidebarTab: "files",
+    confirm: null,
     config: DEFAULT_CONFIG,
     modal: null,
     versionView: null,
@@ -361,6 +366,10 @@ export const useApp = create<AppStore>((set, get) => {
       set({ modal });
     },
 
+    ask(title, message, okLabel) {
+      return new Promise((resolve) => set({ confirm: { title, message, okLabel, resolve } }));
+    },
+
     setVersionView(versionView) {
       set({ versionView });
     },
@@ -405,6 +414,14 @@ export const useApp = create<AppStore>((set, get) => {
     },
 
     async applyPreset() {
+      const c = get().config;
+      const folders = [c.inbox_folder, c.journal_folder, c.idea_folder, c.research_folder, c.template_folder, c.attachment_folder];
+      const ok = await get().ask(
+        "업무일지·아이디어 기능 켜기",
+        `노트 폴더에 다음 폴더와 템플릿 4개(업무일지·회의록·아이디어·자료)를 만듭니다.\n\n${folders.join("\n")}\n\n이미 있는 폴더와 노트는 바꾸지 않습니다.`,
+        "켜기",
+      );
+      if (!ok) return;
       const r = await attempt(() => api.applyPreset());
       if (!r) return;
       const config = await api.getConfig().catch(() => get().config);
@@ -413,12 +430,17 @@ export const useApp = create<AppStore>((set, get) => {
       const made = r.created_folders.length + r.created_templates.length;
       get().toast(
         made
-          ? `기록 관리 프리셋을 켰습니다 · 폴더 ${r.created_folders.length}개, 템플릿 ${r.created_templates.length}개를 만들었습니다`
-          : "기록 관리 프리셋을 켰습니다 · 이미 있는 폴더와 템플릿은 그대로 두었습니다",
+          ? `업무일지·아이디어 기능을 켰습니다 · 폴더 ${r.created_folders.length}개, 템플릿 ${r.created_templates.length}개를 만들었습니다`
+          : "업무일지·아이디어 기능을 켰습니다 · 이미 있는 폴더와 템플릿은 그대로 두었습니다",
       );
     },
 
     async openTodayJournal() {
+      // The journal lives in the preset's folders; offer to set them up first.
+      if (!get().config.preset_enabled) {
+        await get().applyPreset();
+        if (!get().config.preset_enabled) return;
+      }
       const path = await attempt(() => api.openTodayJournal());
       if (!path) return;
       await get().refreshTree();

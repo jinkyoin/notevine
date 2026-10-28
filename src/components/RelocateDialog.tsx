@@ -17,7 +17,7 @@ export function RelocateDialog() {
   if (!pending) return null;
   const total = pending.changes.reduce((n, c) => n + c.count, 0);
   const what = baseName(pending.path).replace(/\.md$/i, "");
-  const verb = pending.kind === "rename" ? `"${pending.arg}"(으)로 이름을 바꾸면` : `"${pending.arg || "볼트 최상위"}"(으)로 옮기면`;
+  const verb = pending.kind === "rename" ? `"${pending.arg}"(으)로 이름을 바꾸면` : `"${pending.arg || "맨 위 폴더"}"(으)로 옮기면`;
 
   return (
     <div className="modal-backdrop" onMouseDown={() => confirm(null)}>

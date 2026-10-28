@@ -36,6 +36,9 @@ const ymd = `${today.getFullYear()}-${p2(today.getMonth() + 1)}-${p2(today.getDa
   await page.keyboard.type("프리셋");
   await sleep(100);
   await page.keyboard.press("Enter");
+  await page.waitForSelector(".modal >> text=업무일지·아이디어 기능 켜기");
+  console.log("confirm lists folders:", (await page.textContent(".confirm-msg")).includes("10 업무일지"));
+  await page.click(".modal .btn.primary");
   await page.waitForSelector(".tree-row >> text=90 템플릿", { timeout: 5000 });
   console.log("preset folders:", ["00 Inbox", "10 업무일지", "20 아이디어", "30 조사자료", "90 템플릿", "첨부"].map(exists));
   console.log("templates:", fs.readdirSync(path.join(VAULT, "90 템플릿")));

@@ -62,7 +62,7 @@ export function HistoryPanel() {
           ))}
         </div>
       ))}
-      <p className="muted small pad hist-note">히스토리는 .app/history.db에 저장됩니다. 볼트와 함께 백업하세요.</p>
+      <p className="muted small pad hist-note">이전 버전은 이 노트 폴더 안의 숨은 .app 폴더에 보관됩니다. 노트를 백업할 때 함께 백업하세요.</p>
     </section>
   );
 }

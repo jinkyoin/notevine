@@ -17,7 +17,7 @@ function Palette({ close }: { close: () => void }) {
     const k = q.normalize("NFC").toLowerCase().trim();
     return availableCommands()
       .filter((c) => c.id !== "app.palette")
-      .filter((c) => !k || c.title.toLowerCase().includes(k) || c.id.includes(k))
+      .filter((c) => !k || `${c.title} ${c.keywords ?? ""}`.toLowerCase().includes(k) || c.id.includes(k))
       .sort((a, b) => a.title.localeCompare(b.title, "ko"));
   }, [q]);
 

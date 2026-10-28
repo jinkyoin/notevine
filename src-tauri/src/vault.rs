@@ -376,7 +376,8 @@ impl Vault {
             None => self.unique_name(&dir_rel, UNTITLED, ".md")?,
         };
         let rel = join_rel(&dir_rel, &name);
-        self.save_note(&rel, content, false)?;
+        // Sealed, so the first real edit becomes its own version.
+        self.save_note(&rel, content, true)?;
         Ok(rel)
     }
 

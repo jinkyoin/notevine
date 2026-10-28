@@ -39,8 +39,13 @@ export function IdeaBoard() {
   const [menu, setMenu] = useState<{ x: number; y: number; path: string } | null>(null);
 
   useEffect(() => {
-    api.ideas().then(setIdeas).catch(() => setIdeas([]));
-  }, [savedSeq, externalSeq, notes]);
+    // Templates are not ideas, even though the idea template has type: idea.
+    const templates = config.template_folder + "/";
+    api
+      .ideas()
+      .then((list) => setIdeas(list.filter((i) => !i.path.startsWith(templates))))
+      .catch(() => setIdeas([]));
+  }, [savedSeq, externalSeq, notes, config.template_folder]);
 
   useEffect(() => {
     if (!menu) return;
@@ -54,6 +59,7 @@ export function IdeaBoard() {
   const other = ideas.filter((i) => !statuses.includes(i.status));
   if (other.length) groups.push(["기타", other]);
   const ideaPaths = new Set(ideas.map((i) => i.path));
+
   const inbox = notes.filter((n) => n.path.startsWith(config.inbox_folder + "/") && !ideaPaths.has(n.path));
 
   const dropTo = (status: string | null) => ({
@@ -109,7 +115,7 @@ export function IdeaBoard() {
         ))}
         <section className="idea-group inbox">
           <h4>
-            {config.inbox_folder} 미분류 <span className="count">{inbox.length}</span>
+            {config.inbox_folder} · 상태 없음 <span className="count">{inbox.length}</span>
           </h4>
           <ul>
             {inbox.map((n) => (

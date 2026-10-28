@@ -24,6 +24,7 @@ export function SearchPanel() {
   const savedSeq = useApp((s) => s.savedSeq);
   const externalSeq = useApp((s) => s.externalSeq);
   const focusSeq = useApp((s) => s.searchFocusSeq);
+  const templateFolder = useApp((s) => s.config.template_folder);
   const [text, setText] = useState("");
   const [extra, setExtra] = useState<PropFilter[]>([]);
   const [dateField, setDateField] = useState<DateFilter["field"]>("modified");
@@ -53,7 +54,9 @@ export function SearchPanel() {
         .search(query)
         .then((r) => {
           if (stale) return;
-          setResult(r);
+          // Templates are scaffolding, not notes: keep them out of results.
+          const hits = r.hits.filter((h) => !h.path.startsWith(templateFolder + "/"));
+          setResult({ ...r, hits, total: r.total - (r.hits.length - hits.length) });
           setError(null);
         })
         .catch((e) => !stale && setError(errorMessage(e)));
@@ -62,7 +65,7 @@ export function SearchPanel() {
       stale = true;
       window.clearTimeout(t);
     };
-  }, [query, savedSeq, externalSeq]);
+  }, [query, savedSeq, externalSeq, templateFolder]);
 
   return (
     <div className="search-panel">
@@ -130,7 +133,7 @@ export function SearchPanel() {
               </div>
             )}
             <div className="r-meta">
-              {h.path.includes("/") ? h.path.slice(0, h.path.lastIndexOf("/")) : "볼트"} ·{" "}
+              {h.path.includes("/") ? h.path.slice(0, h.path.lastIndexOf("/")) : "맨 위 폴더"} ·{" "}
               {new Date(h.mtime).toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" })}
             </div>
           </li>

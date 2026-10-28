@@ -17,6 +17,7 @@ import { CommandPalette } from "./CommandPalette";
 import { QuickMemo } from "./QuickMemo";
 import { TemplatePicker } from "./TemplatePicker";
 import { Settings } from "./Settings";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 export function MainLayout() {
   const vault = useApp((s) => s.vault);
@@ -62,11 +63,12 @@ export function MainLayout() {
           ))}
         </nav>
         <span className="spacer" />
-        {preset && (
-          <button className="btn ghost small" onClick={() => void openTodayJournal()} title="Ctrl+Shift+D">
-            오늘 업무일지
-          </button>
-        )}
+        <button className="btn ghost small" onClick={() => void openTodayJournal()} title="Ctrl+Shift+D">
+          오늘 업무일지
+        </button>
+        <button className="btn ghost small" onClick={() => setModal("quickMemo")} title="Ctrl+Shift+N">
+          빠른 메모
+        </button>
         <button className="icon-btn" title="명령 팔레트 (Ctrl+P)" onClick={() => setModal("palette")}>
           ⌘
         </button>
@@ -109,7 +111,7 @@ export function MainLayout() {
                 <p className="muted small">
                   업무일지·아이디어·조사자료를 정리하려면{" "}
                   <button className="link-btn" onClick={() => void useApp.getState().applyPreset()}>
-                    기록 관리 프리셋 켜기
+                    업무일지·아이디어 기능 켜기
                   </button>
                 </p>
               )}
@@ -132,6 +134,7 @@ export function MainLayout() {
       <Settings />
       <DeletedNotes />
       <VersionView />
+      <ConfirmDialog />
     </div>
   );
 }

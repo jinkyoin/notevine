@@ -6,6 +6,8 @@ export interface Command {
   title: string;
   /** e.g. "Ctrl+Shift+D", "F2", "Alt+ArrowLeft". */
   keys?: string;
+  /** Extra words the palette matches (e.g. "업무일지 일지 오늘"). */
+  keywords?: string;
   /** Hidden from the palette and shortcuts when this returns false. */
   when?: () => boolean;
   run: () => unknown;

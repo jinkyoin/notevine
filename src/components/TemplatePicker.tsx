@@ -21,7 +21,14 @@ function Picker({ close }: { close: () => void }) {
   const here = currentDir();
 
   useEffect(() => {
-    api.listTemplates().then(setTemplates).catch(() => setTemplates([]));
+    api
+      .listTemplates()
+      .then((t) => {
+        setTemplates(t);
+        // Nothing to choose from: skip straight to naming a blank note.
+        if (t.length === 0) setChosen(0);
+      })
+      .catch(() => setChosen(0));
   }, []);
 
   const options: { label: string; preview: string; template: string | null; dir: string }[] = [
@@ -51,7 +58,7 @@ function Picker({ close }: { close: () => void }) {
       <div className="modal-backdrop top" onMouseDown={close}>
         <div className="palette" onMouseDown={(e) => e.stopPropagation()}>
           <div className="memo-head">
-            {o.label} <span className="muted small">→ {o.dir || "볼트 최상위"}</span>
+            {o.label} <span className="muted small">→ {o.dir || "맨 위 폴더"}</span>
           </div>
           <input
             className="palette-input"
@@ -96,7 +103,7 @@ function Picker({ close }: { close: () => void }) {
                 <div>{o.label}</div>
                 {o.preview && <div className="muted small tpl-preview">{o.preview}</div>}
               </div>
-              <span className="muted small">{o.dir || "볼트 최상위"}</span>
+              <span className="muted small">{o.dir || "맨 위 폴더"}</span>
             </li>
           ))}
         </ul>
