@@ -40,6 +40,8 @@ export interface SendRequest {
   checked: string[];
   /** Text sent besides notes (e.g. the selection), shown for transparency. */
   extra?: { label: string; text: string };
+  /** Relevant notes left out because they are tagged #비공개. */
+  privateExcluded?: number;
   resolve: (paths: string[] | null) => void;
 }
 
@@ -159,13 +161,19 @@ export const useAi = create<AiState>((set, get) => {
       if (!q || get().running) return;
       const provider = await ready();
       if (!provider) return;
-      const found = await api.aiContext(q, 8).catch(() => [] as ContextNote[]);
-      // Offer the open note too, unchecked unless it is already among the hits.
+      const ctx = await api.aiContext(q, 8).catch(() => ({ notes: [] as ContextNote[], private_excluded: [] as string[] }));
+      const found = ctx.notes;
+      const excluded = new Set(ctx.private_excluded);
+      // Offer the open note too, unchecked unless it is already among the hits (never a private one).
       const open = app().openPath;
       const notes = [...found];
       if (open && !notes.some((n) => n.path === open)) {
-        const text = await api.readNote(open).catch(() => "");
-        notes.push({ path: open, title: noteTitle(open), snippet: "(지금 열려 있는 노트)", chars: [...text].length });
+        const isPrivate = (await api.aiPrivateNotes([open]).catch(() => [open])).length > 0;
+        if (isPrivate) excluded.add(open);
+        else {
+          const text = await api.readNote(open).catch(() => "");
+          notes.push({ path: open, title: noteTitle(open), snippet: "(지금 열려 있는 노트)", chars: [...text].length });
+        }
       }
       const paths = await get().confirmSend({
         provider,
@@ -173,6 +181,7 @@ export const useAi = create<AiState>((set, get) => {
         notes,
         checked: found.map((n) => n.path),
         extra: { label: "질문", text: q },
+        privateExcluded: excluded.size,
       });
       if (paths === null) return;
       const history = get()
@@ -231,6 +240,10 @@ export const useAi = create<AiState>((set, get) => {
       const editor = app().editorApi;
       const path = app().openPath;
       if (!editor || !path) return app().toast("먼저 노트를 열고 글을 선택하세요", "error");
+      // Private first: the open note may carry the tag in text not saved yet, so check the editor text too.
+      const privateNow = /(^|\s)#비공개(\/|\s|$)/m.test(app().docText ?? "");
+      const privateSaved = (await api.aiPrivateNotes([path]).catch(() => [path])).length > 0;
+      if (privateNow || privateSaved) return app().toast("#비공개 태그가 있는 노트라 AI로 보내지 않습니다", "error");
       const sel = editor.selection();
       if (!sel.text.trim()) return app().toast("AI에 보낼 글이 없습니다. 글을 선택하거나 문단 안에 커서를 두세요", "error");
       const provider = await ready();
@@ -280,13 +293,22 @@ export const useAi = create<AiState>((set, get) => {
       if (!paths.length) return app().toast(`이번 주(${from} ~ ${to}) 업무일지가 없습니다`, "error");
       const provider = await ready();
       if (!provider) return;
+      const privatePaths = new Set(await api.aiPrivateNotes(paths).catch(() => paths));
+      const shareable = paths.filter((p) => !privatePaths.has(p));
+      if (!shareable.length) return app().toast("이번 주 업무일지가 모두 #비공개라 보낼 수 없습니다", "error");
       const notes: ContextNote[] = await Promise.all(
-        paths.map(async (p) => {
+        shareable.map(async (p) => {
           const text = await api.readNote(p).catch(() => "");
           return { path: p, title: noteTitle(p), snippet: text.replace(/\s+/g, " ").slice(0, 120), chars: [...text].length };
         }),
       );
-      const send = await get().confirmSend({ provider, title: `주간 회고 만들기 (${from} ~ ${to})`, notes, checked: paths });
+      const send = await get().confirmSend({
+        provider,
+        title: `주간 회고 만들기 (${from} ~ ${to})`,
+        notes,
+        checked: shareable,
+        privateExcluded: privatePaths.size,
+      });
       if (send === null) return;
       if (!send.length) return app().toast("보낼 업무일지를 하나 이상 고르세요", "error");
       const handle = runAi(provider.id, REVIEW_SYSTEM, reviewPrompt(`${from} ~ ${to}`), send, (text) =>

@@ -172,10 +172,38 @@ pub async fn ai_providers() -> AppResult<Vec<AiProvider>> {
     tauri::async_runtime::spawn_blocking(providers_cached).await.map_err(|e| other_err(e.to_string()))
 }
 
+/// Notes tagged with this (or a sub-tag like `#비공개/회사`) are never sent to AI.
+pub const PRIVATE_TAG: &str = "비공개";
+
+/// True when the note's text carries the private tag, inline or in frontmatter `tags`.
+/// Decided from the text itself so a tag typed a moment ago already counts.
+pub fn is_private(content: &str) -> bool {
+    crate::parse::parse(content).tags.iter().any(|t| {
+        let k = crate::paths::name_key(t);
+        k == PRIVATE_TAG || k.starts_with(&format!("{PRIVATE_TAG}/"))
+    })
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ContextResult {
+    pub notes: Vec<ContextNote>,
+    /// Relevant notes left out because they are private.
+    pub private_excluded: Vec<String>,
+}
+
 /// Notes relevant to a natural-language question, for the user to pick from.
+/// Private notes are never offered.
 #[tauri::command]
-pub fn ai_context(state: State<AppState>, question: String, limit: u32) -> AppResult<Vec<ContextNote>> {
+pub fn ai_context(state: State<AppState>, question: String, limit: u32) -> AppResult<ContextResult> {
     with_vault(&state, |v| context_notes(v, &question, limit))
+}
+
+/// Which of these notes are private (so the UI can refuse to send them or their text).
+#[tauri::command]
+pub fn ai_private_notes(state: State<AppState>, paths: Vec<String>) -> AppResult<Vec<String>> {
+    with_vault(&state, |v| {
+        Ok(paths.into_iter().filter(|p| load_note(v, p).map(|d| is_private(&d.content)).unwrap_or(false)).collect())
+    })
 }
 
 /// Starts a run and returns right away; progress arrives on `on_event`, ending
@@ -199,6 +227,10 @@ pub fn ai_run(
     } else {
         with_vault(&state, |v| notes.iter().map(|rel| load_note(v, rel)).collect::<AppResult<Vec<_>>>())?
     };
+    // Last line of defence: whatever the UI did, a private note never leaves.
+    if let Some(d) = docs.iter().find(|d| is_private(&d.content)) {
+        return Err(other_err(format!("#{PRIVATE_TAG} 태그가 있는 노트는 AI로 보낼 수 없습니다: {}", d.title)));
+    }
     let (block, notice) = notes_block(&docs);
     let input = build_input(p, &system, &block, &prompt);
     let cancel = register_run(&request_id)?;
@@ -934,7 +966,7 @@ struct Scored {
 
 /// Notes matching any keyword of the question, ranked by the number of distinct
 /// keywords hit (a title hit counts double), then by modification time.
-fn context_notes(v: &Vault, question: &str, limit: u32) -> AppResult<Vec<ContextNote>> {
+fn context_notes(v: &Vault, question: &str, limit: u32) -> AppResult<ContextResult> {
     let limit = if limit == 0 { DEFAULT_CONTEXT_LIMIT } else { limit.min(MAX_CONTEXT_LIMIT) } as usize;
     let mut scored: HashMap<String, Scored> = HashMap::new();
     for kw in extract_keywords(question) {
@@ -953,19 +985,21 @@ fn context_notes(v: &Vault, question: &str, limit: u32) -> AppResult<Vec<Context
     }
     let mut ranked: Vec<Scored> = scored.into_values().collect();
     ranked.sort_by(|a, b| b.score.cmp(&a.score).then(b.mtime.cmp(&a.mtime)).then_with(|| a.path.cmp(&b.path)));
-    ranked.truncate(limit);
-    Ok(ranked
-        .into_iter()
-        .map(|s| {
-            let chars = v
-                .abs(&s.path)
-                .ok()
-                .and_then(|p| fs::read_to_string(p).ok())
-                .map(|c| u32::try_from(c.chars().count()).unwrap_or(u32::MAX))
-                .unwrap_or(0);
-            ContextNote { path: s.path, title: s.title, snippet: s.snippet, chars }
-        })
-        .collect())
+    let mut notes = Vec::new();
+    let mut private_excluded = Vec::new();
+    for s in ranked {
+        if notes.len() >= limit {
+            break;
+        }
+        let content = v.abs(&s.path).ok().and_then(|p| fs::read_to_string(p).ok()).unwrap_or_default();
+        if is_private(&content) {
+            private_excluded.push(s.path);
+            continue;
+        }
+        let chars = u32::try_from(content.chars().count()).unwrap_or(u32::MAX);
+        notes.push(ContextNote { path: s.path, title: s.title, snippet: s.snippet, chars });
+    }
+    Ok(ContextResult { notes, private_excluded })
 }
 
 // ---------------------------------------------------------------------------
@@ -1169,6 +1203,27 @@ fn providers_cached() -> Vec<AiProvider> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn private_tag_inline_frontmatter_and_subtags() {
+        assert!(super::is_private("회사 일 #비공개"));
+        assert!(super::is_private("---\ntags: [업무, 비공개]\n---\n본문"));
+        assert!(super::is_private("메모 #비공개/회사"));
+        assert!(!super::is_private("공개해도 되는 노트 #비공개아님"));
+        assert!(!super::is_private("```\n#비공개\n```\n코드 안 태그는 태그가 아님"));
+    }
+
+    #[test]
+    fn private_notes_are_never_offered_or_sent() {
+        let dir = tempfile::tempdir().unwrap();
+        let v = Vault::open(dir.path()).unwrap();
+        v.create_note("", Some("공개 회의"), "배포 회의 결정").unwrap();
+        v.create_note("", Some("비밀 회의"), "배포 회의 연봉 #비공개").unwrap();
+        let r = super::context_notes(&v, "배포 회의", 8).unwrap();
+        let titles: Vec<_> = r.notes.iter().map(|n| n.title.as_str()).collect();
+        assert_eq!(titles, ["공개 회의"]);
+        assert_eq!(r.private_excluded, ["비밀 회의.md"]);
+    }
+
     #[test]
     fn recognizes_model_rejections_only() {
         assert!(super::is_model_rejected(
@@ -1492,14 +1547,14 @@ mod tests {
         fs::write(dir.path().join("무관.md"), "아무 내용 없음").unwrap();
         v.index().scan(v.root()).unwrap();
 
-        let got = context_notes(&v, "예산 회의는 언제였지?", 0).unwrap();
+        let got = context_notes(&v, "예산 회의는 언제였지?", 0).unwrap().notes;
         let paths: Vec<&str> = got.iter().map(|c| c.path.as_str()).collect();
         assert_eq!(paths, ["예산 회의.md", "일기.md"]);
         assert_eq!(got[0].title, "예산 회의");
         assert_eq!(got[0].chars, "회의에서 예산을 정했다.".chars().count() as u32);
         assert!(got[1].snippet.contains("회의"));
         assert!(got.iter().all(|c| c.snippet.chars().count() <= SNIPPET_MAX));
-        assert!(context_notes(&v, "뭐 알려줘", 5).unwrap().is_empty());
+        assert!(context_notes(&v, "뭐 알려줘", 5).unwrap().notes.is_empty());
     }
 
     #[test]

@@ -54,6 +54,9 @@ export function AiSendConfirm() {
         ) : (
           req.extra === undefined && <p className="muted small">보낼 노트가 없습니다.</p>
         )}
+        {!!req.privateExcluded && (
+          <p className="small ai-private">#비공개 태그가 있는 노트 {req.privateExcluded}개는 보내지 않도록 뺐습니다.</p>
+        )}
         <p className="muted small">
           보낼 분량: 노트 {chosen.length}개 · 약 {chars.toLocaleString()}자
         </p>

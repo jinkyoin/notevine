@@ -117,6 +117,7 @@ export function AiPanel() {
         </p>
         <p className="muted small pad">
           켜면 질문할 때마다 보낼 노트를 먼저 보여 드리고, 확인한 것만 해당 AI 서비스(Anthropic·OpenAI)로 보냅니다.
+          #비공개 태그가 있는 노트는 보내지 않습니다.
         </p>
         <div className="pad">
           <button className="btn primary small" onClick={() => setEnabled(true)}>

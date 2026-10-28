@@ -1409,3 +1409,8 @@ kbd {
 .ai-actions .btn {
   white-space: nowrap;
 }
+
+.ai-private {
+  color: var(--accent);
+  margin: 0 0 6px;
+}

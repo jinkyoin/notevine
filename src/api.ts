@@ -231,7 +231,10 @@ export const api = {
   resolveAttachment: (target: string, from: string) => invoke<string | null>("resolve_attachment", { target, from }),
   attachmentPath: (path: string) => invoke<string>("attachment_path", { path }),
   aiProviders: () => invoke<AiProvider[]>("ai_providers"),
-  aiContext: (question: string, limit = 8) => invoke<ContextNote[]>("ai_context", { question, limit }),
+  aiContext: (question: string, limit = 8) =>
+    invoke<{ notes: ContextNote[]; private_excluded: string[] }>("ai_context", { question, limit }),
+  /** The given notes that carry #비공개 (never sent to AI). */
+  aiPrivateNotes: (paths: string[]) => invoke<string[]>("ai_private_notes", { paths }),
   /** Starts an AI run; events arrive on `onEvent`. Resolves once the CLI has been started. */
   aiRun: (
     requestId: string,
