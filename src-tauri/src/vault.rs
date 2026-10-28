@@ -11,7 +11,8 @@ use serde::Serialize;
 
 use crate::error::{AppError, AppResult};
 use crate::history::{History, Origin};
-use crate::index::Index;
+use crate::index::{Index, LinkRef};
+use crate::rewrite::{rebase_own_links, rewrite_links, Move};
 use crate::paths::{
     self, check_rel, file_name, is_hidden, is_note, join_rel, name_key, normalize_rel, parent_rel,
     validate_name, APP_DIR,
@@ -59,6 +60,24 @@ pub struct SaveOutcome {
     /// Another program changed the file since the editor loaded it. The disk
     /// version was kept and the editor's text went to this new file (NFR-REL-02).
     pub conflict: Option<String>,
+}
+
+/// A note whose links a rename/move would rewrite (SCR-15).
+#[derive(Debug, Clone, Serialize)]
+pub struct LinkChange {
+    /// Path of the note after the move.
+    pub path: String,
+    pub title: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Backlink {
+    pub path: String,
+    pub title: String,
+    pub line: u32,
+    /// The linking line, trimmed.
+    pub context: String,
 }
 
 pub struct Vault {
@@ -291,8 +310,13 @@ impl Vault {
         }
         self.history.rename_path(from, to)?;
         self.index.rename(from, to)?;
-        // A file renamed to .md becomes a note only now.
-        if is_note(to) && self.abs(to)?.is_file() && !self.index.has(to)? {
+        // Re-read moved notes: their relative markdown links now resolve from a new
+        // folder, and a file renamed to .md only now becomes a note.
+        if self.abs(to)?.is_dir() {
+            for rel in self.index.notes_under(to)? {
+                self.index.upsert_file(&self.root, &rel)?;
+            }
+        } else if is_note(to) {
             self.index.upsert_file(&self.root, to)?;
         }
         Ok(())
@@ -366,9 +390,9 @@ impl Vault {
         Ok(rel)
     }
 
-    /// Renames in place. Notes keep the `.md` extension even if the user drops it.
-    /// A case-only rename (`a.md` → `A.md`) is allowed.
-    pub fn rename(&self, rel: &str, new_name: &str) -> AppResult<String> {
+    /// Where a rename would put `rel`. Notes keep the `.md` extension even if the
+    /// user drops it; a case-only rename (`a.md` → `A.md`) is allowed.
+    pub fn rename_target(&self, rel: &str, new_name: &str) -> AppResult<String> {
         let rel = normalize_rel(rel);
         let src = self.existing(&rel)?;
         let old_name = file_name(&rel).to_string();
@@ -379,17 +403,14 @@ impl Vault {
         if self.sibling_exists(&dir, &new_name, Some(&old_name))? {
             return Err(AppError::AlreadyExists(join_rel(&dir, &new_name)));
         }
-        let new_rel = join_rel(&dir, &new_name);
-        fs::rename(src, self.abs(&new_rel)?)?;
-        self.after_move(&rel, &new_rel)?;
-        Ok(new_rel)
+        Ok(join_rel(&dir, &new_name))
     }
 
-    /// Moves a file or folder into another folder (`""` = vault root).
-    pub fn move_to(&self, rel: &str, new_parent_rel: &str) -> AppResult<String> {
+    /// Where moving `rel` into folder `new_parent_rel` (`""` = vault root) would put it.
+    pub fn move_target(&self, rel: &str, new_parent_rel: &str) -> AppResult<String> {
         let rel = normalize_rel(rel);
         let new_parent_rel = normalize_rel(new_parent_rel);
-        let src = self.existing(&rel)?;
+        self.existing(&rel)?;
         if new_parent_rel == rel || new_parent_rel.starts_with(&format!("{rel}/")) {
             return Err(AppError::InvalidName(new_parent_rel));
         }
@@ -398,15 +419,102 @@ impl Vault {
         }
         let name = file_name(&rel).to_string();
         let new_rel = join_rel(&new_parent_rel, &name);
-        if new_rel == rel {
-            return Ok(rel);
-        }
-        if self.sibling_exists(&new_parent_rel, &name, None)? {
+        if new_rel != rel && self.sibling_exists(&new_parent_rel, &name, None)? {
             return Err(AppError::AlreadyExists(new_rel));
         }
-        fs::rename(src, self.abs(&new_rel)?)?;
-        self.after_move(&rel, &new_rel)?;
         Ok(new_rel)
+    }
+
+    pub fn rename(&self, rel: &str, new_name: &str, update_links: bool) -> AppResult<String> {
+        let to = self.rename_target(rel, new_name)?;
+        self.relocate(&normalize_rel(rel), &to, update_links)
+    }
+
+    pub fn move_to(&self, rel: &str, new_parent_rel: &str, update_links: bool) -> AppResult<String> {
+        let to = self.move_target(rel, new_parent_rel)?;
+        self.relocate(&normalize_rel(rel), &to, update_links)
+    }
+
+    /// Notes whose links moving `from` to `to` would change, with their new text.
+    /// Paths are where those notes live after the move.
+    fn plan_link_updates(&self, from: &str, to: &str) -> AppResult<Vec<(String, String, usize)>> {
+        let mv = Move { from, to };
+        let name_unique = is_note(from) && self.index.name_count(&title_of(from))? == 1;
+        let moved = self.index.notes_under(from)?;
+        let mut sources = self.index.referrers(from)?;
+        sources.extend(moved.iter().cloned());
+        sources.sort();
+        sources.dedup();
+        let mut plan = Vec::new();
+        for src in sources {
+            let Ok(content) = fs::read_to_string(self.abs(&src)?) else { continue };
+            let (text, count) = if moved.contains(&src) {
+                // Re-base its own relative links first, then fix links to other moved notes.
+                let new_src = format!("{to}{}", &src[from.len()..]);
+                let (a, n1) = rebase_own_links(&content, &src, &new_src, &mv);
+                let (b, n2) = rewrite_links(&a, &new_src, &mv, name_unique);
+                (b, n1 + n2)
+            } else {
+                rewrite_links(&content, &src, &mv, name_unique)
+            };
+            if count > 0 {
+                let after = if moved.contains(&src) { format!("{to}{}", &src[from.len()..]) } else { src };
+                plan.push((after, text, count));
+            }
+        }
+        Ok(plan)
+    }
+
+    /// What a rename/move would change in other notes (SCR-15). Nothing is written.
+    pub fn preview_relocate(&self, from: &str, to: &str) -> AppResult<Vec<LinkChange>> {
+        Ok(self
+            .plan_link_updates(&normalize_rel(from), &normalize_rel(to))?
+            .into_iter()
+            .map(|(path, _, count)| LinkChange { title: title_of(&path), path, count })
+            .collect())
+    }
+
+    /// Renames/moves `from` to `to` and, when asked, rewrites links that point at it (FR-LNK-05).
+    fn relocate(&self, from: &str, to: &str, update_links: bool) -> AppResult<String> {
+        if from == to {
+            return Ok(to.to_string());
+        }
+        let plan = if update_links { self.plan_link_updates(from, to)? } else { Vec::new() };
+        fs::rename(self.abs(from)?, self.abs(to)?)?;
+        self.after_move(from, to)?;
+        for (path, text, _) in plan {
+            self.write_tracked(&path, &text)?;
+        }
+        Ok(to.to_string())
+    }
+
+    /// Writes a note on the app's behalf (not from the editor) and keeps history,
+    /// index and known hashes in step.
+    fn write_tracked(&self, rel: &str, content: &str) -> AppResult<()> {
+        self.write_note(rel, content)?;
+        self.known().insert(rel.to_string(), content_hash(content));
+        self.history.record(rel, content, Origin::App, true)?;
+        self.index.upsert_file(&self.root, rel)
+    }
+
+    /// Notes linking to `rel`, with the linking line for context (SCR-07).
+    pub fn backlinks(&self, rel: &str) -> AppResult<Vec<Backlink>> {
+        let rel = normalize_rel(rel);
+        let mut out = Vec::new();
+        let mut cache: HashMap<String, Vec<String>> = HashMap::new();
+        for LinkRef { path, title, line } in self.index.backlinks(&rel)? {
+            let lines = cache.entry(path.clone()).or_insert_with(|| {
+                self.abs(&path)
+                    .ok()
+                    .and_then(|p| fs::read_to_string(p).ok())
+                    .map(|s| s.lines().map(str::to_string).collect())
+                    .unwrap_or_default()
+            });
+            let context = lines.get(line.saturating_sub(1) as usize).map(|l| l.trim()).unwrap_or("");
+            let context: String = context.chars().take(160).collect();
+            out.push(Backlink { path, title, line, context });
+        }
+        Ok(out)
     }
 
     /// Sends a file or folder to the OS recycle bin.
@@ -418,6 +526,11 @@ impl Vault {
         self.forget_known(&rel);
         self.index.remove(&rel)
     }
+}
+
+fn title_of(rel: &str) -> String {
+    let name = file_name(rel);
+    if is_note(name) { name[..name.len() - 3].to_string() } else { name.to_string() }
 }
 
 fn with_md(name: &str) -> String {
@@ -503,10 +616,10 @@ mod tests {
         let (_d, v) = vault();
         v.create_note("", Some("a"), "").unwrap();
         v.create_note("", Some("b"), "").unwrap();
-        assert_eq!(v.rename("a.md", "새 이름").unwrap(), "새 이름.md");
-        assert!(matches!(v.rename("b.md", "새 이름"), Err(AppError::AlreadyExists(_))));
+        assert_eq!(v.rename("a.md", "새 이름", true).unwrap(), "새 이름.md");
+        assert!(matches!(v.rename("b.md", "새 이름", true), Err(AppError::AlreadyExists(_))));
         // case-only rename is allowed
-        assert_eq!(v.rename("b.md", "B").unwrap(), "B.md");
+        assert_eq!(v.rename("b.md", "B", true).unwrap(), "B.md");
         assert!(v.read_note("B.md").is_ok());
     }
 
@@ -557,10 +670,44 @@ mod tests {
         let (_d, v) = vault();
         v.create_folder("", "f").unwrap();
         v.create_note("f", Some("a"), "x").unwrap();
-        v.rename("f", "g").unwrap();
+        v.rename("f", "g", true).unwrap();
         assert_eq!(v.history().list("g/a.md").unwrap().len(), 1);
         assert!(v.index().has("g/a.md").unwrap());
         assert!(!v.index().has("f/a.md").unwrap());
+    }
+
+    #[test]
+    fn rename_rewrites_links_in_other_notes_after_preview() {
+        let (dir, v) = vault();
+        v.create_folder("", "30 조사자료").unwrap();
+        v.create_note("30 조사자료", Some("회의록"), "본문").unwrap();
+        v.create_folder("", "일지").unwrap();
+        v.create_note("일지", Some("a"), "[[회의록|어제]] [자료](../30%20조사자료/회의록.md)").unwrap();
+        let preview = v.preview_relocate("30 조사자료/회의록.md", "30 조사자료/회의록 1027.md").unwrap();
+        assert_eq!(preview.len(), 1);
+        assert_eq!((preview[0].path.as_str(), preview[0].count), ("일지/a.md", 2));
+        // preview writes nothing
+        assert!(fs::read_to_string(dir.path().join("일지/a.md")).unwrap().contains("[[회의록|"));
+
+        v.rename("30 조사자료/회의록.md", "회의록 1027", true).unwrap();
+        assert_eq!(
+            fs::read_to_string(dir.path().join("일지/a.md")).unwrap(),
+            "[[회의록 1027|어제]] [자료](../30%20조사자료/회의록%201027.md)"
+        );
+        assert_eq!(v.backlinks("30 조사자료/회의록 1027.md").unwrap().len(), 2);
+    }
+
+    #[test]
+    fn moving_a_note_rebases_its_own_relative_links() {
+        let (dir, v) = vault();
+        v.create_folder("", "a").unwrap();
+        v.create_folder("", "b").unwrap();
+        v.create_note("b", Some("y"), "").unwrap();
+        v.create_note("a", Some("x"), "[y](../b/y.md)").unwrap();
+        v.create_folder("a", "sub").unwrap();
+        v.move_to("a/x.md", "a/sub", true).unwrap();
+        assert_eq!(fs::read_to_string(dir.path().join("a/sub/x.md")).unwrap(), "[y](../../b/y.md)");
+        assert_eq!(v.backlinks("b/y.md").unwrap().len(), 1);
     }
 
     #[test]
@@ -569,8 +716,8 @@ mod tests {
         v.create_folder("", "f").unwrap();
         v.create_folder("f", "g").unwrap();
         v.create_note("", Some("n"), "").unwrap();
-        assert_eq!(v.move_to("n.md", "f/g").unwrap(), "f/g/n.md");
-        assert!(v.move_to("f", "f/g").is_err());
-        assert_eq!(v.move_to("f/g", "").unwrap(), "g");
+        assert_eq!(v.move_to("n.md", "f/g", true).unwrap(), "f/g/n.md");
+        assert!(v.move_to("f", "f/g", true).is_err());
+        assert_eq!(v.move_to("f/g", "", true).unwrap(), "g");
     }
 }

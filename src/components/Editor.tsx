@@ -11,6 +11,9 @@ import { useApp } from "../store";
 import { noteTitle } from "../lib/tree";
 import { livePreview, livePreviewTheme } from "../editor/livePreview";
 import { noteHighlight } from "../editor/highlight";
+import { refreshLinks, wikiLinks } from "../editor/wikilinks";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { findNode } from "../lib/tree";
 
 const SAVE_DELAY_MS = 1000;
 
@@ -57,6 +60,7 @@ export function Editor({ path }: { path: string }) {
             if (!disposed && !dirty) await reload();
           }
           if (!disposed && !dirty) setSaveState("saved");
+          useApp.getState().noteSaved();
         })
         .catch((e) => {
           dirty = true;
@@ -76,6 +80,11 @@ export function Editor({ path }: { path: string }) {
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: head } });
       applyingExternal = false;
     };
+
+    // Link styles depend on which notes exist.
+    const unsubscribeNotes = useApp.subscribe((s, prev) => {
+      if (s.notes !== prev.notes) view?.dispatch({ effects: refreshLinks.of(null) });
+    });
 
     // Another program changed this note: reload unless there are unsaved edits,
     // in which case the next save reports a conflict instead of overwriting.
@@ -104,6 +113,17 @@ export function Editor({ path }: { path: string }) {
               syntaxHighlighting(noteHighlight),
               livePreview,
               livePreviewTheme,
+              wikiLinks({
+                path: () => path,
+                notes: () => useApp.getState().notes,
+                follow: (target) => void useApp.getState().followLink(target),
+                openPath: (p) => {
+                  const st = useApp.getState();
+                  if (findNode(st.tree, p)) st.openNote(p);
+                  else st.toast(`파일을 찾을 수 없습니다: ${p}`, "error");
+                },
+                openUrl: (url) => void openUrl(url).catch(() => {}),
+              }),
               keymap.of([
                 { key: "Mod-s", run: () => (void save(true), true), preventDefault: true },
                 indentWithTab,
@@ -120,6 +140,12 @@ export function Editor({ path }: { path: string }) {
             ],
           }),
         });
+        // Coming from a backlink: put the cursor on the linking line.
+        const jump = useApp.getState().jumpLine;
+        if (jump && jump <= view.state.doc.lines) {
+          const at = view.state.doc.line(jump).from;
+          view.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: "center" }) });
+        }
         // A new note opens with its name being typed in the tree; don't steal that focus.
         if (!useApp.getState().editing) view.focus();
       })
@@ -131,6 +157,7 @@ export function Editor({ path }: { path: string }) {
       void save();
       disposed = true;
       unsubscribe();
+      unsubscribeNotes();
       setFlushEditor(async () => {});
       view?.destroy();
     };

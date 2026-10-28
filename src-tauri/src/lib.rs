@@ -5,6 +5,7 @@ mod index;
 mod parse;
 mod paths;
 mod recent;
+mod rewrite;
 mod vault;
 mod watcher;
 
@@ -45,6 +46,11 @@ pub fn run() {
             commands::create_folder,
             commands::rename_entry,
             commands::move_entry,
+            commands::preview_rename,
+            commands::preview_move,
+            commands::list_notes,
+            commands::resolve_link,
+            commands::backlinks,
             commands::delete_entry,
             commands::reveal_entry,
         ])

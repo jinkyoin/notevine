@@ -11,7 +11,8 @@ use crate::history::VersionMeta;
 use crate::recent::{RecentStore, RecentVault};
 use crate::index::Index;
 use crate::paths::APP_DIR;
-use crate::vault::{SaveOutcome, TreeNode, Vault, VaultInfo, Workspace};
+use crate::index::NoteRef;
+use crate::vault::{Backlink, LinkChange, SaveOutcome, TreeNode, Vault, VaultInfo, Workspace};
 use crate::watcher::{self, VaultWatcher};
 
 pub struct AppState {
@@ -119,13 +120,40 @@ pub fn create_folder(state: State<AppState>, parent: String, name: String) -> Ap
 }
 
 #[tauri::command]
-pub fn rename_entry(state: State<AppState>, path: String, new_name: String) -> AppResult<String> {
-    with_vault(&state, |v| v.rename(&path, &new_name))
+pub fn rename_entry(state: State<AppState>, path: String, new_name: String, update_links: Option<bool>) -> AppResult<String> {
+    with_vault(&state, |v| v.rename(&path, &new_name, update_links.unwrap_or(true)))
 }
 
 #[tauri::command]
-pub fn move_entry(state: State<AppState>, path: String, new_parent: String) -> AppResult<String> {
-    with_vault(&state, |v| v.move_to(&path, &new_parent))
+pub fn move_entry(state: State<AppState>, path: String, new_parent: String, update_links: Option<bool>) -> AppResult<String> {
+    with_vault(&state, |v| v.move_to(&path, &new_parent, update_links.unwrap_or(true)))
+}
+
+/// Notes whose links a rename would rewrite, before doing it (SCR-15).
+#[tauri::command]
+pub fn preview_rename(state: State<AppState>, path: String, new_name: String) -> AppResult<Vec<LinkChange>> {
+    with_vault(&state, |v| v.preview_relocate(&path, &v.rename_target(&path, &new_name)?))
+}
+
+#[tauri::command]
+pub fn preview_move(state: State<AppState>, path: String, new_parent: String) -> AppResult<Vec<LinkChange>> {
+    with_vault(&state, |v| v.preview_relocate(&path, &v.move_target(&path, &new_parent)?))
+}
+
+#[tauri::command]
+pub fn list_notes(state: State<AppState>) -> AppResult<Vec<NoteRef>> {
+    with_vault(&state, |v| v.index().notes())
+}
+
+/// Note a `[[target]]` opens, or null when no such note exists yet.
+#[tauri::command]
+pub fn resolve_link(state: State<AppState>, target: String) -> AppResult<Option<String>> {
+    with_vault(&state, |v| v.index().resolve(&target))
+}
+
+#[tauri::command]
+pub fn backlinks(state: State<AppState>, path: String) -> AppResult<Vec<Backlink>> {
+    with_vault(&state, |v| v.backlinks(&path))
 }
 
 #[tauri::command]

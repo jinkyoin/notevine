@@ -7,20 +7,22 @@ use std::path::Path;
 use std::time::{Duration, UNIX_EPOCH};
 
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use serde::Serialize;
 
 use crate::error::AppResult;
 use crate::parse::{self, LinkKind, ValueType};
-use crate::paths::{is_hidden, is_note, name_key, to_rel, APP_DIR};
+use crate::paths::{is_hidden, is_note, name_key, parent_rel, resolve_rel, to_rel, APP_DIR};
 
 /// Bump when the schema or what `parse` extracts changes: an index built by an
 /// older version is thrown away and rebuilt from the files.
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 const SCHEMA: &str = "
 CREATE TABLE notes (
   id       INTEGER PRIMARY KEY,
   path     TEXT NOT NULL UNIQUE,
   name_key TEXT NOT NULL,           -- lowercase NFC file name without .md, for link resolution
+  path_key TEXT NOT NULL,           -- lowercase NFC vault path without .md
   title    TEXT NOT NULL,
   ctime    INTEGER NOT NULL,
   mtime    INTEGER NOT NULL,
@@ -28,10 +30,11 @@ CREATE TABLE notes (
   fm_error TEXT
 );
 CREATE INDEX notes_name_key ON notes(name_key);
+CREATE INDEX notes_path_key ON notes(path_key);
 CREATE TABLE links (
   src_id     INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
   target     TEXT NOT NULL,
-  target_key TEXT NOT NULL,         -- lowercase NFC target without .md
+  target_key TEXT NOT NULL,         -- lowercase NFC target without .md; markdown links resolved to a vault path
   anchor     TEXT,
   alias      TEXT,
   kind       TEXT NOT NULL,
@@ -59,6 +62,30 @@ CREATE VIRTUAL TABLE notes_fts USING fts5(title, body, tokenize = 'trigram');
 
 pub struct Index {
     conn: Connection,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct NoteRef {
+    pub path: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LinkRef {
+    /// The note containing the link.
+    pub path: String,
+    pub title: String,
+    pub line: u32,
+}
+
+/// Key a link is stored under. Wiki/embed targets keep their own form (a name, or
+/// a vault path when they contain `/`); markdown destinations are resolved
+/// against the source note's folder to a vault path.
+fn stored_target_key(src: &str, target: &str, kind: &LinkKind) -> String {
+    match kind {
+        LinkKind::Markdown => resolve_rel(parent_rel(src), target).map(|p| link_key(&p)).unwrap_or_default(),
+        _ => link_key(target),
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -155,8 +182,9 @@ impl Index {
         let tx = self.conn.unchecked_transaction()?;
         delete_note(&tx, rel)?;
         tx.execute(
-            "INSERT INTO notes (path, name_key, title, ctime, mtime, size, fm_error) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![rel, link_key(&title_of(rel)), title_of(rel), ctime, mtime, size, parsed.frontmatter_error],
+            "INSERT INTO notes (path, name_key, path_key, title, ctime, mtime, size, fm_error)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![rel, link_key(&title_of(rel)), link_key(rel), title_of(rel), ctime, mtime, size, parsed.frontmatter_error],
         )?;
         let id = tx.last_insert_rowid();
         {
@@ -164,7 +192,8 @@ impl Index {
                 "INSERT INTO links (src_id, target, target_key, anchor, alias, kind, line) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             )?;
             for l in &parsed.links {
-                st.execute(params![id, l.target, link_key(&l.target), l.anchor, l.alias, kind_str(&l.kind), l.line])?;
+                let key = stored_target_key(rel, &l.target, &l.kind);
+                st.execute(params![id, l.target, key, l.anchor, l.alias, kind_str(&l.kind), l.line])?;
             }
             let mut st = tx.prepare_cached("INSERT INTO tags (note_id, tag, tag_key) VALUES (?1, ?2, ?3)")?;
             for t in &parsed.tags {
@@ -224,8 +253,8 @@ impl Index {
             }
             delete_note(&tx, &new_path)?; // a stale row could hold the target path
             tx.execute(
-                "UPDATE notes SET path = ?2, name_key = ?3, title = ?4 WHERE id = ?1",
-                params![id, new_path, link_key(&title), title],
+                "UPDATE notes SET path = ?2, name_key = ?3, path_key = ?4, title = ?5 WHERE id = ?1",
+                params![id, new_path, link_key(&title), link_key(&new_path), title],
             )?;
             tx.execute("UPDATE notes_fts SET title = ?2 WHERE rowid = ?1", params![id, title])?;
         }
@@ -283,6 +312,71 @@ impl Index {
         Ok(self.conn.query_row("SELECT count(*) FROM notes", [], |r| r.get(0))?)
     }
 
+    /// Every note, for quick open and `[[` completion.
+    pub fn notes(&self) -> AppResult<Vec<NoteRef>> {
+        let mut st = self.conn.prepare("SELECT path, title FROM notes ORDER BY title, path")?;
+        let rows = st.query_map([], |r| Ok(NoteRef { path: r.get(0)?, title: r.get(1)? }))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Note a wiki target points at (FR-LNK-06): a vault path when it contains `/`,
+    /// otherwise the note with that file name, shallowest folder first, then shortest path.
+    pub fn resolve(&self, target: &str) -> AppResult<Option<String>> {
+        let key = link_key(target);
+        let sql = if key.contains('/') {
+            "SELECT path FROM notes WHERE path_key = ?1 LIMIT 1"
+        } else {
+            "SELECT path FROM notes WHERE name_key = ?1
+             ORDER BY length(path) - length(replace(path, '/', '')), length(path), path LIMIT 1"
+        };
+        Ok(self.conn.query_row(sql, params![key], |r| r.get(0)).optional()?)
+    }
+
+    /// Number of notes whose file name (without .md) is `name`.
+    pub fn name_count(&self, name: &str) -> AppResult<i64> {
+        Ok(self.conn.query_row("SELECT count(*) FROM notes WHERE name_key = ?1", params![link_key(name)], |r| r.get(0))?)
+    }
+
+    /// Links in other notes that point at `rel` (FR-LNK-03·04).
+    pub fn backlinks(&self, rel: &str) -> AppResult<Vec<LinkRef>> {
+        let name = link_key(&title_of(rel));
+        // A bare [[name]] means this note only if it wins name resolution.
+        let by_name = self.resolve(&name)?.as_deref() == Some(rel);
+        let mut st = self.conn.prepare(
+            "SELECT n.path, n.title, l.line FROM links l JOIN notes n ON n.id = l.src_id
+             WHERE n.path != ?1
+               AND (l.target_key = ?2 OR (?3 AND l.kind != 'markdown' AND l.target_key = ?4))
+             ORDER BY n.title, n.path, l.line",
+        )?;
+        let rows = st.query_map(params![rel, link_key(rel), by_name, name], |r| {
+            Ok(LinkRef { path: r.get(0)?, title: r.get(1)?, line: r.get(2)? })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Notes that may hold links to `rel` or to anything under it (a folder):
+    /// the candidates to rewrite on rename/move.
+    pub fn referrers(&self, rel: &str) -> AppResult<Vec<String>> {
+        let key = link_key(rel);
+        let name = link_key(&title_of(rel));
+        let mut st = self.conn.prepare(
+            "SELECT DISTINCT n.path FROM links l JOIN notes n ON n.id = l.src_id
+             WHERE l.target_key = ?1 OR l.target_key LIKE ?2 ESCAPE '\\'
+                OR (?3 AND l.kind != 'markdown' AND l.target_key = ?4)
+             ORDER BY n.path",
+        )?;
+        let rows = st.query_map(params![key, like_prefix(&key), is_note(rel), name], |r| r.get(0))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Notes at `rel` or under it.
+    pub fn notes_under(&self, rel: &str) -> AppResult<Vec<String>> {
+        let mut st = self.conn.prepare("SELECT path FROM notes WHERE path = ?1 OR path LIKE ?2 ESCAPE '\\' ORDER BY path")?;
+        let rows = st.query_map(params![rel, like_prefix(rel)], |r| r.get(0))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    #[cfg(test)]
     pub fn has(&self, rel: &str) -> AppResult<bool> {
         Ok(self.conn.query_row("SELECT 1 FROM notes WHERE path = ?1", params![rel], |_| Ok(())).optional()?.is_some())
     }
@@ -413,6 +507,26 @@ mod tests {
         }
         let ix = Index::open(&file).unwrap();
         assert_eq!(ix.note_count().unwrap(), 0, "stale rows must be gone");
+    }
+
+    #[test]
+    fn resolves_names_and_finds_backlinks() {
+        let (_d, ix) = setup();
+        ix.upsert("30 조사자료/회의록.md", "", 0, 0, 0).unwrap();
+        ix.upsert("보관/old/회의록.md", "", 0, 0, 0).unwrap();
+        ix.upsert("일지/a.md", "[[회의록]] 그리고 [자료](../30%20조사자료/회의록.md)", 0, 0, 0).unwrap();
+        ix.upsert("b.md", "[[보관/old/회의록|옛 회의록]]", 0, 0, 0).unwrap();
+        // shortest path wins for a bare name
+        assert_eq!(ix.resolve("회의록").unwrap().as_deref(), Some("30 조사자료/회의록.md"));
+        assert_eq!(ix.resolve("보관/OLD/회의록").unwrap().as_deref(), Some("보관/old/회의록.md"));
+        assert_eq!(ix.resolve("없는 노트").unwrap(), None);
+        let main: Vec<_> = ix.backlinks("30 조사자료/회의록.md").unwrap().into_iter().map(|b| b.path).collect();
+        assert_eq!(main, ["일지/a.md", "일지/a.md"]);
+        let old: Vec<_> = ix.backlinks("보관/old/회의록.md").unwrap().into_iter().map(|b| b.path).collect();
+        assert_eq!(old, ["b.md"]);
+        assert_eq!(ix.name_count("회의록").unwrap(), 2);
+        assert_eq!(ix.referrers("보관").unwrap(), ["b.md"]);
+        assert_eq!(ix.notes_under("보관").unwrap(), ["보관/old/회의록.md"]);
     }
 
     #[test]

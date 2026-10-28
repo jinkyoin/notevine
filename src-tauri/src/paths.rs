@@ -57,6 +57,27 @@ pub fn file_name(rel: &str) -> &str {
     rel.rsplit_once('/').map(|(_, n)| n).unwrap_or(rel)
 }
 
+/// Resolves a relative link destination against a note's folder: handles `./`,
+/// `../` and a leading `/` (vault root). `None` if it climbs above the vault.
+pub fn resolve_rel(base_dir: &str, dest: &str) -> Option<String> {
+    let dest = dest.replace('\\', "/");
+    let mut parts: Vec<String> = if dest.starts_with('/') {
+        Vec::new()
+    } else {
+        base_dir.split('/').filter(|s| !s.is_empty()).map(str::to_string).collect()
+    };
+    for seg in dest.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            s => parts.push(s.nfc().collect()),
+        }
+    }
+    Some(parts.join("/"))
+}
+
 pub fn is_hidden(name: &str) -> bool {
     name.starts_with('.')
 }
@@ -133,6 +154,14 @@ mod tests {
     fn name_key_ignores_case_and_normalization() {
         let nfd: String = "회의록 A.md".nfd().collect();
         assert_eq!(name_key(&nfd), name_key("회의록 a.MD"));
+    }
+
+    #[test]
+    fn resolves_relative_destinations() {
+        assert_eq!(resolve_rel("일지", "../30 조사자료/a.md").as_deref(), Some("30 조사자료/a.md"));
+        assert_eq!(resolve_rel("a/b", "./c.md").as_deref(), Some("a/b/c.md"));
+        assert_eq!(resolve_rel("a/b", "/x/y.md").as_deref(), Some("x/y.md"));
+        assert_eq!(resolve_rel("", "../x.md"), None);
     }
 
     #[test]

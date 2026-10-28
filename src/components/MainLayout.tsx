@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import { useApp } from "../store";
 import { Explorer } from "./Explorer";
 import { Editor } from "./Editor";
+import { Backlinks } from "./Backlinks";
+import { RelocateDialog } from "./RelocateDialog";
 
 export function MainLayout() {
   const vault = useApp((s) => s.vault);
@@ -73,13 +75,11 @@ export function MainLayout() {
         </main>
         {rightOpen && (
           <aside className="rightpanel">
-            <div className="pane-toolbar">
-              <span className="pane-title">백링크 · 속성 · 히스토리</span>
-            </div>
-            <p className="muted small pad">4일 차부터 표시됩니다.</p>
+            <Backlinks />
           </aside>
         )}
       </div>
+      <RelocateDialog />
     </div>
   );
 }

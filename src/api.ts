@@ -45,6 +45,25 @@ export interface VaultChanged {
   external: string[];
 }
 
+export interface NoteRef {
+  path: string;
+  title: string;
+}
+
+export interface Backlink {
+  path: string;
+  title: string;
+  line: number;
+  context: string;
+}
+
+/** A note whose links a rename/move would rewrite. */
+export interface LinkChange {
+  path: string;
+  title: string;
+  count: number;
+}
+
 export interface AppError {
   code: string;
   message: string;
@@ -71,8 +90,15 @@ export const api = {
   createNote: (dir: string, name?: string, content?: string) =>
     invoke<string>("create_note", { dir, name: name ?? null, content: content ?? null }),
   createFolder: (parent: string, name: string) => invoke<string>("create_folder", { parent, name }),
-  renameEntry: (path: string, newName: string) => invoke<string>("rename_entry", { path, newName }),
-  moveEntry: (path: string, newParent: string) => invoke<string>("move_entry", { path, newParent }),
+  renameEntry: (path: string, newName: string, updateLinks = true) =>
+    invoke<string>("rename_entry", { path, newName, updateLinks }),
+  moveEntry: (path: string, newParent: string, updateLinks = true) =>
+    invoke<string>("move_entry", { path, newParent, updateLinks }),
+  previewRename: (path: string, newName: string) => invoke<LinkChange[]>("preview_rename", { path, newName }),
+  previewMove: (path: string, newParent: string) => invoke<LinkChange[]>("preview_move", { path, newParent }),
+  listNotes: () => invoke<NoteRef[]>("list_notes"),
+  resolveLink: (target: string) => invoke<string | null>("resolve_link", { target }),
+  backlinks: (path: string) => invoke<Backlink[]>("backlinks", { path }),
   deleteEntry: (path: string) => invoke<void>("delete_entry", { path }),
   revealEntry: (path: string) => invoke<string>("reveal_entry", { path }),
 };
