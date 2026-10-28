@@ -22,6 +22,8 @@ pub enum AppError {
     Trash(String),
     #[error("{0}")]
     Json(#[from] serde_json::Error),
+    #[error("히스토리 저장소 오류: {0}")]
+    Db(#[from] rusqlite::Error),
 }
 
 impl AppError {
@@ -36,6 +38,7 @@ impl AppError {
             AppError::Io(_) => "io",
             AppError::Trash(_) => "trash",
             AppError::Json(_) => "json",
+            AppError::Db(_) => "db",
         }
     }
 }

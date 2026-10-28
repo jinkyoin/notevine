@@ -8,6 +8,7 @@ use std::time::UNIX_EPOCH;
 use serde::Serialize;
 
 use crate::error::{AppError, AppResult};
+use crate::history::{History, Origin};
 use crate::paths::{
     self, check_rel, file_name, is_hidden, is_note, join_rel, name_key, normalize_rel, parent_rel,
     validate_name, APP_DIR,
@@ -44,6 +45,7 @@ pub const UNTITLED: &str = "제목 없음";
 
 pub struct Vault {
     root: PathBuf,
+    history: History,
 }
 
 impl Vault {
@@ -55,7 +57,8 @@ impl Vault {
         let root = root.canonicalize()?;
         let root = strip_verbatim(root);
         fs::create_dir_all(root.join(APP_DIR))?;
-        Ok(Self { root })
+        let history = History::open(&root.join(APP_DIR).join("history.db"))?;
+        Ok(Self { root, history })
     }
 
     pub fn info(&self) -> VaultInfo {
@@ -161,6 +164,19 @@ impl Vault {
         Ok(())
     }
 
+    /// Saves a note from the editor and records a history snapshot (FR-HIS-01·02).
+    /// The file write is what matters: if only the snapshot fails, the save still
+    /// succeeds and the snapshot error comes back as a warning.
+    pub fn save_note(&self, rel: &str, content: &str, force: bool) -> AppResult<Option<String>> {
+        let rel = normalize_rel(rel);
+        self.write_note(&rel, content)?;
+        Ok(self.history.record(&rel, content, Origin::App, force).err().map(|e| e.to_string()))
+    }
+
+    pub fn history(&self) -> &History {
+        &self.history
+    }
+
     /// True when `dir` already has an entry whose name matches case-insensitively.
     fn sibling_exists(&self, dir_rel: &str, name: &str, except: Option<&str>) -> AppResult<bool> {
         let dir = self.abs(dir_rel)?;
@@ -205,7 +221,7 @@ impl Vault {
             None => self.unique_name(&dir_rel, UNTITLED, ".md")?,
         };
         let rel = join_rel(&dir_rel, &name);
-        self.write_note(&rel, content)?;
+        self.save_note(&rel, content, false)?;
         Ok(rel)
     }
 
@@ -357,6 +373,18 @@ mod tests {
         // case-only rename is allowed
         assert_eq!(v.rename("b.md", "B").unwrap(), "B.md");
         assert!(v.read_note("B.md").is_ok());
+    }
+
+    #[test]
+    fn save_note_records_history() {
+        let (_d, v) = vault();
+        v.save_note("a.md", "1", false).unwrap();
+        v.save_note("a.md", "2", true).unwrap();
+        v.save_note("a.md", "3", false).unwrap();
+        let versions = v.history().list("a.md").unwrap();
+        assert_eq!(versions.len(), 2);
+        assert_eq!(v.history().content(versions[0].id).unwrap(), "3");
+        assert_eq!(v.read_note("a.md").unwrap(), "3");
     }
 
     #[test]

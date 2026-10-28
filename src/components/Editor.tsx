@@ -1,19 +1,22 @@
-// SCR-04 편집기 (1일 차 기본형): 마크다운 편집, 1초 자동 저장, Ctrl+S.
-// 라이브 미리보기·자동완성은 2·4일 차에 이 위에 붙인다.
+// SCR-04 편집기: 라이브 미리보기 마크다운 편집, 1초 자동 저장, Ctrl+S 수동 저장.
 import { useEffect, useRef, useState } from "react";
 import { EditorState } from "@codemirror/state";
-import { EditorView, keymap, drawSelection, highlightActiveLine } from "@codemirror/view";
+import { EditorView, keymap, drawSelection } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { languages } from "@codemirror/language-data";
-import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
+import { syntaxHighlighting } from "@codemirror/language";
 import { api, errorMessage } from "../api";
 import { useApp } from "../store";
 import { noteTitle } from "../lib/tree";
+import { livePreview, livePreviewTheme } from "../editor/livePreview";
+import { noteHighlight } from "../editor/highlight";
 
 const SAVE_DELAY_MS = 1000;
 
 type SaveState = "saved" | "dirty" | "saving" | "error";
+
+let historyWarned = false;
 
 export function Editor({ path }: { path: string }) {
   const host = useRef<HTMLDivElement>(null);
@@ -29,15 +32,20 @@ export function Editor({ path }: { path: string }) {
     let disposed = false;
     let saving: Promise<void> = Promise.resolve();
 
-    const save = () => {
+    /** Writes the note. `force` (Ctrl+S, app exit) always lands in a history version. */
+    const save = (force = false) => {
       window.clearTimeout(timer);
-      if (!view || !dirty) return saving;
+      if (!view || (!dirty && !force)) return saving;
       const text = view.state.doc.toString();
       dirty = false;
       setSaveState("saving");
       saving = saving
-        .then(() => api.writeNote(path, text))
-        .then(() => {
+        .then(() => api.writeNote(path, text, force))
+        .then((warning) => {
+          if (warning && !historyWarned) {
+            historyWarned = true;
+            toast(`노트는 저장했지만 히스토리를 남기지 못했습니다: ${warning}`, "error");
+          }
           if (!disposed && !dirty) setSaveState("saved");
         })
         .catch((e) => {
@@ -61,12 +69,14 @@ export function Editor({ path }: { path: string }) {
             extensions: [
               history(),
               drawSelection(),
-              highlightActiveLine(),
               EditorView.lineWrapping,
+              EditorView.contentAttributes.of({ spellcheck: "false", autocorrect: "off" }),
               markdown({ base: markdownLanguage, codeLanguages: languages }),
-              syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+              syntaxHighlighting(noteHighlight),
+              livePreview,
+              livePreviewTheme,
               keymap.of([
-                { key: "Mod-s", run: () => (save(), true), preventDefault: true },
+                { key: "Mod-s", run: () => (void save(true), true), preventDefault: true },
                 indentWithTab,
                 ...defaultKeymap,
                 ...historyKeymap,
@@ -76,7 +86,7 @@ export function Editor({ path }: { path: string }) {
                 dirty = true;
                 setSaveState("dirty");
                 window.clearTimeout(timer);
-                timer = window.setTimeout(save, SAVE_DELAY_MS);
+                timer = window.setTimeout(() => save(), SAVE_DELAY_MS);
               }),
             ],
           }),
@@ -86,14 +96,11 @@ export function Editor({ path }: { path: string }) {
       })
       .catch((e) => !disposed && setLoadError(errorMessage(e)));
 
-    setFlushEditor(() => save());
-    const onClose = () => void save();
-    window.addEventListener("beforeunload", onClose);
+    setFlushEditor((force) => save(force));
 
     return () => {
       void save();
       disposed = true;
-      window.removeEventListener("beforeunload", onClose);
       setFlushEditor(async () => {});
       view?.destroy();
     };

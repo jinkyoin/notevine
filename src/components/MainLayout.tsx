@@ -15,7 +15,7 @@ export function MainLayout() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
-      if (!mod) return;
+      if (!mod || e.isComposing) return;
       if (e.key === "\\" && !e.shiftKey) setLeftOpen((v) => !v);
       else if (e.key === "|" || (e.key === "\\" && e.shiftKey)) setRightOpen((v) => !v);
       else if (e.key.toLowerCase() === "n" && !e.shiftKey) createNote("");

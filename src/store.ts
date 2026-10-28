@@ -21,7 +21,7 @@ interface AppStore {
   editing: Editing | null;
   toasts: Toast[];
   /** Set by the editor; saves unsaved text before files move under it. */
-  flushEditor: () => Promise<void>;
+  flushEditor: (force?: boolean) => Promise<void>;
 
   openVault(path: string): Promise<void>;
   closeVault(): Promise<void>;
@@ -34,7 +34,7 @@ interface AppStore {
   move(path: string, newParent: string): Promise<void>;
   remove(path: string): Promise<void>;
   setEditing(e: Editing | null): void;
-  setFlushEditor(fn: () => Promise<void>): void;
+  setFlushEditor(fn: (force?: boolean) => Promise<void>): void;
   toast(message: string, kind?: ToastKind): void;
   dismissToast(id: number): void;
 }

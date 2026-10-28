@@ -7,6 +7,7 @@ use std::sync::Mutex;
 use tauri::State;
 
 use crate::error::{AppError, AppResult};
+use crate::history::VersionMeta;
 use crate::recent::{RecentStore, RecentVault};
 use crate::vault::{TreeNode, Vault, VaultInfo};
 
@@ -56,9 +57,21 @@ pub fn read_note(state: State<AppState>, path: String) -> AppResult<String> {
     with_vault(&state, |v| v.read_note(&path))
 }
 
+/// Saves a note. `force` = manual save or app exit: always lands in a history
+/// version. Returns a warning when only the history snapshot failed.
 #[tauri::command]
-pub fn write_note(state: State<AppState>, path: String, content: String) -> AppResult<()> {
-    with_vault(&state, |v| v.write_note(&path, &content))
+pub fn write_note(state: State<AppState>, path: String, content: String, force: Option<bool>) -> AppResult<Option<String>> {
+    with_vault(&state, |v| v.save_note(&path, &content, force.unwrap_or(false)))
+}
+
+#[tauri::command]
+pub fn list_versions(state: State<AppState>, path: String) -> AppResult<Vec<VersionMeta>> {
+    with_vault(&state, |v| v.history().list(&crate::paths::normalize_rel(&path)))
+}
+
+#[tauri::command]
+pub fn version_content(state: State<AppState>, id: i64) -> AppResult<String> {
+    with_vault(&state, |v| v.history().content(id))
 }
 
 #[tauri::command]

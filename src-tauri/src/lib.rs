@@ -1,5 +1,6 @@
 mod commands;
 mod error;
+mod history;
 mod paths;
 mod recent;
 mod vault;
@@ -29,6 +30,8 @@ pub fn run() {
             commands::list_tree,
             commands::read_note,
             commands::write_note,
+            commands::list_versions,
+            commands::version_content,
             commands::create_note,
             commands::create_folder,
             commands::rename_entry,

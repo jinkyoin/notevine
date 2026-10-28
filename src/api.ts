@@ -24,6 +24,15 @@ export interface RecentVault {
   exists: boolean;
 }
 
+export interface VersionMeta {
+  id: number;
+  path: string;
+  started_at: number;
+  saved_at: number;
+  size: number;
+  origin: "app" | "external" | "restore";
+}
+
 export interface AppError {
   code: string;
   message: string;
@@ -41,7 +50,11 @@ export const api = {
   forgetVault: (path: string) => invoke<void>("forget_vault", { path }),
   listTree: () => invoke<TreeNode[]>("list_tree"),
   readNote: (path: string) => invoke<string>("read_note", { path }),
-  writeNote: (path: string, content: string) => invoke<void>("write_note", { path, content }),
+  /** Returns a warning when the note was saved but its history snapshot failed. */
+  writeNote: (path: string, content: string, force = false) =>
+    invoke<string | null>("write_note", { path, content, force }),
+  listVersions: (path: string) => invoke<VersionMeta[]>("list_versions", { path }),
+  versionContent: (id: number) => invoke<string>("version_content", { id }),
   createNote: (dir: string, name?: string, content?: string) =>
     invoke<string>("create_note", { dir, name: name ?? null, content: content ?? null }),
   createFolder: (parent: string, name: string) => invoke<string>("create_folder", { parent, name }),
