@@ -9,6 +9,17 @@ export function Toasts() {
       {toasts.map((t) => (
         <div key={t.id} className={`toast ${t.kind}`}>
           <span>{t.message}</span>
+          {t.action && (
+            <button
+              className="toast-action"
+              onClick={() => {
+                dismiss(t.id);
+                t.action!.run();
+              }}
+            >
+              {t.action.label}
+            </button>
+          )}
           <button className="icon-btn" title="닫기" onClick={() => dismiss(t.id)}>
             ×
           </button>

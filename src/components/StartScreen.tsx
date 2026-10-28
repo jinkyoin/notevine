@@ -4,14 +4,28 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { api, type RecentVault } from "../api";
 import { useApp } from "../store";
 
+// Reopen the last vault only when the app starts, not after "볼트 바꾸기" (FR-VLT-02).
+let autoOpenTried = false;
+
 export function StartScreen() {
   const openVault = useApp((s) => s.openVault);
   const [recent, setRecent] = useState<RecentVault[]>([]);
 
   const loadRecent = () => api.recentVaults().then(setRecent).catch(() => setRecent([]));
   useEffect(() => {
+    if (!autoOpenTried) {
+      autoOpenTried = true;
+      api
+        .recentVaults()
+        .then((list) => {
+          if (list[0]?.exists) openVault(list[0].path);
+          else setRecent(list);
+        })
+        .catch(() => setRecent([]));
+      return;
+    }
     loadRecent();
-  }, []);
+  }, [openVault]);
 
   async function pick(title: string) {
     const dir = await open({ directory: true, multiple: false, title });

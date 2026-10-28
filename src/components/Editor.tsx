@@ -41,10 +41,20 @@ export function Editor({ path }: { path: string }) {
       setSaveState("saving");
       saving = saving
         .then(() => api.writeNote(path, text, force))
-        .then((warning) => {
+        .then(async ({ warning, conflict }) => {
           if (warning && !historyWarned) {
             historyWarned = true;
-            toast(`노트는 저장했지만 히스토리를 남기지 못했습니다: ${warning}`, "error");
+            toast(`노트는 저장했지만 히스토리·인덱스를 갱신하지 못했습니다: ${warning}`, "error");
+          }
+          if (conflict) {
+            // Disk kept the other program's version; show it and point to our copy (NFR-REL-02).
+            const { refreshTree, openNote } = useApp.getState();
+            toast(`다른 프로그램이 이 노트를 동시에 고쳤습니다. 내 변경은 "${conflict}"로 저장했습니다`, "error", {
+              label: "열기",
+              run: () => openNote(conflict),
+            });
+            await refreshTree();
+            if (!disposed && !dirty) await reload();
           }
           if (!disposed && !dirty) setSaveState("saved");
         })
@@ -55,6 +65,25 @@ export function Editor({ path }: { path: string }) {
         });
       return saving;
     };
+
+    /** Replaces the editor text with the file on disk without treating it as an edit. */
+    let applyingExternal = false;
+    const reload = async () => {
+      const text = await api.readNote(path);
+      if (!view || disposed || text === view.state.doc.toString()) return;
+      const head = Math.min(view.state.selection.main.head, text.length);
+      applyingExternal = true;
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text }, selection: { anchor: head } });
+      applyingExternal = false;
+    };
+
+    // Another program changed this note: reload unless there are unsaved edits,
+    // in which case the next save reports a conflict instead of overwriting.
+    const unsubscribe = useApp.subscribe((s, prev) => {
+      if (s.externalSeq !== prev.externalSeq && s.externalPaths.includes(path) && !dirty) {
+        reload().catch((e) => toast(`노트를 다시 읽지 못했습니다: ${errorMessage(e)}`, "error"));
+      }
+    });
 
     setLoadError(null);
     setSaveState("saved");
@@ -82,7 +111,7 @@ export function Editor({ path }: { path: string }) {
                 ...historyKeymap,
               ]),
               EditorView.updateListener.of((u) => {
-                if (!u.docChanged) return;
+                if (!u.docChanged || applyingExternal) return;
                 dirty = true;
                 setSaveState("dirty");
                 window.clearTimeout(timer);
@@ -101,6 +130,7 @@ export function Editor({ path }: { path: string }) {
     return () => {
       void save();
       disposed = true;
+      unsubscribe();
       setFlushEditor(async () => {});
       view?.destroy();
     };

@@ -25,3 +25,6 @@ dist-ssr
 
 # Notevine vault data created while testing
 .app/
+
+# Claude Code local data (agent worktrees, settings)
+.claude/

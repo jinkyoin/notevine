@@ -33,6 +33,18 @@ export interface VersionMeta {
   origin: "app" | "external" | "restore";
 }
 
+export interface SaveOutcome {
+  /** Saved, but the history snapshot or index update failed. */
+  warning: string | null;
+  /** Another program changed the file; the editor's text was saved to this path instead. */
+  conflict: string | null;
+}
+
+export interface VaultChanged {
+  changed: string[];
+  external: string[];
+}
+
 export interface AppError {
   code: string;
   message: string;
@@ -50,9 +62,10 @@ export const api = {
   forgetVault: (path: string) => invoke<void>("forget_vault", { path }),
   listTree: () => invoke<TreeNode[]>("list_tree"),
   readNote: (path: string) => invoke<string>("read_note", { path }),
-  /** Returns a warning when the note was saved but its history snapshot failed. */
   writeNote: (path: string, content: string, force = false) =>
-    invoke<string | null>("write_note", { path, content, force }),
+    invoke<SaveOutcome>("write_note", { path, content, force }),
+  getWorkspace: () => invoke<{ open_path: string | null }>("get_workspace"),
+  setWorkspace: (openPath: string | null) => invoke<void>("set_workspace", { openPath }),
   listVersions: (path: string) => invoke<VersionMeta[]>("list_versions", { path }),
   versionContent: (id: number) => invoke<string>("version_content", { id }),
   createNote: (dir: string, name?: string, content?: string) =>

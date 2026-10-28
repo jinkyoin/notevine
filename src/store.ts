@@ -1,6 +1,7 @@
 import { create } from "zustand";
-import { api, errorMessage, type TreeNode, type VaultInfo } from "./api";
-import { ancestors, remapPath } from "./lib/tree";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { api, errorMessage, type TreeNode, type VaultChanged, type VaultInfo } from "./api";
+import { ancestors, findNode, remapPath } from "./lib/tree";
 
 export type ToastKind = "info" | "error";
 
@@ -8,6 +9,7 @@ export interface Toast {
   id: number;
   kind: ToastKind;
   message: string;
+  action?: { label: string; run: () => void };
 }
 
 /** A tree row currently being named inline (new note/folder or rename). */
@@ -20,6 +22,9 @@ interface AppStore {
   openPath: string | null;
   editing: Editing | null;
   toasts: Toast[];
+  /** Bumped when another program changes notes; the editor reloads if `externalPaths` has its note. */
+  externalSeq: number;
+  externalPaths: string[];
   /** Set by the editor; saves unsaved text before files move under it. */
   flushEditor: (force?: boolean) => Promise<void>;
 
@@ -35,11 +40,13 @@ interface AppStore {
   remove(path: string): Promise<void>;
   setEditing(e: Editing | null): void;
   setFlushEditor(fn: (force?: boolean) => Promise<void>): void;
-  toast(message: string, kind?: ToastKind): void;
+  toast(message: string, kind?: ToastKind, action?: Toast["action"]): void;
   dismissToast(id: number): void;
 }
 
 let toastSeq = 0;
+let unlistenChanges: UnlistenFn | null = null;
+let treeTimer: number | undefined;
 
 export const useApp = create<AppStore>((set, get) => {
   /** Runs a backend call and reports failures as an error toast. */
@@ -65,6 +72,8 @@ export const useApp = create<AppStore>((set, get) => {
     openPath: null,
     editing: null,
     toasts: [],
+    externalSeq: 0,
+    externalPaths: [],
     flushEditor: async () => {},
 
     async openVault(path) {
@@ -72,17 +81,39 @@ export const useApp = create<AppStore>((set, get) => {
       if (!info) return;
       set({ vault: info, tree: [], expanded: new Set(), openPath: null, editing: null });
       await get().refreshTree();
+
+      unlistenChanges?.();
+      unlistenChanges = await listen<VaultChanged>("vault-changed", ({ payload }) => {
+        if (payload.external.length) {
+          set({ externalSeq: get().externalSeq + 1, externalPaths: payload.external });
+        }
+        // Coalesce bursts (e.g. a sync tool writing many files) into one tree refresh.
+        window.clearTimeout(treeTimer);
+        treeTimer = window.setTimeout(() => get().refreshTree(), 150);
+      });
+
+      // Reopen the note that was open last time (FR-VLT-02).
+      const ws = await api.getWorkspace().catch(() => null);
+      if (ws?.open_path && findNode(get().tree, ws.open_path)) get().openNote(ws.open_path);
     },
 
     async closeVault() {
       await get().flushEditor();
+      unlistenChanges?.();
+      unlistenChanges = null;
       await attempt(() => api.closeVault());
       set({ vault: null, tree: [], openPath: null, editing: null });
     },
 
     async refreshTree() {
       const tree = await attempt(() => api.listTree());
-      if (tree) set({ tree });
+      if (!tree) return;
+      set({ tree });
+      const { openPath } = get();
+      if (openPath && !findNode(tree, openPath)) {
+        set({ openPath: null });
+        get().toast("열려 있던 노트가 다른 프로그램에서 삭제되거나 이동되었습니다");
+      }
     },
 
     toggleFolder(path, open) {
@@ -97,6 +128,7 @@ export const useApp = create<AppStore>((set, get) => {
       void get().flushEditor();
       expandTo(path);
       set({ openPath: path });
+      void api.setWorkspace(path).catch(() => {});
     },
 
     async createNote(dir) {
@@ -151,9 +183,9 @@ export const useApp = create<AppStore>((set, get) => {
       set({ editing });
     },
 
-    toast(message, kind = "info") {
+    toast(message, kind = "info", action) {
       const id = ++toastSeq;
-      set({ toasts: [...get().toasts, { id, kind, message }] });
+      set({ toasts: [...get().toasts, { id, kind, message, action }] });
       // Errors stay until dismissed (SCR-17).
       if (kind === "info") setTimeout(() => get().dismissToast(id), 4000);
     },

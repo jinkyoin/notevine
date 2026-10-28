@@ -1,9 +1,12 @@
 mod commands;
 mod error;
 mod history;
+mod index;
+mod parse;
 mod paths;
 mod recent;
 mod vault;
+mod watcher;
 
 use std::sync::Mutex;
 
@@ -19,12 +22,18 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
-            app.manage(AppState { vault: Mutex::new(None), recent: RecentStore::new(&config_dir) });
+            app.manage(AppState {
+                vault: Mutex::new(None),
+                watcher: Mutex::new(None),
+                recent: RecentStore::new(&config_dir),
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::open_vault,
             commands::close_vault,
+            commands::get_workspace,
+            commands::set_workspace,
             commands::recent_vaults,
             commands::forget_vault,
             commands::list_tree,

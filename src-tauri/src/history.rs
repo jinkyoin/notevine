@@ -146,6 +146,16 @@ impl History {
         Ok(Recorded::Created(self.conn.last_insert_rowid()))
     }
 
+    /// Moves history from a note or folder path to its new path (FR-HIS-07).
+    pub fn rename_path(&self, from: &str, to: &str) -> AppResult<()> {
+        self.conn.execute(
+            "UPDATE versions SET path = ?2 || substr(path, length(?1) + 1)
+             WHERE path = ?1 OR substr(path, 1, length(?1) + 1) = ?1 || '/'",
+            params![from, to],
+        )?;
+        Ok(())
+    }
+
     /// Versions of one note, newest first.
     pub fn list(&self, path: &str) -> AppResult<Vec<VersionMeta>> {
         let mut st = self.conn.prepare(
@@ -227,6 +237,19 @@ mod tests {
         h.record_at("a.md", "3", Origin::App, false, 2 * MIN).unwrap();
         let origins: Vec<_> = h.list("a.md").unwrap().iter().map(|v| v.origin).collect();
         assert_eq!(origins, [Origin::App, Origin::External, Origin::App]);
+    }
+
+    #[test]
+    fn rename_path_moves_notes_and_folder_contents_only() {
+        let (_d, h) = history();
+        for p in ["f/a.md", "f/sub/b.md", "fx.md", "f.md"] {
+            h.record_at(p, p, Origin::App, false, 0).unwrap();
+        }
+        h.rename_path("f", "g").unwrap();
+        assert_eq!(h.list("g/a.md").unwrap().len(), 1);
+        assert_eq!(h.list("g/sub/b.md").unwrap().len(), 1);
+        assert_eq!(h.list("fx.md").unwrap().len(), 1);
+        assert_eq!(h.list("f.md").unwrap().len(), 1);
     }
 
     #[test]

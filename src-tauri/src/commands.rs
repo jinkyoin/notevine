@@ -4,15 +4,19 @@
 use std::path::Path;
 use std::sync::Mutex;
 
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::error::{AppError, AppResult};
 use crate::history::VersionMeta;
 use crate::recent::{RecentStore, RecentVault};
-use crate::vault::{TreeNode, Vault, VaultInfo};
+use crate::index::Index;
+use crate::paths::APP_DIR;
+use crate::vault::{SaveOutcome, TreeNode, Vault, VaultInfo, Workspace};
+use crate::watcher::{self, VaultWatcher};
 
 pub struct AppState {
     pub vault: Mutex<Option<Vault>>,
+    pub watcher: Mutex<Option<VaultWatcher>>,
     pub recent: RecentStore,
 }
 
@@ -23,18 +27,43 @@ fn with_vault<T>(state: &State<AppState>, f: impl FnOnce(&Vault) -> AppResult<T>
 }
 
 #[tauri::command]
-pub fn open_vault(state: State<AppState>, path: String) -> AppResult<VaultInfo> {
+pub fn open_vault(app: AppHandle, state: State<AppState>, path: String) -> AppResult<VaultInfo> {
+    // Close the current vault first: reopening the same vault must not find its
+    // database files still held open (Windows refuses to replace them then).
+    *state.watcher.lock().expect("watcher lock poisoned") = None;
+    *state.vault.lock().expect("vault lock poisoned") = None;
     let v = Vault::open(Path::new(&path))?;
     let info = v.info();
+    let root = v.root().to_path_buf();
     // A broken recent list must not block opening the vault.
     let _ = state.recent.touch(&info.root, &info.name);
     *state.vault.lock().expect("vault lock poisoned") = Some(v);
+    // Without a watcher the app still works; external edits just show up later.
+    *state.watcher.lock().expect("watcher lock poisoned") = watcher::start(app.clone(), root.clone()).ok();
+
+    // Bring the index up to date in the background on its own connection,
+    // so a large vault doesn't block the UI (NFR-PRF-01).
+    std::thread::spawn(move || {
+        let result = Index::open(&root.join(APP_DIR).join("index.db")).and_then(|ix| ix.scan(&root));
+        let _ = app.emit("index-ready", result.map(|s| s.indexed + s.unchanged).map_err(|e| e.to_string()));
+    });
     Ok(info)
 }
 
 #[tauri::command]
 pub fn close_vault(state: State<AppState>) {
+    *state.watcher.lock().expect("watcher lock poisoned") = None;
     *state.vault.lock().expect("vault lock poisoned") = None;
+}
+
+#[tauri::command]
+pub fn get_workspace(state: State<AppState>) -> AppResult<Workspace> {
+    with_vault(&state, |v| Ok(v.workspace()))
+}
+
+#[tauri::command]
+pub fn set_workspace(state: State<AppState>, open_path: Option<String>) -> AppResult<()> {
+    with_vault(&state, |v| v.set_workspace(&Workspace { open_path }))
 }
 
 #[tauri::command]
@@ -58,9 +87,9 @@ pub fn read_note(state: State<AppState>, path: String) -> AppResult<String> {
 }
 
 /// Saves a note. `force` = manual save or app exit: always lands in a history
-/// version. Returns a warning when only the history snapshot failed.
+/// version. See [`SaveOutcome`] for warnings and conflicts.
 #[tauri::command]
-pub fn write_note(state: State<AppState>, path: String, content: String, force: Option<bool>) -> AppResult<Option<String>> {
+pub fn write_note(state: State<AppState>, path: String, content: String, force: Option<bool>) -> AppResult<SaveOutcome> {
     with_vault(&state, |v| v.save_note(&path, &content, force.unwrap_or(false)))
 }
 

@@ -451,6 +451,17 @@ button {
 .toast .icon-btn {
   color: inherit;
 }
+.toast-action {
+  border: none;
+  background: transparent;
+  font-weight: 700;
+  cursor: pointer;
+  color: #97bc62;
+  padding: 0 4px;
+}
+.toast.error .toast-action {
+  color: inherit;
+}
 .toast.error {
   background: var(--danger-bg);
   color: var(--danger);

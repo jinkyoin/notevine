@@ -1,14 +1,17 @@
 //! Vault = a user folder of .md files. The files are the only source of truth
 //! (DR-01); everything under `.app/` is app data.
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
 
 use crate::error::{AppError, AppResult};
 use crate::history::{History, Origin};
+use crate::index::Index;
 use crate::paths::{
     self, check_rel, file_name, is_hidden, is_note, join_rel, name_key, normalize_rel, parent_rel,
     validate_name, APP_DIR,
@@ -35,6 +38,11 @@ pub struct TreeNode {
     pub children: Option<Vec<TreeNode>>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, serde::Deserialize)]
+pub struct Workspace {
+    pub open_path: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct VaultInfo {
     pub root: String,
@@ -43,9 +51,27 @@ pub struct VaultInfo {
 
 pub const UNTITLED: &str = "제목 없음";
 
+/// Result of saving from the editor.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct SaveOutcome {
+    /// The note was saved but its history snapshot or index update failed.
+    pub warning: Option<String>,
+    /// Another program changed the file since the editor loaded it. The disk
+    /// version was kept and the editor's text went to this new file (NFR-REL-02).
+    pub conflict: Option<String>,
+}
+
 pub struct Vault {
     root: PathBuf,
     history: History,
+    index: Index,
+    /// Content hash of each note as the app last read or wrote it. A different
+    /// hash on disk means someone else changed the file.
+    known: Mutex<HashMap<String, String>>,
+}
+
+pub fn content_hash(content: &str) -> String {
+    blake3::hash(content.as_bytes()).to_hex().to_string()
 }
 
 impl Vault {
@@ -58,7 +84,25 @@ impl Vault {
         let root = strip_verbatim(root);
         fs::create_dir_all(root.join(APP_DIR))?;
         let history = History::open(&root.join(APP_DIR).join("history.db"))?;
-        Ok(Self { root, history })
+        let index = Index::open(&root.join(APP_DIR).join("index.db"))?;
+        Ok(Self { root, history, index, known: Mutex::new(HashMap::new()) })
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Note open when the vault was last used (FR-VLT-02), from `.app/workspace.json`.
+    pub fn workspace(&self) -> Workspace {
+        fs::read_to_string(self.root.join(APP_DIR).join("workspace.json"))
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn set_workspace(&self, ws: &Workspace) -> AppResult<()> {
+        fs::write(self.root.join(APP_DIR).join("workspace.json"), serde_json::to_string_pretty(ws)?)?;
+        Ok(())
     }
 
     pub fn info(&self) -> VaultInfo {
@@ -146,7 +190,13 @@ impl Vault {
 
     pub fn read_note(&self, rel: &str) -> AppResult<String> {
         let p = self.existing(rel)?;
-        Ok(fs::read_to_string(p)?)
+        let content = fs::read_to_string(p)?;
+        self.known().insert(normalize_rel(rel), content_hash(&content));
+        Ok(content)
+    }
+
+    fn known(&self) -> std::sync::MutexGuard<'_, HashMap<String, String>> {
+        self.known.lock().expect("known-hash lock poisoned")
     }
 
     /// Writes through a temp file and rename so a crash never leaves a half-written
@@ -167,14 +217,93 @@ impl Vault {
     /// Saves a note from the editor and records a history snapshot (FR-HIS-01·02).
     /// The file write is what matters: if only the snapshot fails, the save still
     /// succeeds and the snapshot error comes back as a warning.
-    pub fn save_note(&self, rel: &str, content: &str, force: bool) -> AppResult<Option<String>> {
+    pub fn save_note(&self, rel: &str, content: &str, force: bool) -> AppResult<SaveOutcome> {
         let rel = normalize_rel(rel);
+        let abs = self.abs(&rel)?;
+        let expected = self.known().get(&rel).cloned();
+        if let Some(expected) = expected
+            && abs.is_file()
+            && content_hash(&fs::read_to_string(&abs)?) != expected
+        {
+            let conflict = self.conflict_copy(&rel, content)?;
+            return Ok(SaveOutcome { warning: None, conflict: Some(conflict) });
+        }
         self.write_note(&rel, content)?;
-        Ok(self.history.record(&rel, content, Origin::App, force).err().map(|e| e.to_string()))
+        self.known().insert(rel.clone(), content_hash(content));
+        let mut warnings = Vec::new();
+        if let Err(e) = self.history.record(&rel, content, Origin::App, force) {
+            warnings.push(e.to_string());
+        }
+        if let Err(e) = self.index.upsert_file(&self.root, &rel) {
+            warnings.push(format!("검색 인덱스: {e}"));
+        }
+        Ok(SaveOutcome { warning: (!warnings.is_empty()).then(|| warnings.join("; ")), conflict: None })
+    }
+
+    /// Writes `content` next to `rel` as "이름 (충돌 2026-10-28 1432).md".
+    fn conflict_copy(&self, rel: &str, content: &str) -> AppResult<String> {
+        let dir = parent_rel(rel).to_string();
+        let name = file_name(rel);
+        let stem = if is_note(name) { &name[..name.len() - 3] } else { name };
+        let stamp = chrono::Local::now().format("%Y-%m-%d %H%M");
+        let new_name = self.unique_name(&dir, &format!("{stem} (충돌 {stamp})"), ".md")?;
+        let conflict = join_rel(&dir, &new_name);
+        self.save_note(&conflict, content, true)?;
+        Ok(conflict)
+    }
+
+    /// Handles a note changed on disk by another program (FR-VLT-04, FR-HIS-03).
+    /// Returns false when the change is the app's own save.
+    pub fn on_external_change(&self, rel: &str) -> AppResult<bool> {
+        let rel = normalize_rel(rel);
+        let content = fs::read_to_string(self.abs(&rel)?)?;
+        if self.known().get(&rel) == Some(&content_hash(&content)) {
+            return Ok(false);
+        }
+        self.history.record(&rel, &content, Origin::External, false)?;
+        self.index.upsert_file(&self.root, &rel)?;
+        Ok(true)
+    }
+
+    /// Handles a note or folder removed by another program.
+    pub fn on_external_remove(&self, rel: &str) -> AppResult<()> {
+        let rel = normalize_rel(rel);
+        self.forget_known(&rel);
+        self.index.remove(&rel)
+    }
+
+    fn forget_known(&self, rel: &str) {
+        let prefix = format!("{rel}/");
+        self.known().retain(|k, _| k != rel && !k.starts_with(&prefix));
+    }
+
+    /// Keeps history, index and known hashes attached to a moved note or folder (FR-HIS-07).
+    fn after_move(&self, from: &str, to: &str) -> AppResult<()> {
+        {
+            let mut known = self.known();
+            let prefix = format!("{from}/");
+            let moved: Vec<_> = known.keys().filter(|k| *k == from || k.starts_with(&prefix)).cloned().collect();
+            for k in moved {
+                if let Some(h) = known.remove(&k) {
+                    known.insert(format!("{to}{}", &k[from.len()..]), h);
+                }
+            }
+        }
+        self.history.rename_path(from, to)?;
+        self.index.rename(from, to)?;
+        // A file renamed to .md becomes a note only now.
+        if is_note(to) && self.abs(to)?.is_file() && !self.index.has(to)? {
+            self.index.upsert_file(&self.root, to)?;
+        }
+        Ok(())
     }
 
     pub fn history(&self) -> &History {
         &self.history
+    }
+
+    pub fn index(&self) -> &Index {
+        &self.index
     }
 
     /// True when `dir` already has an entry whose name matches case-insensitively.
@@ -252,6 +381,7 @@ impl Vault {
         }
         let new_rel = join_rel(&dir, &new_name);
         fs::rename(src, self.abs(&new_rel)?)?;
+        self.after_move(&rel, &new_rel)?;
         Ok(new_rel)
     }
 
@@ -275,13 +405,18 @@ impl Vault {
             return Err(AppError::AlreadyExists(new_rel));
         }
         fs::rename(src, self.abs(&new_rel)?)?;
+        self.after_move(&rel, &new_rel)?;
         Ok(new_rel)
     }
 
     /// Sends a file or folder to the OS recycle bin.
     pub fn delete(&self, rel: &str) -> AppResult<()> {
-        let p = self.existing(rel)?;
-        trash::delete(&p).map_err(|e| AppError::Trash(e.to_string()))
+        let rel = normalize_rel(rel);
+        let p = self.existing(&rel)?;
+        trash::delete(&p).map_err(|e| AppError::Trash(e.to_string()))?;
+        // History is kept so deleted notes can be restored (FR-HIS-07).
+        self.forget_known(&rel);
+        self.index.remove(&rel)
     }
 }
 
@@ -384,7 +519,48 @@ mod tests {
         let versions = v.history().list("a.md").unwrap();
         assert_eq!(versions.len(), 2);
         assert_eq!(v.history().content(versions[0].id).unwrap(), "3");
+        assert!(v.index().has("a.md").unwrap());
         assert_eq!(v.read_note("a.md").unwrap(), "3");
+    }
+
+    #[test]
+    fn conflicting_external_edit_keeps_both_versions() {
+        let (dir, v) = vault();
+        v.create_note("", Some("a"), "original").unwrap();
+        assert_eq!(v.read_note("a.md").unwrap(), "original");
+        // another program edits the file while the editor still holds "original"
+        fs::write(dir.path().join("a.md"), "from outside").unwrap();
+        let out = v.save_note("a.md", "my edit", false).unwrap();
+        let conflict = out.conflict.expect("conflict copy");
+        assert!(conflict.starts_with("a (충돌 ") && conflict.ends_with(".md"), "{conflict}");
+        assert_eq!(fs::read_to_string(dir.path().join("a.md")).unwrap(), "from outside");
+        assert_eq!(v.read_note(&conflict).unwrap(), "my edit");
+        // after reloading, saving works normally again
+        v.read_note("a.md").unwrap();
+        assert!(v.save_note("a.md", "merged", false).unwrap().conflict.is_none());
+    }
+
+    #[test]
+    fn external_change_is_recorded_once_and_own_saves_are_ignored() {
+        let (dir, v) = vault();
+        v.create_note("", Some("a"), "mine").unwrap();
+        assert!(!v.on_external_change("a.md").unwrap(), "own write is not external");
+        fs::write(dir.path().join("a.md"), "theirs").unwrap();
+        assert!(v.on_external_change("a.md").unwrap());
+        let versions = v.history().list("a.md").unwrap();
+        assert_eq!(versions.len(), 2);
+        assert_eq!(versions[0].origin, Origin::External);
+    }
+
+    #[test]
+    fn rename_carries_history_and_index() {
+        let (_d, v) = vault();
+        v.create_folder("", "f").unwrap();
+        v.create_note("f", Some("a"), "x").unwrap();
+        v.rename("f", "g").unwrap();
+        assert_eq!(v.history().list("g/a.md").unwrap().len(), 1);
+        assert!(v.index().has("g/a.md").unwrap());
+        assert!(!v.index().has("f/a.md").unwrap());
     }
 
     #[test]
