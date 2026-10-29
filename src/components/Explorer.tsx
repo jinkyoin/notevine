@@ -56,21 +56,17 @@ export function Explorer() {
   );
 }
 
-/** Folder (closed/open), note or other file, so the kinds read apart at a glance. */
-function TreeIcon({ kind, open }: { kind: TreeNode["kind"]; open?: boolean }) {
+/** Folders get a ">" chevron that turns down when open; notes and files a page icon. */
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg className={`twisty-icon ${open ? "open" : ""}`} viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M6 3.5L10.5 8 6 12.5" />
+    </svg>
+  );
+}
+
+function TreeIcon({ kind }: { kind: TreeNode["kind"] }) {
   const common = { className: "tree-icon", viewBox: "0 0 16 16", "aria-hidden": true } as const;
-  if (kind === "folder") {
-    return open ? (
-      <svg {...common}>
-        <path className="fill" d="M1.5 3.5h4l1.5 1.5h6v2.5H4.2L1.5 13z" />
-        <path className="fill strong" d="M4.2 7.5h10.6L12.2 13H1.5z" />
-      </svg>
-    ) : (
-      <svg {...common}>
-        <path className="fill strong" d="M1.5 3.5h4l1.5 1.5h7.5v8h-13z" />
-      </svg>
-    );
-  }
   return (
     <svg {...common}>
       <path className="line" d="M3.5 1.5h6l3 3v10h-9z" />
@@ -131,8 +127,8 @@ function Row({ node, depth, onMenu }: { node: TreeNode; depth: number; onMenu: (
         }}
         title={node.path}
       >
-        <span className="twisty">{isFolder ? (expanded ? "▾" : "▸") : ""}</span>
-        <TreeIcon kind={node.kind} open={expanded} />
+        <span className="twisty">{isFolder && <Chevron open={expanded} />}</span>
+        {!isFolder && <TreeIcon kind={node.kind} />}
         {isRenaming ? (
           <RenameInput node={node} />
         ) : (
@@ -204,8 +200,9 @@ function NewFolderRow({ parent, depth }: { parent: string; depth: number }) {
   const setEditing = useApp((s) => s.setEditing);
   return (
     <div className="tree-row folder" style={{ paddingLeft: 8 + depth * 14 }}>
-      <span className="twisty">▸</span>
-      <TreeIcon kind="folder" />
+      <span className="twisty">
+        <Chevron open={false} />
+      </span>
       <NameInput
         initial="새 폴더"
         onCommit={(name) => {

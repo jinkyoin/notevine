@@ -6,7 +6,6 @@
   --bg-active: #dcebdf;
   --text: #1f2a1f;
   --muted: #6b766a;
-  --folder: #c58a1d;
   --selection: rgba(47, 133, 90, 0.22);
   --border: #dde3db;
   --accent: #2f855a;
@@ -23,7 +22,6 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --folder: #e0b357;
     --selection: rgba(104, 211, 145, 0.28);
     --bg: #1b1f1b;
     --bg-sidebar: #232823;
@@ -41,7 +39,6 @@
 }
 
 :root[data-theme="dark"] {
-  --folder: #e0b357;
     --selection: rgba(104, 211, 145, 0.28);
     --bg: #1b1f1b;
     --bg-sidebar: #232823;
@@ -336,10 +333,30 @@ button {
   outline: 1px dashed var(--accent);
 }
 .twisty {
-  width: 14px;
+  width: 16px;
+  height: 16px;
   flex: none;
+  margin-right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--muted);
-  font-size: 11px;
+}
+.twisty-icon {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.12s ease;
+}
+.twisty-icon.open {
+  transform: rotate(90deg);
+}
+.tree-row:hover .twisty {
+  color: var(--text);
 }
 .tree-icon {
   width: 16px;
@@ -353,16 +370,6 @@ button {
   stroke-width: 1.2;
   stroke-linejoin: round;
   stroke-linecap: round;
-}
-.tree-icon .fill {
-  fill: var(--folder);
-  fill-opacity: 0.35;
-  stroke: var(--folder);
-  stroke-width: 1.2;
-  stroke-linejoin: round;
-}
-.tree-icon .fill.strong {
-  fill-opacity: 0.6;
 }
 .tree-row.folder .tree-label {
   font-weight: 600;
