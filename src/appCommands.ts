@@ -97,9 +97,9 @@ export function registerAppCommands(): () => void {
     { id: "vault.switch", title: "볼트 바꾸기", when: hasVault, run: () => st().closeVault() },
     {
       id: "ai.panel",
-      title: "AI: 노트에 질문하기",
+      title: "AI: 질문하기 (노트·웹)",
       keys: "Ctrl+J",
-      keywords: "ai 인공지능 질문 채팅 claude codex chatgpt",
+      keywords: "ai 인공지능 질문 채팅 웹 검색 인터넷 조사 리서치 자료 claude codex chatgpt",
       when: hasVault,
       run: () => st().focusAi(),
     },
@@ -110,16 +110,6 @@ export function registerAppCommands(): () => void {
       when: hasNote,
       run: () => useAi.getState().write(task),
     })),
-    {
-      id: "ai.research",
-      title: "AI: 자료 조사해서 새 노트로",
-      keywords: "ai 웹 검색 인터넷 조사 리서치 자료 research",
-      when: hasVault,
-      run: () => {
-        useAi.getState().setInputMode("research");
-        st().focusAi();
-      },
-    },
     {
       id: "ai.weekly",
       title: "AI: 이번 주 업무일지로 주간 회고 만들기",

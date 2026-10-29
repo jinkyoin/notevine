@@ -5,6 +5,7 @@ import { isLoginError, PROVIDER_COMPANY } from "../ai";
 
 export function AiSendConfirm() {
   const req = useAi((s) => s.send);
+  const webSearch = useAi((s) => s.webSearch);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   useEffect(() => setChecked(new Set(req?.checked ?? [])), [req]);
   if (!req) return null;
@@ -55,12 +56,13 @@ export function AiSendConfirm() {
           req.extra === undefined && <p className="muted small">보낼 노트가 없습니다.</p>
         )}
         {req.web && (
-          <p className="small ai-web">
-            AI가 이 주제로 웹을 검색하고 페이지를 읽습니다(1~3분).{" "}
-            {chosen.length > 0
-              ? "체크한 노트도 함께 보내 조사에 참고하게 합니다. 노트 내용은 검색어에 넣지 말라고 지시하지만, 주제와 관련된 표현이 검색에 쓰일 수는 있습니다."
-              : "체크한 노트가 없으면 주제만 보냅니다."}
-          </p>
+          <label className="small ai-web">
+            <input type="checkbox" checked={webSearch} onChange={(e) => useAi.getState().setWebSearch(e.target.checked)} />
+            <span>
+              <b>웹에서도 찾아보기</b> — 노트로 부족하면 AI가 웹을 검색하고 페이지를 읽어 출처 링크와 함께 답합니다(시간이
+              더 걸림). 노트 내용은 검색어에 넣지 말라고 지시하지만, 질문과 관련된 표현이 검색에 쓰일 수 있습니다.
+            </span>
+          </label>
         )}
         {!!req.privateExcluded && (
           <p className="small ai-private">#비공개 태그가 있는 노트 {req.privateExcluded}개는 보내지 않도록 뺐습니다.</p>
@@ -113,16 +115,8 @@ export function AiPreview() {
           )}
           <div>
             <div className="muted small">
-              결과 {p.streaming ? (p.progress ? "· 조사 중… (1~3분)" : "· 작성 중…") : "· 고쳐 쓸 수 있습니다"}
+              결과 {p.streaming ? "· 작성 중…" : "· 고쳐 쓸 수 있습니다"}
             </div>
-            {p.progress && p.streaming && (
-              <ul className="ai-progress small muted">
-                {p.progress.length === 0 && <li>시작하는 중…</li>}
-                {p.progress.map((s, i) => (
-                  <li key={i}>{s}</li>
-                ))}
-              </ul>
-            )}
             <textarea
               className="ai-result"
               value={draft}

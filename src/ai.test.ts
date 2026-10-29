@@ -1,15 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { chatPrompt, journalNotesInRange, pickProvider, researchNoteName, researchPrompt, weekRange, writePrompt } from "./ai";
+import { chatPrompt, journalNotesInRange, pickProvider, qaSystem, weekRange, writePrompt } from "./ai";
 
 describe("ai helpers", () => {
-  it("names research notes safely", () => {
-    expect(researchNoteName("Tauri 2 자동 업데이트 방법")).toBe("조사 - Tauri 2 자동 업데이트 방법");
-    expect(researchNoteName('a/b:c*d?"e"<f>|g#h[i]')).toBe("조사 - a b c d e f g h i");
-    expect(researchNoteName("  \n ")).toBe("조사 - 자료");
-    expect([...researchNoteName("가".repeat(100))].length).toBe("조사 - ".length + 40);
-    expect(researchPrompt("주제", "2026-10-29")).toContain("조사 날짜: 2026-10-29");
-    expect(researchPrompt("주제", "2026-10-29")).not.toContain("내 노트와의 연결");
-    expect(researchPrompt("주제", "2026-10-29", true)).toContain("## 내 노트와의 연결");
+  it("allows the web only when asked to", () => {
+    expect(qaSystem(false)).toContain("<참고 노트>에 있는 내용만 근거로");
+    expect(qaSystem(false)).not.toContain("웹");
+    expect(qaSystem(true)).toContain("웹을 검색");
+    expect(qaSystem(true)).toContain("[제목](URL)");
+    expect(qaSystem(true)).toContain("검색어에 넣지 말고");
   });
 
   it("computes Monday–Sunday and the ISO week", () => {

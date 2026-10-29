@@ -26,6 +26,9 @@ export const aiPrefs = {
   setEnabled: (on: boolean) => save(KEY_ENABLED, on ? "1" : "0"),
   provider: () => load(KEY_PROVIDER) ?? "",
   setProvider: (id: string) => save(KEY_PROVIDER, id),
+  /** Let the AI also search the web when answering (asked in the send dialog). */
+  web: () => load("notevine.ai.web") !== "0",
+  setWeb: (on: boolean) => save("notevine.ai.web", on ? "1" : "0"),
   /** Model name passed to the CLI (empty = the CLI's default). */
   model: (provider: string) => load(`notevine.ai.model.${provider}`) ?? "",
   setModel: (provider: string, model: string) => save(`notevine.ai.model.${provider}`, model.trim()),
@@ -71,12 +74,29 @@ export const MODEL_OPTIONS: Record<string, { value: string; label: string }[]> =
 
 // ---------- prompts ----------
 
-export const QA_SYSTEM = [
+const QA_BASE = [
   "너는 사용자의 개인 업무 노트를 바탕으로 답하는 한국어 도우미다.",
-  "<참고 노트>에 있는 내용만 근거로 답한다. 노트에 없는 내용은 추측하지 말고 노트에서 찾지 못했다고 말한다.",
   "근거로 쓴 노트는 해당 문장 끝에 [[노트 제목]] 형식으로 표시한다. 제목은 note 태그의 title 값을 그대로 쓴다.",
   "답은 간결한 마크다운으로 쓴다. 인사말이나 불필요한 서론은 쓰지 않는다.",
-].join("\n");
+];
+
+/**
+ * System prompt for a question. Without `web` the answer may only use the sent
+ * notes; with it the AI may also search the web when the notes aren't enough.
+ */
+export function qaSystem(web: boolean): string {
+  return [
+    ...QA_BASE,
+    ...(web
+      ? [
+          "<참고 노트>로 답할 수 있으면 노트를 우선한다. 노트에 없거나 최신·외부 정보가 필요하면 웹을 검색하고 페이지를 읽어 믿을 만한 출처로 확인한다.",
+          "웹에서 확인한 내용은 해당 문장 끝에 [제목](URL) 링크로 출처를 단다. 확인하지 못한 내용은 쓰지 않거나 '확인 필요'라고 밝힌다.",
+          "노트의 문장이나 고유한 내용(이름, 수치, 내부 정보)을 검색어에 넣지 말고, 질문의 일반적인 표현으로만 검색한다.",
+          "진행 상황 설명 없이 최종 답만 쓴다.",
+        ]
+      : ["<참고 노트>에 있는 내용만 근거로 답한다. 노트에 없는 내용은 추측하지 말고 노트에서 찾지 못했다고 말한다."]),
+  ].join("\n");
+}
 
 export type WriteTask = "summarize" | "polish" | "continue" | "translate";
 
@@ -111,40 +131,6 @@ export function reviewPrompt(weekLabel: string): string {
     "## 이번 주 한 일\n## 잘된 점\n## 아쉬운 점·막힌 일\n## 다음 주 할 일",
     "업무일지에 없는 내용은 쓰지 않는다. 내용이 없는 항목은 '- (기록 없음)'으로 둔다.",
   ].join("\n");
-}
-
-export const RESEARCH_SYSTEM = [
-  "너는 웹에서 자료를 조사해 한국어 조사 노트를 쓰는 도우미다.",
-  "웹 검색과 페이지 읽기로 믿을 만한 출처(공식 문서, 기관, 원 출처)를 찾아 확인한 내용만 쓴다. 확인하지 못한 내용은 쓰지 않거나 '확인 필요'라고 밝힌다.",
-  "결과는 노트에 바로 넣을 마크다운만 출력한다. 진행 상황 설명, 인사, 코드 블록 감싸기는 쓰지 않는다.",
-  "<참고 노트>가 있으면 사용자의 기존 노트다. 배경 지식으로 참고하되, 노트의 문장이나 고유한 내용(이름, 수치, 내부 정보)을 검색어에 넣지 말고 조사 주제의 일반적인 표현으로만 검색한다.",
-].join("\n");
-
-export function researchPrompt(topic: string, today: string, withNotes = false): string {
-  return [
-    `조사 주제: ${topic}`,
-    `조사 날짜: ${today}`,
-    "",
-    "다음 구성의 마크다운으로 조사 노트를 써라.",
-    "## 요약\n(핵심 3~5줄)",
-    "## 주요 내용\n(소제목과 목록으로 정리. 수치·날짜는 출처 그대로)",
-    ...(withNotes
-      ? [
-          "## 내 노트와의 연결\n(<참고 노트>와 겹치는 내용, 노트와 달라졌거나 노트에 없던 새 내용, 노트에서 더 확인할 점. 항목마다 [[노트 제목]]을 단다)",
-        ]
-      : []),
-    "## 참고 자료\n(- [페이지 제목](URL) — 무엇을 확인했는지 한 줄)",
-    withNotes
-      ? "본문의 사실마다 근거를 단다. 웹에서 온 내용은 [제목](URL), 내 노트에서 온 내용은 [[노트 제목]](note 태그의 title 값)으로 표시한다."
-      : "본문의 사실마다 근거가 된 출처를 [제목](URL) 링크로 단다.",
-  ].join("\n");
-}
-
-/** File name for a research note: "조사 - 주제" without characters files can't have. */
-export function researchNoteName(topic: string): string {
-  const clean = topic.replace(/[\\/:*?"<>|#^[\]\n\r\t]+/g, " ").replace(/\s+/g, " ").trim();
-  const short = [...clean].slice(0, 40).join("").trim();
-  return `조사 - ${short || "자료"}`;
 }
 
 /** Monday–Sunday of the week containing `d`, as YYYY-MM-DD strings, plus an ISO-like label. */

@@ -7,10 +7,7 @@ import {
   journalNotesInRange,
   needsLogin,
   pickProvider,
-  QA_SYSTEM,
-  RESEARCH_SYSTEM,
-  researchNoteName,
-  researchPrompt,
+  qaSystem,
   REVIEW_SYSTEM,
   reviewPrompt,
   runAi,
@@ -31,6 +28,8 @@ export interface ChatMessage {
   sources?: string[];
   /** Model that answered, when the CLI reports it. */
   model?: string;
+  /** Web steps while answering ("웹 검색: …", "페이지 읽기: …"). */
+  progress?: string[];
   /** AI that answered (for the login button after a login error). */
   provider?: string;
   error?: string;
@@ -48,7 +47,7 @@ export interface SendRequest {
   extra?: { label: string; text: string };
   /** Relevant notes left out because they are tagged #비공개. */
   privateExcluded?: number;
-  /** The AI will search the web with the text in `extra`. */
+  /** Offer the "also search the web" choice (a question, not a writing task). */
   web?: boolean;
   resolve: (paths: string[] | null) => void;
 }
@@ -66,8 +65,6 @@ export interface Preview {
   noteName?: string;
   noteDir?: string;
   handle?: RunHandle;
-  /** Web research run: steps so far ("웹 검색: …"). */
-  progress?: string[];
 }
 
 interface AiState {
@@ -82,11 +79,9 @@ interface AiState {
   preview: Preview | null;
   /** Provider whose login window is open. */
   loggingIn: string | null;
-  /** What the AI panel input does: ask about notes, or research the web into a new note. */
-  inputMode: "ask" | "research";
-  setInputMode(m: "ask" | "research"): void;
-  /** Researches `topic` on the web and previews the result as a new note. */
-  research(topic: string): Promise<void>;
+  /** Questions may also search the web (choice in the send dialog, remembered). */
+  webSearch: boolean;
+  setWebSearch(on: boolean): void;
 
   /** `refresh` probes the CLIs again now. */
   detect(refresh?: boolean): Promise<void>;
@@ -176,10 +171,11 @@ export const useAi = create<AiState>((set, get) => {
     send: null,
     preview: null,
     loggingIn: null,
-    inputMode: "ask",
+    webSearch: aiPrefs.web(),
 
-    setInputMode(inputMode) {
-      set({ inputMode });
+    setWebSearch(on) {
+      aiPrefs.setWeb(on);
+      set({ webSearch: on });
     },
 
     async detect(refresh = false) {
@@ -250,8 +246,10 @@ export const useAi = create<AiState>((set, get) => {
         title: "질문 보내기",
         ...related,
         extra: { label: "질문", text: q },
+        web: true,
       });
       if (paths === null) return;
+      const web = get().webSearch;
       const history = get()
         .chat.filter((m) => !m.error && !m.streaming)
         .map((m) => ({ role: m.role, text: m.text }));
@@ -261,12 +259,16 @@ export const useAi = create<AiState>((set, get) => {
         set({ chat: get().chat.map((m, i) => (i === idx ? { ...m, ...patch } : m)) });
       const handle = runAi(
         provider.id,
-        QA_SYSTEM,
+        qaSystem(web),
         chatPrompt(history, q),
         paths,
         (text) => update({ text }),
         (m) => app().toast(m),
         (model) => update({ model }),
+        {
+          web,
+          onProgress: (m) => update({ progress: [...(get().chat[idx]?.progress ?? []), ...m.split("\n")] }),
+        },
       );
       set({ running: handle });
       try {
@@ -292,7 +294,9 @@ export const useAi = create<AiState>((set, get) => {
       const m = get().chat[index];
       if (!m || m.role !== "ai" || !m.text) return;
       const cfg = app().config;
-      const dir = cfg.preset_enabled ? cfg.inbox_folder : "";
+      // An answer researched on the web goes with the research notes.
+      const usedWeb = (m.progress?.length ?? 0) > 0;
+      const dir = cfg.preset_enabled ? (usedWeb ? cfg.research_folder : cfg.inbox_folder) : "";
       const sources = (m.sources ?? []).map((p) => `- [[${noteTitle(p)}]]`).join("\n") || "- (없음)";
       const body = `# 질문\n\n${m.question ?? ""}\n\n# 답변\n\n${m.text}\n\n## 참고한 노트\n\n${sources}\n`;
       try {
@@ -395,64 +399,6 @@ export const useAi = create<AiState>((set, get) => {
           noteName: `주간 회고 ${label}`,
           noteDir: cfg.journal_folder,
           handle,
-        },
-      });
-      try {
-        const { text } = await handle.done;
-        if (get().preview?.handle === handle) set({ preview: { ...get().preview!, result: text, streaming: false } });
-      } catch (e) {
-        if (get().preview?.handle === handle) set({ preview: { ...get().preview!, streaming: false, error: errorMessage(e) } });
-      }
-    },
-
-    async research(topic) {
-      const t = topic.trim();
-      if (!t || get().preview) return;
-      const provider = await ready();
-      if (!provider) return;
-      // Related notes of mine go along (pre-checked) so the research builds on them.
-      const related = await relatedNotes(t);
-      const paths = await get().confirmSend({
-        provider,
-        title: "자료 조사해서 새 노트로",
-        ...related,
-        extra: { label: "조사 주제", text: t },
-        web: true,
-      });
-      if (paths === null) return;
-      const cfg = app().config;
-      const d = new Date();
-      const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      const handle: RunHandle = runAi(
-        provider.id,
-        RESEARCH_SYSTEM,
-        researchPrompt(t, today, paths.length > 0),
-        paths,
-        () => {}, // the steps are narrated; only the final note is shown
-        (m) => app().toast(m),
-        undefined,
-        {
-          web: true,
-          onProgress: (m) => {
-            const p = get().preview;
-            if (p?.handle === handle) set({ preview: { ...p, progress: [...(p.progress ?? []), ...m.split("\n")] } });
-          },
-        },
-      );
-      set({
-        preview: {
-          title: `자료 조사: ${t}`,
-          mode: "note",
-          original: "",
-          result: "",
-          streaming: true,
-          error: null,
-          from: 0,
-          to: 0,
-          noteName: researchNoteName(t),
-          noteDir: cfg.preset_enabled ? cfg.research_folder : "",
-          handle,
-          progress: [],
         },
       });
       try {

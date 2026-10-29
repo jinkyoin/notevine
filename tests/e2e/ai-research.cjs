@@ -1,4 +1,4 @@
-// 웹 자료 조사 → 새 노트 (실제 AI·웹 검색 호출: 구독 사용량이 듭니다).
+// 질문 하나로 노트 + 웹 조사 → 답을 새 노트로 저장 (실제 AI·웹 검색 호출: 구독 사용량이 듭니다).
 // 사용법: node tests/e2e/ai-research.cjs [claude|codex]
 const { chromium } = require("playwright-core");
 const path = require("path");
@@ -20,60 +20,50 @@ fs.writeFileSync(path.join(VAULT, "비밀 메모.md"), "# 비밀 메모 #비공�
   await page.evaluate((p) => {
     localStorage.setItem("notevine.ai.enabled", "1");
     localStorage.setItem("notevine.ai.provider", p);
+    localStorage.removeItem("notevine.ai.web"); // default: web on
   }, PROVIDER);
   await page.reload();
   await page.waitForSelector(".main, .start-card");
   await page.evaluate((v) => window.__notevine.getState().openVault(v), VAULT);
   await page.waitForSelector(".tree-row");
   await page.waitForSelector(".ai-head select", { timeout: 20000 });
-
-  // Command palette entry switches the panel to research mode
-  await page.keyboard.press("Control+p");
-  await page.keyboard.type("자료 조사");
-  await page.keyboard.press("Enter");
-  await page.waitForSelector(".ai-mode button.active >> text=자료 조사");
+  console.log("mode tabs gone:", !(await page.$(".ai-mode")));
   console.log("placeholder:", await page.getAttribute(".ai-input textarea", "placeholder"));
 
-  await page.fill(".ai-input textarea", "Tauri 2 최신 안정 버전과 주요 변경점");
+  await page.fill(".ai-input textarea", "Tauri 2 최신 안정 버전과 주요 변경점을 조사해 줘. 내 업데이트 계획과 관련해서도 정리해 줘.");
   await page.keyboard.press("Enter");
   await page.waitForSelector(".modal.ai-send");
   console.log("offered:", await page.$$eval(".ai-notes li", (els) => els.map((e) => (e.querySelector("input").checked ? "[x] " : "[ ] ") + e.querySelector(".ai-note-title").textContent)));
   console.log("private notice:", await page.textContent(".ai-private").catch(() => "(없음)"));
-  console.log("confirm notice:", (await page.textContent(".ai-web")).replace(/\s+/g, " "));
+  console.log("web option:", await page.$eval(".ai-web input", (i) => i.checked), (await page.textContent(".ai-web b")).trim());
   await page.click(".modal.ai-send .btn.primary");
 
-  await page.waitForSelector(".modal.ai-preview");
   const t0 = Date.now();
   let lastSteps = 0;
+  let st;
   while (true) {
-    const st = await page.evaluate(() => {
-      const p = window.__notevineAi.getState().preview;
-      return p && { streaming: p.streaming, steps: p.progress ?? [], error: p.error, len: p.result.length };
+    st = await page.evaluate(() => {
+      const m = window.__notevineAi.getState().chat.at(-1);
+      return { streaming: m.streaming, steps: m.progress ?? [], error: m.error, text: m.text };
     });
     if (st.steps.length > lastSteps) {
       st.steps.slice(lastSteps).forEach((s) => console.log(`  [${((Date.now() - t0) / 1000).toFixed(0)}s] ${s}`));
       lastSteps = st.steps.length;
     }
-    if (!st.streaming) {
-      console.log(`finished in ${((Date.now() - t0) / 1000).toFixed(0)}s, error: ${st.error}, chars: ${st.len}`);
-      break;
-    }
+    if (!st.streaming) break;
     if (Date.now() - t0 > 320000) throw new Error("timeout");
     await new Promise((r) => setTimeout(r, 1000));
   }
+  console.log(`finished in ${((Date.now() - t0) / 1000).toFixed(0)}s, error: ${st.error}, chars: ${st.text.length}`);
+  console.log("----- answer (앞부분) -----\n" + st.text.slice(0, 900) + "\n------------------");
+  console.log("web links:", (st.text.match(/\]\(https?:\/\//g) || []).length, "note links:", st.text.match(/\[\[[^\]]+\]\]/g));
+  console.log("private leaked:", st.text.includes("3천만") || st.text.includes("비밀 메모"));
   await page.screenshot({ path: path.join(os.tmpdir(), "notevine-e2e", `ai-research-${PROVIDER}.png`) });
-  const result = await page.inputValue(".ai-result");
-  console.log("----- result (앞부분) -----\n" + result.slice(0, 700) + "\n------------------");
-  console.log("has sections:", ["## 요약", "## 주요 내용", "## 내 노트와의 연결", "## 참고 자료"].map((h) => result.includes(h)));
-  console.log("links:", (result.match(/\]\(https?:\/\//g) || []).length, "note links:", result.match(/\[\[[^\]]+\]\]/g));
-  const sec = result.indexOf("## 내 노트와의 연결");
-  if (sec >= 0) console.log("----- 내 노트와의 연결 -----\n" + result.slice(sec, sec + 900));
-  console.log("private leaked:", result.includes("3천만") || result.includes("비밀 메모"));
 
-  await page.click(".modal.ai-preview .btn.primary"); // 새 노트로 만들기
-  await page.waitForSelector(".note-title >> text=조사 -");
-  const open = await page.evaluate(() => window.__notevine.getState().openPath);
-  console.log("note:", open, "on disk:", fs.existsSync(path.join(VAULT, open)) || "(checking)");
+  await page.click(".ai-msg.ai >> nth=-1 >> .btn >> text=새 노트로 저장");
+  await page.waitForTimeout(800);
+  const saved = fs.readdirSync(VAULT, { recursive: true }).filter((f) => String(f).includes("AI 답변"));
+  console.log("saved:", saved);
   console.log("errors:", errors);
   await browser.close();
 })().catch((e) => {
