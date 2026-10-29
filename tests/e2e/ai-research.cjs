@@ -9,6 +9,8 @@ const PROVIDER = process.argv[2] || "claude";
 const VAULT = path.join(os.tmpdir(), "notevine-e2e", "research-" + Date.now());
 fs.mkdirSync(VAULT, { recursive: true });
 fs.writeFileSync(path.join(VAULT, "메모.md"), "# 메모\n");
+fs.writeFileSync(path.join(VAULT, "앱 업데이트 계획.md"), "# 앱 업데이트 계획\n\n현재 Tauri 2.11 사용 중. Tauri 최신 안정 버전으로 올릴지 검토하고 Windows 7 사용자 영향 확인 필요.\n");
+fs.writeFileSync(path.join(VAULT, "비밀 메모.md"), "# 비밀 메모 #비공개\n\nTauri 최신 버전 전환 예산 3천만 원\n");
 
 (async () => {
   const browser = await chromium.connectOverCDP("http://127.0.0.1:9222");
@@ -35,6 +37,8 @@ fs.writeFileSync(path.join(VAULT, "메모.md"), "# 메모\n");
   await page.fill(".ai-input textarea", "Tauri 2 최신 안정 버전과 주요 변경점");
   await page.keyboard.press("Enter");
   await page.waitForSelector(".modal.ai-send");
+  console.log("offered:", await page.$$eval(".ai-notes li", (els) => els.map((e) => (e.querySelector("input").checked ? "[x] " : "[ ] ") + e.querySelector(".ai-note-title").textContent)));
+  console.log("private notice:", await page.textContent(".ai-private").catch(() => "(없음)"));
   console.log("confirm notice:", (await page.textContent(".ai-web")).replace(/\s+/g, " "));
   await page.click(".modal.ai-send .btn.primary");
 
@@ -59,9 +63,12 @@ fs.writeFileSync(path.join(VAULT, "메모.md"), "# 메모\n");
   }
   await page.screenshot({ path: path.join(os.tmpdir(), "notevine-e2e", `ai-research-${PROVIDER}.png`) });
   const result = await page.inputValue(".ai-result");
-  console.log("----- result -----\n" + result.slice(0, 1500) + "\n------------------");
-  console.log("has sections:", ["## 요약", "## 주요 내용", "## 참고 자료"].map((h) => result.includes(h)));
-  console.log("links:", (result.match(/\]\(https?:\/\//g) || []).length);
+  console.log("----- result (앞부분) -----\n" + result.slice(0, 700) + "\n------------------");
+  console.log("has sections:", ["## 요약", "## 주요 내용", "## 내 노트와의 연결", "## 참고 자료"].map((h) => result.includes(h)));
+  console.log("links:", (result.match(/\]\(https?:\/\//g) || []).length, "note links:", result.match(/\[\[[^\]]+\]\]/g));
+  const sec = result.indexOf("## 내 노트와의 연결");
+  if (sec >= 0) console.log("----- 내 노트와의 연결 -----\n" + result.slice(sec, sec + 900));
+  console.log("private leaked:", result.includes("3천만") || result.includes("비밀 메모"));
 
   await page.click(".modal.ai-preview .btn.primary"); // 새 노트로 만들기
   await page.waitForSelector(".note-title >> text=조사 -");

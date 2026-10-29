@@ -145,6 +145,27 @@ export const useAi = create<AiState>((set, get) => {
     return p;
   }
 
+  /**
+   * Notes related to `q` to offer for sending: search hits (pre-checked) plus the
+   * open note (unchecked). Private notes are never offered, only counted.
+   */
+  async function relatedNotes(q: string): Promise<{ notes: ContextNote[]; checked: string[]; privateExcluded: number }> {
+    const ctx = await api.aiContext(q, 8).catch(() => ({ notes: [] as ContextNote[], private_excluded: [] as string[] }));
+    const found = ctx.notes;
+    const excluded = new Set(ctx.private_excluded);
+    const open = app().openPath;
+    const notes = [...found];
+    if (open && !notes.some((n) => n.path === open)) {
+      const isPrivate = (await api.aiPrivateNotes([open]).catch(() => [open])).length > 0;
+      if (isPrivate) excluded.add(open);
+      else {
+        const text = await api.readNote(open).catch(() => "");
+        notes.push({ path: open, title: noteTitle(open), snippet: "(지금 열려 있는 노트)", chars: [...text].length });
+      }
+    }
+    return { notes, checked: found.map((n) => n.path), privateExcluded: excluded.size };
+  }
+
   return {
     enabled: aiPrefs.enabled(),
     providers: null,
@@ -223,27 +244,12 @@ export const useAi = create<AiState>((set, get) => {
       if (!q || get().running) return;
       const provider = await ready();
       if (!provider) return;
-      const ctx = await api.aiContext(q, 8).catch(() => ({ notes: [] as ContextNote[], private_excluded: [] as string[] }));
-      const found = ctx.notes;
-      const excluded = new Set(ctx.private_excluded);
-      // Offer the open note too, unchecked unless it is already among the hits (never a private one).
-      const open = app().openPath;
-      const notes = [...found];
-      if (open && !notes.some((n) => n.path === open)) {
-        const isPrivate = (await api.aiPrivateNotes([open]).catch(() => [open])).length > 0;
-        if (isPrivate) excluded.add(open);
-        else {
-          const text = await api.readNote(open).catch(() => "");
-          notes.push({ path: open, title: noteTitle(open), snippet: "(지금 열려 있는 노트)", chars: [...text].length });
-        }
-      }
+      const related = await relatedNotes(q);
       const paths = await get().confirmSend({
         provider,
         title: "질문 보내기",
-        notes,
-        checked: found.map((n) => n.path),
+        ...related,
         extra: { label: "질문", text: q },
-        privateExcluded: excluded.size,
       });
       if (paths === null) return;
       const history = get()
@@ -404,23 +410,24 @@ export const useAi = create<AiState>((set, get) => {
       if (!t || get().preview) return;
       const provider = await ready();
       if (!provider) return;
-      const ok = await get().confirmSend({
+      // Related notes of mine go along (pre-checked) so the research builds on them.
+      const related = await relatedNotes(t);
+      const paths = await get().confirmSend({
         provider,
         title: "자료 조사해서 새 노트로",
-        notes: [],
-        checked: [],
+        ...related,
         extra: { label: "조사 주제", text: t },
         web: true,
       });
-      if (ok === null) return;
+      if (paths === null) return;
       const cfg = app().config;
       const d = new Date();
       const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       const handle: RunHandle = runAi(
         provider.id,
         RESEARCH_SYSTEM,
-        researchPrompt(t, today),
-        [],
+        researchPrompt(t, today, paths.length > 0),
+        paths,
         () => {}, // the steps are narrated; only the final note is shown
         (m) => app().toast(m),
         undefined,

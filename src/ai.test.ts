@@ -8,6 +8,8 @@ describe("ai helpers", () => {
     expect(researchNoteName("  \n ")).toBe("조사 - 자료");
     expect([...researchNoteName("가".repeat(100))].length).toBe("조사 - ".length + 40);
     expect(researchPrompt("주제", "2026-10-29")).toContain("조사 날짜: 2026-10-29");
+    expect(researchPrompt("주제", "2026-10-29")).not.toContain("내 노트와의 연결");
+    expect(researchPrompt("주제", "2026-10-29", true)).toContain("## 내 노트와의 연결");
   });
 
   it("computes Monday–Sunday and the ISO week", () => {
