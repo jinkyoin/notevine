@@ -56,7 +56,7 @@ export function Explorer() {
   );
 }
 
-/** Folders get a ">" chevron that turns down when open; notes and files a page icon. */
+/** Folders get a ">" chevron that turns down when open. */
 function Chevron({ open }: { open: boolean }) {
   return (
     <svg className={`twisty-icon ${open ? "open" : ""}`} viewBox="0 0 16 16" aria-hidden="true">
@@ -65,16 +65,6 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
-function TreeIcon({ kind }: { kind: TreeNode["kind"] }) {
-  const common = { className: "tree-icon", viewBox: "0 0 16 16", "aria-hidden": true } as const;
-  return (
-    <svg {...common}>
-      <path className="line" d="M3.5 1.5h6l3 3v10h-9z" />
-      <path className="line" d="M9.5 1.5v3h3" />
-      {kind === "note" && <path className="line" d="M5.5 8h5M5.5 10.5h5" />}
-    </svg>
-  );
-}
 
 function Row({ node, depth, onMenu }: { node: TreeNode; depth: number; onMenu: (m: Menu) => void }) {
   const expanded = useApp((s) => s.expanded.has(node.path));
@@ -128,7 +118,6 @@ function Row({ node, depth, onMenu }: { node: TreeNode; depth: number; onMenu: (
         title={node.path}
       >
         <span className="twisty">{isFolder && <Chevron open={expanded} />}</span>
-        {!isFolder && <TreeIcon kind={node.kind} />}
         {isRenaming ? (
           <RenameInput node={node} />
         ) : (

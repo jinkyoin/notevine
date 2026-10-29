@@ -358,24 +358,8 @@ button {
 .tree-row:hover .twisty {
   color: var(--text);
 }
-.tree-icon {
-  width: 16px;
-  height: 16px;
-  flex: none;
-  margin-right: 6px;
-}
-.tree-icon .line {
-  fill: none;
-  stroke: var(--muted);
-  stroke-width: 1.2;
-  stroke-linejoin: round;
-  stroke-linecap: round;
-}
 .tree-row.folder .tree-label {
   font-weight: 600;
-}
-.tree-row.active .tree-icon .line {
-  stroke: var(--accent);
 }
 .tree-label {
   flex: 1;
