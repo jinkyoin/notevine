@@ -39,7 +39,7 @@ export interface EditorApi {
   replace(from: number, to: number, text: string, expect: string): boolean;
 }
 
-export type Modal = "palette" | "quickMemo" | "template" | "settings" | "deleted" | null;
+export type Modal = "palette" | "quickMemo" | "template" | "settings" | "deleted" | "mdHelp" | null;
 export type SidebarTab = "files" | "search" | "ideas";
 
 /** Defaults used until the vault's config is loaded (mirrors the backend defaults). */

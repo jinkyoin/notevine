@@ -42,6 +42,14 @@ export function registerAppCommands(): () => void {
       when: hasVault,
       run: () => st().setPanels({ rightOpen: !st().rightOpen }),
     },
+    {
+      id: "help.markdown",
+      title: "마크다운 문법 도움말",
+      keywords: "도움말 문법 서식 help markdown 사용법",
+      keys: "F1",
+      when: noModal,
+      run: () => st().setModal("mdHelp"),
+    },
     { id: "app.settings", title: "설정", keys: "Ctrl+,", when: noModal, run: () => st().setModal("settings") },
     {
       id: "note.rename",

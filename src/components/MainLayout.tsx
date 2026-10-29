@@ -13,6 +13,7 @@ import { PropertiesPanel } from "./PropertiesPanel";
 import { HistoryPanel } from "./HistoryPanel";
 import { VersionView } from "./VersionView";
 import { DeletedNotes } from "./DeletedNotes";
+import { MarkdownHelp } from "./MarkdownHelp";
 import { IdeaBoard } from "./IdeaBoard";
 import { CommandPalette } from "./CommandPalette";
 import { QuickMemo } from "./QuickMemo";
@@ -189,6 +190,7 @@ export function MainLayout() {
       <TemplatePicker />
       <Settings />
       <DeletedNotes />
+      <MarkdownHelp />
       <VersionView />
       <ConfirmDialog />
       <AiSendConfirm />

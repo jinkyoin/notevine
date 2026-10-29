@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { EditorState, TransactionSpec } from "@codemirror/state";
 import { codeBlock, insertBlock, TABLE, toggleLines, toggleWrap, webLink, wikiLink } from "../editor/format";
 import { applyColor, BG_COLORS, TEXT_COLORS, type ColorProp } from "../editor/colors";
+import { useApp } from "../store";
 
 type Action = (s: EditorState) => TransactionSpec;
 
@@ -278,6 +279,18 @@ export function FormatBar({ apply, readMode }: { apply: (a: Action) => void; rea
           )}
         </div>
       ))}
+      {/* Help stays usable in read mode too. */}
+      <div className="fb-group">
+        <button
+          className="fb-btn"
+          title="마크다운 문법 도움말 (F1)"
+          aria-label="마크다운 문법 도움말"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => useApp.getState().setModal("mdHelp")}
+        >
+          {text("?")}
+        </button>
+      </div>
     </div>
   );
 }

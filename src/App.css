@@ -811,6 +811,44 @@ button {
   justify-content: space-between;
   padding: 4px 6px;
 }
+/* 마크다운 문법 도움말 */
+.modal.md-help {
+  width: 620px;
+}
+.md-help-body {
+  overflow: auto;
+  margin-bottom: 16px;
+}
+.md-help h3 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.md-help section:first-child h3 {
+  margin-top: 0;
+}
+.md-help table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.md-help td {
+  padding: 5px 8px;
+  border-top: 1px solid var(--border);
+  vertical-align: top;
+}
+.md-help td:first-child {
+  width: 45%;
+}
+.md-help code {
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.md-help kbd {
+  margin-left: 6px;
+}
 .modal-actions {
   display: flex;
   justify-content: flex-end;
