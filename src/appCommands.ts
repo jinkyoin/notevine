@@ -7,8 +7,11 @@ import { WRITE_LABEL, type WriteTask } from "./ai";
 const st = () => useApp.getState();
 const hasVault = () => !!st().vault;
 const hasNote = () => !!st().openPath;
-/** Shortcuts that open dialogs shouldn't fire while another dialog is up. */
-const noModal = () => hasVault() && !st().modal && !st().quickOpen && !st().versionView;
+/**
+ * Shortcuts that open dialogs shouldn't fire while another dialog is up. The palette
+ * doesn't count: it lists commands while it is open and closes itself before running one.
+ */
+const noModal = () => hasVault() && (!st().modal || st().modal === "palette") && !st().quickOpen && !st().versionView;
 
 export function registerAppCommands(): () => void {
   return registerCommands([
