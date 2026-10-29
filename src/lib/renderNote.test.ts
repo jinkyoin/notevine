@@ -32,6 +32,12 @@ describe("noteToHtml", () => {
     expect(html).toContain('data-embed="첨부/a.png"');
   });
 
+  it("keeps color spans and the markdown inside them", () => {
+    const html = noteToHtml('<span style="color: #e03131">**중요**</span> <span style="background-color: yellow">[[회의록]]</span>');
+    expect(html).toContain('<span style="color: #e03131"><strong>중요</strong></span>');
+    expect(html).toContain('<span style="background-color: yellow"><a href="#" class="wikilink" data-target="회의록">회의록</a></span>');
+  });
+
   it("leaves code alone", () => {
     const html = noteToHtml("```\n[[아님]] #아님\n```\n`==아님==`");
     expect(html).not.toContain("wikilink");

@@ -1,6 +1,8 @@
 // SCR-04 서식 막대: 자주 쓰는 마크다운을 아이콘으로 넣고, 편집/읽기 모드를 바꾼다.
+import { useEffect, useRef, useState } from "react";
 import type { EditorState, TransactionSpec } from "@codemirror/state";
 import { codeBlock, insertBlock, TABLE, toggleLines, toggleWrap, webLink, wikiLink } from "../editor/format";
+import { applyColor, BG_COLORS, TEXT_COLORS, type ColorProp } from "../editor/colors";
 
 type Action = (s: EditorState) => TransactionSpec;
 
@@ -133,15 +135,122 @@ const GROUPS: Tool[][] = [
   ],
 ];
 
-export function FormatBar({
-  apply,
-  readMode,
-  setReadMode,
-}: {
-  apply: (a: Action) => void;
-  readMode: boolean;
-  setReadMode: (on: boolean) => void;
-}) {
+const LAST_KEY: Record<ColorProp, string> = { color: "notevine.fmt.color", "background-color": "notevine.fmt.bg" };
+
+function readLast(prop: ColorProp, fallback: string): string {
+  try {
+    return localStorage.getItem(LAST_KEY[prop]) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Text or background color: a button that opens a palette (plus "none"). */
+function ColorButton({ prop, apply, disabled }: { prop: ColorProp; apply: (a: Action) => void; disabled: boolean }) {
+  const palette = prop === "color" ? TEXT_COLORS : BG_COLORS;
+  const label = prop === "color" ? "글자 색" : "배경색";
+  const [open, setOpen] = useState(false);
+  const [last, setLast] = useState(() => readLast(prop, palette[0].value));
+  const box = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", esc);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+
+  const choose = (value: string | null) => {
+    setOpen(false);
+    if (value) {
+      setLast(value);
+      try {
+        localStorage.setItem(LAST_KEY[prop], value);
+      } catch {
+        /* remembering the color is only a convenience */
+      }
+    }
+    apply((s) => applyColor(s, prop, value));
+  };
+
+  return (
+    <div className="fb-color" ref={box}>
+      <button
+        className="fb-btn"
+        title={`${label} (선택한 글)`}
+        aria-label={label}
+        aria-haspopup="true"
+        aria-expanded={open}
+        disabled={disabled}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setOpen(!open)}
+      >
+        {prop === "color" ? (
+          <span className="fb-color-a">
+            A<span className="fb-color-bar" style={{ background: last }} />
+          </span>
+        ) : (
+          <span className="fb-color-a fb-color-bg" style={{ background: last }}>
+            A
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="fb-palette" role="menu" aria-label={label}>
+          {palette.map((c) => (
+            <button
+              key={c.value}
+              role="menuitem"
+              className={`fb-swatch ${c.value === last ? "on" : ""}`}
+              title={c.name}
+              aria-label={`${label}: ${c.name}`}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => choose(c.value)}
+            >
+              {prop === "color" ? <span style={{ color: c.value }}>A</span> : <span style={{ background: c.value }}>A</span>}
+            </button>
+          ))}
+          <button
+            role="menuitem"
+            className="fb-swatch-none"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => choose(null)}
+          >
+            {prop === "color" ? "기본 색으로" : "배경 없애기"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** [편집 | 읽기] switch, shown in the title row (Ctrl+E). */
+export function ModeSwitch({ readMode, setReadMode }: { readMode: boolean; setReadMode: (on: boolean) => void }) {
+  return (
+    <div className="fb-mode" role="tablist" title="편집/읽기 전환 (Ctrl+E)">
+      <button role="tab" aria-selected={!readMode} className={!readMode ? "on" : ""} onClick={() => setReadMode(false)}>
+        {svg(<path d="M10.5 2.5l3 3-8 8h-3v-3z" />)}
+        편집
+      </button>
+      <button role="tab" aria-selected={readMode} className={readMode ? "on" : ""} onClick={() => setReadMode(true)}>
+        {svg(
+          <>
+            <path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z" />
+            <circle cx="8" cy="8" r="2" />
+          </>,
+        )}
+        읽기
+      </button>
+    </div>
+  );
+}
+
+export function FormatBar({ apply, readMode }: { apply: (a: Action) => void; readMode: boolean }) {
   return (
     <div className="format-bar" role="toolbar" aria-label="서식">
       {GROUPS.map((g, i) => (
@@ -160,24 +269,15 @@ export function FormatBar({
               {t.icon}
             </button>
           ))}
+          {/* Colors sit with the other text styles. */}
+          {i === 1 && (
+            <>
+              <ColorButton prop="color" apply={apply} disabled={readMode} />
+              <ColorButton prop="background-color" apply={apply} disabled={readMode} />
+            </>
+          )}
         </div>
       ))}
-      <span className="spacer" />
-      <div className="fb-mode" role="tablist" title="편집/읽기 전환 (Ctrl+E)">
-        <button role="tab" aria-selected={!readMode} className={!readMode ? "on" : ""} onClick={() => setReadMode(false)}>
-          {svg(<path d="M10.5 2.5l3 3-8 8h-3v-3z" />)}
-          편집
-        </button>
-        <button role="tab" aria-selected={readMode} className={readMode ? "on" : ""} onClick={() => setReadMode(true)}>
-          {svg(
-            <>
-              <path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z" />
-              <circle cx="8" cy="8" r="2" />
-            </>,
-          )}
-          읽기
-        </button>
-      </div>
     </div>
   );
 }

@@ -86,6 +86,52 @@ const OUT = path.join(os.tmpdir(), "notevine-e2e");
   await page.keyboard.press("Control+z");
   console.log("undo once removes heading:", !(await doc()).includes("## "));
 
+  // ---- text / background color ----
+  await page.keyboard.press("Control+End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("빨간 글씨 노란 바탕");
+  await page.keyboard.down("Shift");
+  for (let i = 0; i < 5; i++) await page.keyboard.press("ArrowLeft");
+  await page.keyboard.up("Shift");
+  await page.click('.fb-btn[aria-label="배경색"]');
+  await page.waitForSelector(".fb-palette");
+  await page.screenshot({ path: path.join(OUT, "palette.png"), clip: { x: 260, y: 40, width: 720, height: 260 } });
+  await page.click('.fb-swatch[aria-label="배경색: 노랑"]');
+  await page.keyboard.press("Home");
+  await page.keyboard.down("Shift");
+  for (let i = 0; i < 5; i++) await page.keyboard.press("ArrowRight");
+  await page.keyboard.up("Shift");
+  await page.click('.fb-btn[aria-label="글자 색"]');
+  await page.click('.fb-swatch[aria-label="글자 색: 빨강"]');
+  const line = (await doc()).split("\n").pop();
+  console.log("colored line:", line);
+  // move the cursor away: tags hide, colors stay
+  await page.click(".cm-line >> nth=0");
+  await page.waitForTimeout(200);
+  const shown = await page.evaluate(() => {
+    const l = [...document.querySelectorAll(".cm-line")].pop();
+    return {
+      text: l.textContent,
+      colors: [...l.querySelectorAll("[style]")].map((e) => e.getAttribute("style")),
+    };
+  });
+  console.log("editor shows:", JSON.stringify(shown));
+  await page.screenshot({ path: path.join(OUT, "colors-edit.png"), clip: { x: 260, y: 40, width: 720, height: 300 } });
+  await page.keyboard.press("Control+e");
+  await page.waitForSelector(".note-view");
+  console.log(
+    "read view colors:",
+    await page.$$eval(".note-view span[style]", (s) => s.map((e) => `${e.textContent} → ${e.getAttribute("style")}`)),
+  );
+  await page.keyboard.press("Control+e");
+  await page.waitForSelector(".cm-host:not([hidden])");
+  // remove the text color again
+  // The raw line wraps, so Home would only reach the wrapped row: select the line by triple-click.
+  await page.click(".cm-line >> nth=-1", { clickCount: 3 });
+  await page.click('.fb-btn[aria-label="글자 색"]');
+  await page.click(".fb-swatch-none");
+  console.log("color removed:", (await doc()).split("\n").pop());
+
   // ---- read mode ----
   await page.click(".tree-row >> text=샘플");
   await page.waitForSelector(".cm-content");

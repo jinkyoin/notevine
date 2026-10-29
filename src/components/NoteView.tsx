@@ -7,12 +7,22 @@ import { api } from "../api";
 import { useApp } from "../store";
 import { noteToHtml } from "../lib/renderNote";
 import { noteExists, resolveDest } from "../editor/wikilinks";
+import { safeStyle } from "../editor/colors";
 
-/** Sanitized HTML. Nothing in it may load from the network: `src`/`style` come only from us. */
+// Text/background colors (SCR-04) are the only styles kept; anything else, urls
+// included, is dropped so the page can't load from the network.
+DOMPurify.addHook("uponSanitizeAttribute", (_node, data) => {
+  if (data.attrName !== "style") return;
+  const s = safeStyle(data.attrValue);
+  if (s) data.attrValue = s;
+  else data.keepAttr = false;
+});
+
+/** Sanitized HTML. Nothing in it may load from the network: `src` comes only from us. */
 function safeHtml(text: string): string {
   return DOMPurify.sanitize(noteToHtml(text), {
     FORBID_TAGS: ["style", "iframe", "object", "embed", "form"],
-    FORBID_ATTR: ["src", "srcset", "style", "action", "formaction", "background", "poster"],
+    FORBID_ATTR: ["src", "srcset", "action", "formaction", "background", "poster"],
   });
 }
 

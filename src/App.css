@@ -1521,7 +1521,7 @@ kbd {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 2px 6px;
+  gap: 2px 4px;
   /* Same column as the title and the text. */
   width: calc(100% - 64px);
   max-width: calc(var(--editor-max) - 64px);
@@ -1535,15 +1535,15 @@ kbd {
 }
 .fb-group {
   display: flex;
-  gap: 1px;
-  padding-right: 6px;
+  gap: 0;
+  padding-right: 4px;
   border-right: 1px solid var(--border);
 }
 .fb-group:last-of-type {
   border-right: none;
 }
 .fb-btn {
-  width: 28px;
+  width: 26px;
   height: 28px;
   display: inline-flex;
   align-items: center;
@@ -1583,6 +1583,8 @@ kbd {
 }
 .fb-mode {
   display: flex;
+  flex: none;
+  align-self: center;
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
@@ -1723,4 +1725,76 @@ kbd {
 .note-view .missing {
   color: var(--danger);
   font-size: 0.9em;
+}
+
+/* SCR-04 글자 색·배경색 */
+.fb-color {
+  position: relative;
+  display: inline-flex;
+}
+.fb-color-a {
+  position: relative;
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 1px 3px 3px;
+  border-radius: 3px;
+}
+.fb-color-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 3px;
+  border-radius: 2px;
+}
+.fb-palette {
+  position: absolute;
+  top: 32px;
+  left: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: repeat(4, 30px);
+  gap: 4px;
+  padding: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.fb-swatch {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text);
+  padding: 0;
+}
+.fb-swatch span {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.fb-swatch:hover,
+.fb-swatch.on {
+  border-color: var(--accent);
+}
+.fb-swatch-none {
+  grid-column: 1 / -1;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 0 0;
+  cursor: pointer;
+  text-align: left;
+}
+.fb-swatch-none:hover {
+  color: var(--text);
 }

@@ -19,8 +19,9 @@ import { refreshLinks, wikiLinks } from "../editor/wikilinks";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { findNode } from "../lib/tree";
 import { toggleLines, toggleWrap, webLink } from "../editor/format";
+import { colorSpans } from "../editor/colors";
 import { toggleTask } from "../lib/renderNote";
-import { FormatBar, type FormatAction } from "./FormatBar";
+import { FormatBar, ModeSwitch, type FormatAction } from "./FormatBar";
 import { NoteView } from "./NoteView";
 
 const SAVE_DELAY_MS = 1000;
@@ -167,6 +168,7 @@ export function Editor({ path }: { path: string }) {
               syntaxHighlighting(noteHighlight),
               livePreview,
               livePreviewTheme,
+              colorSpans,
               frontmatterFold,
               wikiLinks({
                 path: () => path,
@@ -298,6 +300,7 @@ export function Editor({ path }: { path: string }) {
     <div className="editor">
       <div className="editor-head">
         <h1 className="note-title">{noteTitle(path)}</h1>
+        {!loadError && <ModeSwitch readMode={readMode} setReadMode={setReadMode} />}
         <span className={`save-state ${saveState}`}>
           {saveState === "saved" && "√ 저장됨"}
           {saveState === "dirty" && "편집 중"}
@@ -305,7 +308,7 @@ export function Editor({ path }: { path: string }) {
           {saveState === "error" && "저장 실패"}
         </span>
       </div>
-      {!loadError && <FormatBar apply={applyFormat} readMode={readMode} setReadMode={setReadMode} />}
+      {!loadError && <FormatBar apply={applyFormat} readMode={readMode} />}
       {loadError ? (
         <p className="error pad">노트를 열지 못했습니다: {loadError}</p>
       ) : (
