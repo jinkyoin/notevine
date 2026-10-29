@@ -102,9 +102,20 @@ export function MainLayout() {
           ))}
         </nav>
         <span className="spacer" />
-        <button className="btn ghost small" onClick={() => void openTodayJournal()} title="Ctrl+Shift+D">
-          오늘 업무일지
-        </button>
+        {/* Before the folders exist the one thing to do is create them; afterwards, open today's journal. */}
+        {preset ? (
+          <button className="btn ghost small" onClick={() => void openTodayJournal()} title="오늘 날짜 업무일지 열기 (Ctrl+Shift+D)">
+            오늘 업무일지
+          </button>
+        ) : (
+          <button
+            className="btn ghost small"
+            onClick={() => void useApp.getState().applyPreset()}
+            title="업무일지·아이디어·조사자료 폴더와 템플릿을 만듭니다"
+          >
+            기본 구조 만들기
+          </button>
+        )}
         <button className="btn ghost small" onClick={() => setModal("quickMemo")} title="Ctrl+Shift+N">
           빠른 메모
         </button>
@@ -148,9 +159,9 @@ export function MainLayout() {
               </button>
               {!preset && (
                 <p className="muted small">
-                  업무일지·아이디어·조사자료를 정리하려면{" "}
+                  업무일지·아이디어·조사자료 폴더와 템플릿이 필요하면{" "}
                   <button className="link-btn" onClick={() => void useApp.getState().applyPreset()}>
-                    업무일지·아이디어 기능 켜기
+                    기본 구조 만들기
                   </button>
                 </p>
               )}

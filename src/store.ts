@@ -449,7 +449,7 @@ export const useApp = create<AppStore>((set, get) => {
       const c = get().config;
       const folders = [c.inbox_folder, c.journal_folder, c.idea_folder, c.research_folder, c.template_folder, c.attachment_folder];
       const ok = await get().ask(
-        "업무일지·아이디어 기능 켜기",
+        "기본 구조 만들기",
         `노트 폴더에 다음 폴더와 템플릿 4개(업무일지·회의록·아이디어·자료)를 만듭니다.\n\n${folders.join("\n")}\n\n이미 있는 폴더와 노트는 바꾸지 않습니다.`,
         "켜기",
       );
@@ -462,8 +462,8 @@ export const useApp = create<AppStore>((set, get) => {
       const made = r.created_folders.length + r.created_templates.length;
       get().toast(
         made
-          ? `업무일지·아이디어 기능을 켰습니다 · 폴더 ${r.created_folders.length}개, 템플릿 ${r.created_templates.length}개를 만들었습니다`
-          : "업무일지·아이디어 기능을 켰습니다 · 이미 있는 폴더와 템플릿은 그대로 두었습니다",
+          ? `기본 구조를 만들었습니다 · 폴더 ${r.created_folders.length}개, 템플릿 ${r.created_templates.length}개`
+          : "기본 구조를 켰습니다 · 이미 있는 폴더와 템플릿은 그대로 두었습니다",
       );
     },
 

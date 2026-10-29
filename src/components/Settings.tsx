@@ -108,7 +108,7 @@ function SettingsDialog({ close }: { close: () => void }) {
             )}
             {tab === "preset" && (
               <>
-                <Row label="업무일지·아이디어 기능" hint="업무일지·아이디어·조사자료 폴더와 템플릿 4종(기록 관리 프리셋). 끄면 기본 기능만 남고 기존 노트·폴더는 그대로입니다">
+                <Row label="기본 구조 (업무일지·아이디어·조사자료)" hint="켜면 폴더와 템플릿 4종을 만들고 오늘 업무일지·아이디어 보드를 씁니다. 끄면 이 기능만 숨기고 기존 노트·폴더는 그대로입니다">
                   <input
                     type="checkbox"
                     checked={config.preset_enabled}

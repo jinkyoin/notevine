@@ -30,19 +30,16 @@ const ymd = `${today.getFullYear()}-${p2(today.getMonth() + 1)}-${p2(today.getDa
   await page.waitForSelector(".tree-row");
   await sleep(500);
 
-  // 1) preset via command palette
-  await page.keyboard.press("Control+p");
-  await page.waitForSelector(".palette-input");
-  await page.keyboard.type("프리셋");
-  await sleep(100);
-  await page.keyboard.press("Enter");
-  await page.waitForSelector(".modal >> text=업무일지·아이디어 기능 켜기");
+  // 1) base structure from the top bar (shown until it exists)
+  await page.click(".topbar .btn >> text=기본 구조 만들기");
+  await page.waitForSelector(".modal >> text=기본 구조 만들기");
   console.log("confirm lists folders:", (await page.textContent(".confirm-msg")).includes("10 업무일지"));
   await page.click(".modal .btn.primary");
   await page.waitForSelector(".tree-row >> text=90 템플릿", { timeout: 5000 });
   console.log("preset folders:", ["00 Inbox", "10 업무일지", "20 아이디어", "30 조사자료", "90 템플릿", "첨부"].map(exists));
   console.log("templates:", fs.readdirSync(path.join(VAULT, "90 템플릿")));
   console.log("existing note untouched:", read("기존 노트.md") === "원래 있던 노트\n");
+  console.log("top bar now offers:", (await page.$$eval(".topbar .btn", (bs) => bs.map((b) => b.textContent.trim()))).join(" · "));
 
   // 2) today journal
   await page.keyboard.press("Control+Shift+D");
