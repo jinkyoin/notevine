@@ -24,6 +24,18 @@ import { AiPanel } from "./AiPanel";
 import { AiPreview, AiSendConfirm } from "./AiDialogs";
 
 /** The vault name in the top bar; opens a menu to switch to another vault (FR-VLT-02). */
+/** A window split into a side column, filled while that panel is open. */
+function PanelIcon({ side, open }: { side: "left" | "right"; open: boolean }) {
+  const left = side === "left";
+  return (
+    <svg className="panel-icon" viewBox="0 0 16 16" aria-hidden="true">
+      {open && <path className="panel-fill" d={left ? "M2.5 3.2h3.5v9.6H2.5z" : "M10 3.2h3.5v9.6H10z"} />}
+      <rect x="1.8" y="2.5" width="12.4" height="11" rx="1.5" />
+      <path d={left ? "M6 2.5v11" : "M10 2.5v11"} />
+    </svg>
+  );
+}
+
 function VaultMenu({ name, root }: { name: string; root: string }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -84,8 +96,14 @@ export function MainLayout() {
   return (
     <div className="main">
       <header className="topbar">
-        <button className="icon-btn" title="왼쪽 사이드바 (Ctrl+\)" onClick={() => setPanels({ leftOpen: !leftOpen })}>
-          ☰
+        <button
+          className="icon-btn"
+          title={leftOpen ? "왼쪽 사이드바 닫기 (Ctrl+\\)" : "왼쪽 사이드바 열기 (Ctrl+\\)"}
+          aria-label="왼쪽 사이드바"
+          aria-pressed={leftOpen}
+          onClick={() => setPanels({ leftOpen: !leftOpen })}
+        >
+          <PanelIcon side="left" open={leftOpen} />
         </button>
         <button className="icon-btn" title="이전 노트 (Alt+←)" disabled={!canBack} onClick={goBack}>
           ‹
@@ -126,8 +144,14 @@ export function MainLayout() {
         <button className="icon-btn" title="설정 (Ctrl+,)" onClick={() => setModal("settings")}>
           ⚙
         </button>
-        <button className="icon-btn" title="오른쪽 패널 (Ctrl+Shift+\)" onClick={() => setPanels({ rightOpen: !rightOpen })}>
-          ▤
+        <button
+          className="icon-btn"
+          title={rightOpen ? "오른쪽 패널 닫기 (Ctrl+Shift+\\)" : "오른쪽 패널 열기 (Ctrl+Shift+\\)"}
+          aria-label="오른쪽 패널"
+          aria-pressed={rightOpen}
+          onClick={() => setPanels({ rightOpen: !rightOpen })}
+        >
+          <PanelIcon side="right" open={rightOpen} />
         </button>
       </header>
       <div className="body">
