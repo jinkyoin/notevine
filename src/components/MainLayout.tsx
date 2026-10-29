@@ -1,5 +1,6 @@
 // SCR-02 메인 화면: 상단바 + 왼쪽 사이드바(파일·검색·아이디어) + 편집기 + 오른쪽 패널(속성·백링크·히스토리).
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useApp } from "../store";
 import { dispatchKey } from "../commands";
 import { Explorer } from "./Explorer";
@@ -20,6 +21,44 @@ import { Settings } from "./Settings";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AiPanel } from "./AiPanel";
 import { AiPreview, AiSendConfirm } from "./AiDialogs";
+
+/** The vault name in the top bar; opens a menu to switch to another vault (FR-VLT-02). */
+function VaultMenu({ name, root }: { name: string; root: string }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", esc);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+  const run = (f: () => void) => {
+    setOpen(false);
+    f();
+  };
+  return (
+    <div className="vault-menu" ref={box}>
+      <button className="vault-name" title={`${root}\n눌러서 볼트 바꾸기`} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(!open)}>
+        {name} <span className="caret">▾</span>
+      </button>
+      {open && (
+        <div className="menu" role="menu">
+          <button role="menuitem" onClick={() => run(() => useApp.getState().closeVault())}>
+            볼트 바꾸기…
+          </button>
+          <button role="menuitem" onClick={() => run(() => void revealItemInDir(root).catch(() => {}))}>
+            탐색기에서 볼트 폴더 열기
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function MainLayout() {
   const vault = useApp((s) => s.vault);
@@ -53,9 +92,7 @@ export function MainLayout() {
         <button className="icon-btn" title="다음 노트 (Alt+→)" disabled={!canForward} onClick={goForward}>
           ›
         </button>
-        <span className="vault-name" title={vault?.root}>
-          {vault?.name}
-        </span>
+        <VaultMenu name={vault?.name ?? ""} root={vault?.root ?? ""} />
         <nav className="crumbs">
           {crumbs.map((c, i) => (
             <span key={i}>

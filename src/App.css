@@ -1792,3 +1792,48 @@ kbd {
   content: " ↗";
   font-size: 0.8em;
 }
+
+/* SCR-02 볼트 이름 메뉴 */
+.vault-menu {
+  position: relative;
+}
+.vault-menu .vault-name {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.vault-menu .vault-name:hover,
+.vault-menu .vault-name[aria-expanded="true"] {
+  background: var(--bg-hover);
+}
+.vault-menu .caret {
+  color: var(--muted);
+  font-size: 11px;
+}
+.vault-menu .menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+}
+.vault-menu .menu button {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.vault-menu .menu button:hover {
+  background: var(--bg-hover);
+}
