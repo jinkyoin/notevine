@@ -264,6 +264,18 @@ export function Editor({ path }: { path: string }) {
             view.focus();
             return true;
           },
+          rewrite: (fn) => {
+            if (!view) return;
+            const cur = view.state.doc.toString();
+            const r = fn(cur, view.state.selection.main.head);
+            view.dispatch({
+              changes: minimalChange(cur, r.text),
+              selection: { anchor: r.cursor },
+              scrollIntoView: true,
+              userEvent: "input.template",
+            });
+            view.focus();
+          },
         });
         setEditText((fn) => {
           if (!view) return false;

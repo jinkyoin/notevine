@@ -59,6 +59,7 @@ pub fn run() {
             workspace::apply_preset,
             workspace::list_templates,
             workspace::create_from_template,
+            workspace::render_template_text,
             workspace::open_today_journal,
             workspace::quick_memo,
             workspace::ideas,

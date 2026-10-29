@@ -13,6 +13,13 @@ const noModal = () => hasVault() && !st().modal && !st().quickOpen && !st().vers
 export function registerAppCommands(): () => void {
   return registerCommands([
     { id: "note.new", title: "새 노트 (템플릿 선택)", keys: "Ctrl+N", when: noModal, run: () => st().setModal("template") },
+    {
+      id: "note.insertTemplate",
+      title: "템플릿 삽입 (현재 노트)",
+      keywords: "템플릿 넣기 붙이기 양식 서식 template",
+      when: () => hasNote() && noModal(),
+      run: () => st().setModal("insertTemplate"),
+    },
     { id: "note.quickOpen", title: "빠른 열기", keys: "Ctrl+O", when: noModal, run: () => st().setQuickOpen(true) },
     { id: "app.palette", title: "명령 팔레트", keys: "Ctrl+P", when: noModal, run: () => st().setModal("palette") },
     { id: "note.quickMemo", title: "빠른 메모", keywords: "아이디어 메모 inbox", keys: "Ctrl+Shift+N", when: noModal, run: () => st().setModal("quickMemo") },

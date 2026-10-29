@@ -397,16 +397,20 @@ pub fn create_from_template_at(
         None => v.unique_name(&dir, UNTITLED, ".md")?,
     };
     let content = match template {
-        Some(t) => {
-            let p = v.abs(t)?;
-            if !p.is_file() {
-                return Err(AppError::NotFound(normalize_rel(t)));
-            }
-            strip_folder_key(&render_template(&fs::read_to_string(p)?, stem(&name), now))
-        }
+        Some(t) => render_template_file(v, t, stem(&name), now)?,
         None => String::new(),
     };
     v.create_note(&dir, Some(&name), &content)
+}
+
+/// A template's text with its variables filled in and the `folder` key removed:
+/// what a note made from it starts with, or what "템플릿 삽입" puts into one.
+pub fn render_template_file(v: &Vault, template: &str, title: &str, now: DateTime<Local>) -> AppResult<String> {
+    let p = v.abs(template)?;
+    if !p.is_file() {
+        return Err(AppError::NotFound(normalize_rel(template)));
+    }
+    Ok(strip_folder_key(&render_template(&fs::read_to_string(p)?, title, now)))
 }
 
 // ---------- daily journal ----------
@@ -525,6 +529,11 @@ pub fn create_from_template(
     template: Option<String>,
 ) -> AppResult<String> {
     with_vault(&state, |v| create_from_template_at(v, &dir, name.as_deref(), template.as_deref(), Local::now()))
+}
+
+#[tauri::command]
+pub fn render_template_text(state: State<AppState>, template: String, title: String) -> AppResult<String> {
+    with_vault(&state, |v| render_template_file(v, &template, &title, Local::now()))
 }
 
 #[tauri::command]
@@ -698,6 +707,19 @@ mod tests {
         assert!(read(&dir, &a).contains("# 제목 없음\n\n- 일시: 2026-10-28 09:05"));
         assert_eq!(read(&dir, &b), "");
         assert!(matches!(create_from_template_at(&v, "", None, Some("없음.md"), now()), Err(AppError::NotFound(_))));
+    }
+
+    #[test]
+    fn render_template_file_fills_variables_without_creating_a_note() {
+        let (_dir, v) = vault();
+        apply_preset_to(&v).unwrap();
+        let before = v.index().notes().unwrap().len();
+        let text = render_template_file(&v, "90 템플릿/자료.md", "기존 노트", now()).unwrap();
+        assert!(text.starts_with("---\ntype: research\n"));
+        assert!(text.contains("# 기존 노트\n"));
+        assert!(!text.contains("folder:"));
+        assert_eq!(v.index().notes().unwrap().len(), before);
+        assert!(matches!(render_template_file(&v, "없음.md", "x", now()), Err(AppError::NotFound(_))));
     }
 
     #[test]

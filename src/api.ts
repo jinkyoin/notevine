@@ -219,6 +219,8 @@ export const api = {
   listTemplates: () => invoke<TemplateRef[]>("list_templates"),
   createFromTemplate: (dir: string, name: string | null, template: string | null) =>
     invoke<string>("create_from_template", { dir, name, template }),
+  /** A template's text with its variables filled in for a note named `title`. */
+  renderTemplate: (template: string, title: string) => invoke<string>("render_template_text", { template, title }),
   openTodayJournal: () => invoke<string>("open_today_journal"),
   quickMemo: (text: string, title: string | null) => invoke<string>("quick_memo", { text, title }),
   ideas: () => invoke<IdeaItem[]>("ideas"),

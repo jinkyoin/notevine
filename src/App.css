@@ -811,6 +811,10 @@ button {
   justify-content: space-between;
   padding: 4px 6px;
 }
+.tpl-empty {
+  margin: 0;
+  padding: 10px 14px 14px;
+}
 /* 마크다운 문법 도움말 */
 .modal.md-help {
   width: 620px;

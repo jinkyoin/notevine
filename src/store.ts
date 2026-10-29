@@ -12,6 +12,7 @@ import {
   type VaultInfo,
 } from "./api";
 import { ancestors, findNode, remapPath } from "./lib/tree";
+import { insertTemplate } from "./editor/template";
 
 export type ToastKind = "info" | "error";
 
@@ -37,9 +38,11 @@ export interface EditorApi {
   selection(): { from: number; to: number; text: string; whole: boolean };
   /** Replaces [from, to) if it still holds `expect`; an undoable edit. */
   replace(from: number, to: number, text: string, expect: string): boolean;
+  /** Replaces the whole text via `fn(text, cursor)` and moves the cursor; an undoable edit. */
+  rewrite(fn: (text: string, cursor: number) => { text: string; cursor: number }): void;
 }
 
-export type Modal = "palette" | "quickMemo" | "template" | "settings" | "deleted" | "mdHelp" | null;
+export type Modal = "palette" | "quickMemo" | "template" | "settings" | "deleted" | "mdHelp" | "insertTemplate" | null;
 export type SidebarTab = "files" | "search" | "ideas";
 
 /** Defaults used until the vault's config is loaded (mirrors the backend defaults). */
@@ -145,6 +148,8 @@ interface AppStore {
   currentDir(): string;
   /** Creates a note (optionally from a template); without a name it starts renaming it in the tree. */
   createFromTemplate(dir: string, template: string | null, name?: string): Promise<void>;
+  /** Puts a template into the open note at the cursor ("템플릿 삽입"). */
+  insertTemplate(template: string): Promise<void>;
   focusSearch(): void;
   setQuickOpen(open: boolean): void;
   setDocText(text: string | null): void;
@@ -492,6 +497,18 @@ export const useApp = create<AppStore>((set, get) => {
       if (name?.trim()) return;
       // Name it inline in the file tree, so make sure the tree is showing.
       set({ editing: { mode: "rename", path }, sidebarTab: "files", leftOpen: true });
+    },
+
+    async insertTemplate(template) {
+      const path = get().openPath;
+      if (!path) return;
+      const title = (path.split("/").pop() ?? "").replace(/\.md$/i, "");
+      const text = await attempt(() => api.renderTemplate(template, title));
+      const ed = get().editorApi;
+      // Another note may have opened while the template was read.
+      if (text === undefined || !ed || get().openPath !== path) return;
+      if (get().readMode) set({ readMode: false });
+      ed.rewrite((cur, cursor) => insertTemplate(cur, cursor, text));
     },
 
     focusSearch() {
