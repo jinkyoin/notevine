@@ -1,6 +1,7 @@
 // SCR-04 읽기 모드: 노트 마크다운을 서식이 적용된 HTML로 바꾼다.
 // [[링크]]·![[그림]]·==강조==·#태그 같은 Notevine 문법을 더하고, 클릭 처리에 쓸 data-* 속성을 단다.
 // 결과는 신뢰하지 않는 HTML이므로 화면에 넣기 전에 반드시 정화(DOMPurify)한다.
+// 수식($…$, $$…$$)과 ```mermaid 블록은 원문만 data-* 속성에 담아 두고, 정화가 끝난 뒤 읽기 화면이 그린다.
 import { Marked, type TokenizerAndRendererExtension, type Tokens } from "marked";
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
@@ -82,12 +83,61 @@ const tag: TokenizerAndRendererExtension = {
   },
 };
 
+/** Formula source for data-tex, percent-encoded: DOMPurify drops attributes holding "-->" or "]>". */
+const texAttr = (tex: string) => encodeURIComponent(tex);
+
+/** `$$ … $$` on lines of their own: a display formula. */
+const mathBlock: TokenizerAndRendererExtension = {
+  name: "mathBlock",
+  level: "block",
+  start: (src) => src.match(/^ {0,3}\$\$/m)?.index,
+  tokenizer(src) {
+    const m = /^ {0,3}\$\$([\s\S]+?)\$\$[ \t]*(?:\n|$)/.exec(src);
+    if (!m || !m[1].trim()) return undefined;
+    return { type: "mathBlock", raw: m[0], tex: m[1].trim() };
+  },
+  renderer(t) {
+    const tex = (t as unknown as { tex: string }).tex;
+    return `<div class="math math-block" data-tex="${texAttr(tex)}">${esc(`$$${tex}$$`)}</div>\n`;
+  },
+};
+
+/**
+ * `$x^2$` inside a line. Like pandoc, the opening `$` is followed and the closing one
+ * preceded by a non-space, and the closing one is not followed by a digit, so
+ * "$5 and $10" stays text. `\$` is a plain dollar sign.
+ */
+const mathInline: TokenizerAndRendererExtension = {
+  name: "mathInline",
+  level: "inline",
+  start(src) {
+    const m = /(?<!\\)\$/.exec(src);
+    return m?.index;
+  },
+  tokenizer(src) {
+    const m = /^\$\$(?!\s)([^\n]*?\S)\$\$|^\$(?![\s$])((?:\\.|[^\\$\n])*?[^\s\\])\$(?!\d)/.exec(src);
+    if (!m) return undefined;
+    return { type: "mathInline", raw: m[0], tex: m[1] ?? m[2], display: m[1] !== undefined };
+  },
+  renderer(t) {
+    const { tex, display } = t as unknown as { tex: string; display: boolean };
+    const cls = display ? "math math-block" : "math";
+    return `<span class="${cls}" data-tex="${texAttr(tex)}">${esc(display ? `$$${tex}$$` : `$${tex}$`)}</span>`;
+  },
+};
+
 function makeMarked() {
   const m = new Marked({ gfm: true, breaks: true });
   m.use({
-    extensions: [wiki, highlight, tag],
+    extensions: [mathBlock, wiki, highlight, tag, mathInline],
     renderer: {
       // Clickable task boxes: data-task is the n-th task in the note (see toggleTask).
+      // ```mermaid blocks show as code until drawn. The source stays in the <code> text, not an
+      // attribute: DOMPurify drops attributes containing "-->", and every arrow has one.
+      code({ text, lang }) {
+        if ((lang ?? "").trim().toLowerCase() !== "mermaid") return false;
+        return `<div class="mermaid-block" data-mermaid=""><pre><code>${esc(text)}</code></pre></div>\n`;
+      },
       checkbox({ checked }) {
         return `<input type="checkbox" class="task"${checked ? " checked" : ""}> `;
       },

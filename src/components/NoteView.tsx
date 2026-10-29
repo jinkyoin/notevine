@@ -9,6 +9,7 @@ import { noteToHtml } from "../lib/renderNote";
 import { noteExists, resolveDest } from "../editor/wikilinks";
 import { safeStyle } from "../editor/colors";
 import { headingKey } from "../lib/headings";
+import { drawRichBlocks } from "../lib/richBlocks";
 
 // Text/background colors (SCR-04) are the only styles kept; anything else, urls
 // included, is dropped so the page can't load from the network.
@@ -62,6 +63,17 @@ export function NoteView({ path, text, onToggleTask }: { path: string; text: str
       live = false;
     };
   }, [html, notes, path]);
+
+  // Formulas and Mermaid diagrams (FR-EDT-08), drawn after sanitizing.
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    let live = true;
+    void drawRichBlocks(el, () => live);
+    return () => {
+      live = false;
+    };
+  }, [html]);
 
   // [[노트#제목]]: scroll to the heading once the note is shown.
   const jumpSeq = useApp((s) => s.jumpSeq);

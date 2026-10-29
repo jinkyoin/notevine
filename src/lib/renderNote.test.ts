@@ -67,3 +67,36 @@ describe("toggleTask", () => {
     expect(toggleTask(src, 3)).toBeNull();
   });
 });
+
+describe("math and mermaid", () => {
+  const tex = (html: string) => [...html.matchAll(/data-tex="([^"]*)"/g)].map((m) => decodeURIComponent(m[1]));
+
+  it("marks inline and display formulas with their source", () => {
+    expect(tex(noteToHtml("값은 $x^2$ 이다"))).toEqual(["x^2"]);
+    expect(noteToHtml("$$\nE=mc^2\n$$")).toContain('<div class="math math-block" data-tex="E%3Dmc%5E2">');
+    expect(noteToHtml("a $$x+1$$ b")).toContain('<span class="math math-block" data-tex="x%2B1">');
+    expect(tex(noteToHtml("$a<b$"))).toEqual(["a<b"]);
+  });
+
+  it("keeps formula sources free of what the sanitizer strips (-->, ]>)", () => {
+    const html = noteToHtml("$[0,1]>0$ and $a-->b$");
+    expect(tex(html)).toEqual(["[0,1]>0", "a-->b"]);
+    for (const m of html.matchAll(/data-tex="([^"]*)"/g)) expect(m[1]).not.toMatch(/[\]>]/);
+  });
+
+  it("leaves money, escaped dollars, spaced dollars and code alone", () => {
+    expect(tex(noteToHtml("$5 and $10"))).toEqual([]);
+    expect(tex(noteToHtml("가격은 $3$이고 $4.5$"))).toEqual(["3", "4.5"]);
+    expect(tex(noteToHtml("\$5 그리고 $a$"))).toEqual(["a"]);
+    expect(tex(noteToHtml("$ x $"))).toEqual([]);
+    expect(tex(noteToHtml("`$a$`"))).toEqual([]);
+    expect(tex(noteToHtml("```\n$a$\n```"))).toEqual([]);
+  });
+
+  it("keeps mermaid source and shows it as code until drawn", () => {
+    const html = noteToHtml("```mermaid\ngraph TD\n  A-->B\n```");
+    // The source is the code text: DOMPurify drops any attribute holding "-->".
+    expect(html).toContain('<div class="mermaid-block" data-mermaid=""><pre><code>graph TD\n  A--&gt;B</code></pre></div>');
+    expect(noteToHtml("```js\nx\n```")).not.toContain("mermaid");
+  });
+});
