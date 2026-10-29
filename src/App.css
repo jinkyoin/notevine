@@ -7,6 +7,7 @@
   --text: #1f2a1f;
   --muted: #6b766a;
   --folder: #c58a1d;
+  --selection: rgba(47, 133, 90, 0.22);
   --border: #dde3db;
   --accent: #2f855a;
   --accent-text: #ffffff;
@@ -23,6 +24,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --folder: #e0b357;
+    --selection: rgba(104, 211, 145, 0.28);
     --bg: #1b1f1b;
     --bg-sidebar: #232823;
     --bg-hover: #2c332c;
@@ -40,6 +42,7 @@
 
 :root[data-theme="dark"] {
   --folder: #e0b357;
+    --selection: rgba(104, 211, 145, 0.28);
     --bg: #1b1f1b;
     --bg-sidebar: #232823;
     --bg-hover: #2c332c;
@@ -468,6 +471,18 @@ button {
 }
 .cm-host .cm-activeLine {
   background: transparent;
+}
+/* CodeMirror draws its own caret, black by default: invisible on the dark theme. */
+.cm-host .cm-cursor,
+.cm-host .cm-dropCursor {
+  border-left: 2px solid var(--text);
+  margin-left: -1px;
+}
+.cm-host .cm-selectionBackground {
+  background: var(--selection) !important;
+}
+.cm-host .cm-content ::selection {
+  background: var(--selection);
 }
 
 /* 사이드바 탭 */
