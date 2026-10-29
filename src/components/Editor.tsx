@@ -1,4 +1,5 @@
 // SCR-04 편집기: 라이브 미리보기 마크다운 편집, 1초 자동 저장, Ctrl+S 수동 저장.
+// 위쪽 서식 막대로 마크다운을 넣고, 읽기 모드(Ctrl+E)로 서식이 적용된 노트를 본다.
 import { useEffect, useRef, useState } from "react";
 import { EditorState } from "@codemirror/state";
 import { EditorView, keymap, drawSelection } from "@codemirror/view";
@@ -17,6 +18,10 @@ import { noteHighlight } from "../editor/highlight";
 import { refreshLinks, wikiLinks } from "../editor/wikilinks";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { findNode } from "../lib/tree";
+import { toggleLines, toggleWrap, webLink } from "../editor/format";
+import { toggleTask } from "../lib/renderNote";
+import { FormatBar, type FormatAction } from "./FormatBar";
+import { NoteView } from "./NoteView";
 
 const SAVE_DELAY_MS = 1000;
 const DOC_TEXT_DELAY_MS = 250;
@@ -44,6 +49,35 @@ export function Editor({ path }: { path: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const setFlushEditor = useApp((s) => s.setFlushEditor);
   const toast = useApp((s) => s.toast);
+  const readMode = useApp((s) => s.readMode);
+  const setReadMode = useApp((s) => s.setReadMode);
+  const viewRef = useRef<EditorView | null>(null);
+  const readModeRef = useRef(readMode);
+  // Text shown in read mode (kept in step with the editor while reading).
+  const [readText, setReadText] = useState<string | null>(null);
+
+  useEffect(() => {
+    readModeRef.current = readMode;
+    const v = viewRef.current;
+    if (!v) return;
+    if (readMode) setReadText(v.state.doc.toString());
+    else v.focus();
+  }, [readMode]);
+
+  const applyFormat = (a: FormatAction) => {
+    const v = viewRef.current;
+    if (!v || readModeRef.current) return;
+    v.dispatch(a(v.state));
+    v.focus();
+  };
+
+  const toggleTaskAt = (index: number) => {
+    const v = viewRef.current;
+    if (!v) return;
+    const cur = v.state.doc.toString();
+    const next = toggleTask(cur, index);
+    if (next !== null) v.dispatch({ changes: minimalChange(cur, next), userEvent: "input.task" });
+  };
 
   useEffect(() => {
     let view: EditorView | null = null;
@@ -162,12 +196,24 @@ export function Editor({ path }: { path: string }) {
               }),
               keymap.of([
                 { key: "Mod-s", run: () => (void save(true), true), preventDefault: true },
+                ...(
+                  [
+                    ["Mod-b", (s) => toggleWrap(s, "**")],
+                    ["Mod-i", (s) => toggleWrap(s, "*")],
+                    ["Mod-Shift-x", (s) => toggleWrap(s, "~~")],
+                    ["Mod-Shift-h", (s) => toggleWrap(s, "==")],
+                    ["Mod-`", (s) => toggleWrap(s, "`")],
+                    ["Mod-l", (s) => toggleLines(s, "task")],
+                    ["Mod-k", webLink],
+                  ] as [string, FormatAction][]
+                ).map(([key, a]) => ({ key, run: (v: EditorView) => (v.dispatch(a(v.state)), true), preventDefault: true })),
                 indentWithTab,
                 ...defaultKeymap,
                 ...historyKeymap,
               ]),
               EditorView.updateListener.of((u) => {
                 if (!u.docChanged) return;
+                if (readModeRef.current) setReadText(u.state.doc.toString());
                 window.clearTimeout(docTimer);
                 docTimer = window.setTimeout(publishText, DOC_TEXT_DELAY_MS);
                 if (applyingExternal) return;
@@ -179,6 +225,10 @@ export function Editor({ path }: { path: string }) {
             ],
           }),
         });
+        viewRef.current = view;
+        // An empty note is for writing, not reading.
+        if (!text.slice(frontmatterEnd(view.state)).trim() && readModeRef.current) setReadMode(false);
+        else if (readModeRef.current) setReadText(text);
         // Coming from a backlink: put the cursor on the linking line.
         const jump = useApp.getState().jumpLine;
         if (jump && jump <= view.state.doc.lines) {
@@ -222,7 +272,7 @@ export function Editor({ path }: { path: string }) {
           return true;
         });
         // A new note opens with its name being typed in the tree; don't steal that focus.
-        if (!useApp.getState().editing) view.focus();
+        if (!useApp.getState().editing && !readModeRef.current) view.focus();
       })
       .catch((e) => !disposed && setLoadError(errorMessage(e)));
 
@@ -238,9 +288,11 @@ export function Editor({ path }: { path: string }) {
       unsubscribe();
       unsubscribeNotes();
       setFlushEditor(async () => {});
+      viewRef.current = null;
+      setReadText(null);
       view?.destroy();
     };
-  }, [path, setFlushEditor, toast]);
+  }, [path, setFlushEditor, toast, setReadMode]);
 
   return (
     <div className="editor">
@@ -253,7 +305,15 @@ export function Editor({ path }: { path: string }) {
           {saveState === "error" && "저장 실패"}
         </span>
       </div>
-      {loadError ? <p className="error pad">노트를 열지 못했습니다: {loadError}</p> : <div className="cm-host" ref={host} />}
+      {!loadError && <FormatBar apply={applyFormat} readMode={readMode} setReadMode={setReadMode} />}
+      {loadError ? (
+        <p className="error pad">노트를 열지 못했습니다: {loadError}</p>
+      ) : (
+        <>
+          <div className="cm-host" ref={host} hidden={readMode} />
+          {readMode && readText !== null && <NoteView path={path} text={readText} onToggleTask={toggleTaskAt} />}
+        </>
+      )}
     </div>
   );
 }

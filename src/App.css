@@ -1515,3 +1515,212 @@ kbd {
   padding-left: 18px;
   word-break: break-all;
 }
+
+/* SCR-04 서식 막대 */
+.format-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  /* Same column as the title and the text. */
+  width: calc(100% - 64px);
+  max-width: calc(var(--editor-max) - 64px);
+  margin: 4px auto 8px;
+  padding: 4px 0 8px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg);
+}
+.fb-group {
+  display: flex;
+  gap: 1px;
+  padding-right: 6px;
+  border-right: 1px solid var(--border);
+}
+.fb-group:last-of-type {
+  border-right: none;
+}
+.fb-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0;
+}
+.fb-btn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+.fb-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.fb-btn svg,
+.fb-mode svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.fb-btn svg .dot {
+  fill: currentColor;
+  stroke: none;
+}
+.fb-text {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+.fb-mode {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.fb-mode button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+.fb-mode button.on {
+  background: var(--bg-active);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* SCR-04 읽기 모드 */
+.note-view {
+  flex: 1;
+  width: 100%;
+  max-width: var(--editor-max);
+  margin: 0 auto;
+  /* Lines up with the editor's text (CodeMirror indents lines by 6px). */
+  padding: 4px 34px 40vh 38px;
+  font-size: 16px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.note-view h1,
+.note-view h2,
+.note-view h3,
+.note-view h4 {
+  line-height: 1.3;
+  margin: 1.2em 0 0.5em;
+}
+.note-view h1 {
+  font-size: 1.7em;
+}
+.note-view h2 {
+  font-size: 1.4em;
+  padding-bottom: 0.2em;
+  border-bottom: 1px solid var(--border);
+}
+.note-view h3 {
+  font-size: 1.2em;
+}
+.note-view p {
+  margin: 0.6em 0;
+}
+.note-view a {
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+}
+.note-view a:hover {
+  text-decoration: underline;
+}
+.note-view a.unresolved {
+  opacity: 0.6;
+  text-decoration: underline dashed;
+}
+.note-view a.tag {
+  font-size: 0.9em;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--bg-active);
+}
+.note-view mark {
+  background: rgba(250, 204, 21, 0.4);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+.note-view code {
+  font-family: Consolas, "D2Coding", monospace;
+  font-size: 0.9em;
+  background: var(--bg-hover);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+.note-view pre {
+  background: var(--bg-hover);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow: auto;
+}
+.note-view pre code {
+  background: none;
+  padding: 0;
+}
+.note-view blockquote {
+  margin: 0.8em 0;
+  padding: 2px 14px;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
+}
+.note-view ul,
+.note-view ol {
+  padding-left: 1.6em;
+}
+.note-view li:has(> input.task) {
+  list-style: none;
+  margin-left: -1.3em;
+}
+.note-view input.task {
+  margin: 0 6px 0 0;
+  vertical-align: -2px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.note-view table {
+  border-collapse: collapse;
+  margin: 0.8em 0;
+}
+.note-view th,
+.note-view td {
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+}
+.note-view th {
+  background: var(--bg-hover);
+}
+.note-view hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1.4em 0;
+}
+.note-view img {
+  max-width: 100%;
+  border-radius: 4px;
+}
+.note-view .missing {
+  color: var(--danger);
+  font-size: 0.9em;
+}

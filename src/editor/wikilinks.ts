@@ -51,7 +51,7 @@ function inCode(state: EditorState, pos: number): boolean {
   return false;
 }
 
-function noteExists(notes: NoteRef[], target: string): boolean {
+export function noteExists(notes: NoteRef[], target: string): boolean {
   const key = linkKey(target);
   if (!key) return false;
   return key.includes("/")

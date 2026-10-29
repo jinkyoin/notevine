@@ -14,6 +14,7 @@ node tests/e2e/day6.cjs   # 프리셋·업무일지·빠른 메모·아이디어
 node tests/e2e/ai.cjs     # AI 도우미 (Claude Code·Codex CLI로 실제 질의, 구독 사용량을 조금 씀)
 node tests/e2e/ai-private.cjs  # #비공개 노트가 AI로 나가지 않는지 (AI 호출 없음)
 node tests/e2e/ai-research.cjs claude  # 웹 자료 조사 → 새 노트 (실제 AI·웹 검색, codex도 가능)
+node tests/e2e/format.cjs      # 서식 막대·읽기 모드 (웹 요청 없음 확인 포함)
 node tests/e2e/ai-login.cjs    # 로그아웃·미설치일 때 로그인 버튼·설치 안내 (백엔드 응답을 흉내 냄, 실제 로그인 없음)
 ```
 

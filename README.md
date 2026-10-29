@@ -42,6 +42,9 @@
 | Ctrl+Shift+D | 오늘 업무일지 |
 | Ctrl+Shift+F | 검색 |
 | Ctrl+S | 저장 (히스토리 버전으로 남김) |
+| Ctrl+E | 편집 / 읽기 모드 전환 |
+| Ctrl+B · Ctrl+I · Ctrl+K | 굵게 · 기울임 · 웹 링크 (나머지 서식은 편집기 위 서식 막대) |
+| Ctrl+L | 체크리스트 |
 | Ctrl+\\ / Ctrl+Shift+\\ | 왼쪽 사이드바 / 오른쪽 패널 접기 |
 | Ctrl+, | 설정 |
 | Ctrl+J | AI 도우미 |

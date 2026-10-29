@@ -76,6 +76,8 @@ interface AppStore {
   pendingRelocate: PendingRelocate | null;
   /** Line to put the cursor on when the next note opens (from a backlink). */
   jumpLine: number | null;
+  /** Show the note formatted (read mode) instead of the editor (Ctrl+E). */
+  readMode: boolean;
   /** Bumped after each save so panels that depend on links refresh. */
   savedSeq: number;
   sidebarTab: SidebarTab;
@@ -134,6 +136,7 @@ interface AppStore {
   setVersionView(v: { path: string; id: number | null } | null): void;
   setPanels(p: { leftOpen?: boolean; rightOpen?: boolean }): void;
   goBack(): void;
+  setReadMode(on: boolean): void;
   goForward(): void;
   saveConfig(c: VaultConfig): Promise<void>;
   applyPreset(): Promise<void>;
@@ -213,6 +216,7 @@ export const useApp = create<AppStore>((set, get) => {
     notes: [],
     pendingRelocate: null,
     jumpLine: null,
+    readMode: false,
     savedSeq: 0,
     sidebarTab: "files",
     editorApi: null,
@@ -303,9 +307,14 @@ export const useApp = create<AppStore>((set, get) => {
       void api.setWorkspace(path).catch(() => {});
     },
 
+    setReadMode(readMode) {
+      set({ readMode });
+    },
+
     async createNote(dir) {
       const path = await attempt(() => api.createNote(dir));
       if (!path) return;
+      set({ readMode: false }); // a new note is for writing
       await get().refreshTree();
       get().openNote(path);
       // Name it inline in the file tree, so make sure the tree is showing.

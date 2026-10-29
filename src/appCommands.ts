@@ -50,6 +50,14 @@ export function registerAppCommands(): () => void {
       when: () => hasNote() && !st().modal,
       run: () => st().setEditing({ mode: "rename", path: st().openPath! }),
     },
+    {
+      id: "note.readMode",
+      title: "편집/읽기 모드 전환",
+      keywords: "미리보기 보기 preview 렌더링 서식",
+      keys: "Ctrl+E",
+      when: hasNote,
+      run: () => st().setReadMode(!st().readMode),
+    },
     { id: "nav.back", title: "이전 노트", keys: "Alt+ArrowLeft", when: hasVault, run: () => st().goBack() },
     { id: "nav.forward", title: "다음 노트", keys: "Alt+ArrowRight", when: hasVault, run: () => st().goForward() },
     {
