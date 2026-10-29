@@ -44,6 +44,64 @@ type SaveState = "saved" | "dirty" | "saving" | "error";
 
 let historyWarned = false;
 
+/** The note's name above the editor; click it (or F2) to rename the note. */
+function NoteTitle({ path }: { path: string }) {
+  const title = noteTitle(path);
+  const editSeq = useApp((s) => s.titleEditSeq);
+  const [editing, setEditing] = useState(false);
+  const startSeq = useRef(editSeq);
+  const done = useRef(false);
+
+  useEffect(() => {
+    if (editSeq !== startSeq.current) setEditing(true);
+  }, [editSeq]);
+
+  if (!editing) {
+    return (
+      <h1
+        className="note-title editable"
+        title="눌러서 이름 바꾸기 (F2)"
+        onClick={() => {
+          done.current = false;
+          setEditing(true);
+        }}
+      >
+        {title}
+      </h1>
+    );
+  }
+
+  const finish = (value: string | null) => {
+    if (done.current) return;
+    done.current = true;
+    setEditing(false);
+    const name = value?.trim();
+    if (name && name !== title) void useApp.getState().rename(path, name);
+  };
+  return (
+    <input
+      className="note-title note-title-input"
+      aria-label="노트 이름"
+      defaultValue={title}
+      ref={(el) => {
+        if (el && document.activeElement !== el) {
+          done.current = false;
+          el.focus();
+          el.select();
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.nativeEvent.isComposing) return;
+        if (e.key === "Enter") finish(e.currentTarget.value);
+        else if (e.key === "Escape") finish(null);
+        else return;
+        e.preventDefault();
+      }}
+      onBlur={(e) => finish(e.currentTarget.value)}
+    />
+  );
+}
+
 export function Editor({ path }: { path: string }) {
   const host = useRef<HTMLDivElement>(null);
   const [saveState, setSaveState] = useState<SaveState>("saved");
@@ -311,7 +369,7 @@ export function Editor({ path }: { path: string }) {
   return (
     <div className="editor">
       <div className="editor-head">
-        <h1 className="note-title">{noteTitle(path)}</h1>
+        <NoteTitle path={path} />
         {!loadError && <ModeSwitch readMode={readMode} setReadMode={setReadMode} />}
         <span className={`save-state ${saveState}`}>
           {saveState === "saved" && "√ 저장됨"}

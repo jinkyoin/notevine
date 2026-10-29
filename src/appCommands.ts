@@ -66,7 +66,8 @@ export function registerAppCommands(): () => void {
       title: "현재 노트 이름 변경",
       keys: "F2",
       when: () => hasNote() && !st().modal,
-      run: () => st().setEditing({ mode: "rename", path: st().openPath! }),
+      // In the title above the editor: always on screen, unlike the file tree.
+      run: () => st().editTitle(),
     },
     {
       id: "note.readMode",

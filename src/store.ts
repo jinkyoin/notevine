@@ -98,6 +98,8 @@ interface AppStore {
   forward: string[];
   /** Bumped to move focus into the search box (Ctrl+Shift+F). */
   searchFocusSeq: number;
+  /** Bumped to start renaming the open note in its title (F2). */
+  titleEditSeq: number;
   quickOpen: boolean;
   /** Recently opened note paths, newest first (quick open ordering). */
   recent: string[];
@@ -151,6 +153,7 @@ interface AppStore {
   /** Puts a template into the open note at the cursor ("템플릿 삽입"). */
   insertTemplate(template: string): Promise<void>;
   focusSearch(): void;
+  editTitle(): void;
   setQuickOpen(open: boolean): void;
   setDocText(text: string | null): void;
   setEditText(fn: AppStore["editText"]): void;
@@ -234,6 +237,7 @@ export const useApp = create<AppStore>((set, get) => {
     back: [],
     forward: [],
     searchFocusSeq: 0,
+    titleEditSeq: 0,
     quickOpen: false,
     recent: [],
     docText: null,
@@ -513,6 +517,10 @@ export const useApp = create<AppStore>((set, get) => {
 
     focusSearch() {
       set({ sidebarTab: "search", searchFocusSeq: get().searchFocusSeq + 1 });
+    },
+
+    editTitle() {
+      set({ titleEditSeq: get().titleEditSeq + 1 });
     },
 
     setQuickOpen(quickOpen) {

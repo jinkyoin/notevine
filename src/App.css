@@ -447,6 +447,24 @@ button {
   margin: 0 0 12px;
   word-break: break-all;
 }
+.note-title.editable {
+  cursor: text;
+  border-radius: 4px;
+}
+.note-title.editable:hover {
+  background: var(--bg-hover);
+}
+.note-title-input {
+  min-width: 0;
+  font: inherit;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 0 4px;
+}
 .save-state {
   font-size: 12px;
   color: var(--muted);
