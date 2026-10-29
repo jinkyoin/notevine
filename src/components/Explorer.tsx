@@ -56,6 +56,30 @@ export function Explorer() {
   );
 }
 
+/** Folder (closed/open), note or other file, so the kinds read apart at a glance. */
+function TreeIcon({ kind, open }: { kind: TreeNode["kind"]; open?: boolean }) {
+  const common = { className: "tree-icon", viewBox: "0 0 16 16", "aria-hidden": true } as const;
+  if (kind === "folder") {
+    return open ? (
+      <svg {...common}>
+        <path className="fill" d="M1.5 3.5h4l1.5 1.5h6v2.5H4.2L1.5 13z" />
+        <path className="fill strong" d="M4.2 7.5h10.6L12.2 13H1.5z" />
+      </svg>
+    ) : (
+      <svg {...common}>
+        <path className="fill strong" d="M1.5 3.5h4l1.5 1.5h7.5v8h-13z" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...common}>
+      <path className="line" d="M3.5 1.5h6l3 3v10h-9z" />
+      <path className="line" d="M9.5 1.5v3h3" />
+      {kind === "note" && <path className="line" d="M5.5 8h5M5.5 10.5h5" />}
+    </svg>
+  );
+}
+
 function Row({ node, depth, onMenu }: { node: TreeNode; depth: number; onMenu: (m: Menu) => void }) {
   const expanded = useApp((s) => s.expanded.has(node.path));
   const openPath = useApp((s) => s.openPath);
@@ -108,6 +132,7 @@ function Row({ node, depth, onMenu }: { node: TreeNode; depth: number; onMenu: (
         title={node.path}
       >
         <span className="twisty">{isFolder ? (expanded ? "▾" : "▸") : ""}</span>
+        <TreeIcon kind={node.kind} open={expanded} />
         {isRenaming ? (
           <RenameInput node={node} />
         ) : (
@@ -180,6 +205,7 @@ function NewFolderRow({ parent, depth }: { parent: string; depth: number }) {
   return (
     <div className="tree-row folder" style={{ paddingLeft: 8 + depth * 14 }}>
       <span className="twisty">▸</span>
+      <TreeIcon kind="folder" />
       <NameInput
         initial="새 폴더"
         onCommit={(name) => {
