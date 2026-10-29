@@ -11,8 +11,8 @@ export interface LinkEnv {
   /** Path of the note being edited. */
   path(): string;
   notes(): NoteRef[];
-  /** Opens a wiki target (a name or vault path), creating the note if needed. */
-  follow(target: string): void;
+  /** Opens a wiki target (a name or vault path), creating the note if needed; then goes to `heading`. */
+  follow(target: string, heading: string | null): void;
   /** Opens a vault path from a markdown link, or an external URL. */
   openPath(path: string): void;
   openUrl(url: string): void;
@@ -39,6 +39,7 @@ function splitTarget(inner: string) {
   const hash = head.indexOf("#");
   return {
     target: (hash < 0 ? head : head.slice(0, hash)).trim(),
+    heading: hash < 0 ? null : head.slice(hash + 1).trim() || null,
     targetLen: bar < 0 ? inner.length : bar, // length of "target#anchor"
     alias: bar < 0 ? null : inner.slice(bar + 1),
   };
@@ -79,17 +80,18 @@ function buildDecorations(view: EditorView, env: LinkEnv): DecorationSet {
         if (inCode(state, start)) continue;
         const bang = m[1].length;
         const inner = m[2];
-        const { target, targetLen, alias } = splitTarget(inner);
-        if (!target) continue;
+        const { target, heading, targetLen, alias } = splitTarget(inner);
+        if (!target && !heading) continue;
         // Image embeds are drawn as previews by the attachments extension.
         if (bang && /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(target)) continue;
         const cls = isFileTarget(target)
           ? "cm-wikilink cm-wikilink-file"
-          : noteExists(notes, target)
+          : !target || noteExists(notes, target) // [[#제목]] is in this note
             ? "cm-wikilink"
             : "cm-wikilink cm-wikilink-missing";
         const how = env.clickMode() === "click" ? "클릭" : "Ctrl+클릭";
-        const mark = Decoration.mark({ class: cls, attributes: { title: `${how}: ${target}` } });
+        const where = heading ? `${target || "이 노트"} › ${heading}` : target;
+        const mark = Decoration.mark({ class: cls, attributes: { title: `${how}: ${where}` } });
         const innerFrom = start + bang + 2;
         const innerTo = innerFrom + inner.length;
         if (isActive) {
@@ -112,13 +114,16 @@ function buildDecorations(view: EditorView, env: LinkEnv): DecorationSet {
 }
 
 /** Link under a document position: a wiki target, or a markdown destination. */
-export function linkAt(state: EditorState, pos: number): { kind: "wiki"; target: string } | { kind: "md"; dest: string } | null {
+export function linkAt(
+  state: EditorState,
+  pos: number,
+): { kind: "wiki"; target: string; heading: string | null } | { kind: "md"; dest: string } | null {
   const line = state.doc.lineAt(pos);
   const col = pos - line.from;
   for (const m of line.text.matchAll(WIKI)) {
     if (col >= m.index! && col <= m.index! + m[0].length) {
-      const { target } = splitTarget(m[2]);
-      return target ? { kind: "wiki", target } : null;
+      const { target, heading } = splitTarget(m[2]);
+      return target || heading ? { kind: "wiki", target, heading } : null;
     }
   }
   for (const m of line.text.matchAll(MDLINK)) {
@@ -193,7 +198,7 @@ function completeNotes(env: LinkEnv) {
         apply: (view, _c, from, to) => {
           const insert = name + closeAfter(view, to);
           view.dispatch({ changes: { from, to, insert }, selection: { anchor: from + insert.length } });
-          env.follow(name);
+          env.follow(name, null);
         },
       });
     }
@@ -238,7 +243,7 @@ export function wikiLinks(env: LinkEnv): Extension {
       const link = linkAt(view.state, pos);
       if (!link) return false;
       e.preventDefault();
-      if (link.kind === "wiki") env.follow(link.target);
+      if (link.kind === "wiki") env.follow(link.target, link.heading);
       else if (/^[a-z][a-z0-9+.-]*:/i.test(link.dest)) env.openUrl(link.dest);
       else {
         const p = resolveDest(env.path(), link.dest);

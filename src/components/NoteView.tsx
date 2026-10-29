@@ -8,6 +8,7 @@ import { useApp } from "../store";
 import { noteToHtml } from "../lib/renderNote";
 import { noteExists, resolveDest } from "../editor/wikilinks";
 import { safeStyle } from "../editor/colors";
+import { headingKey } from "../lib/headings";
 
 // Text/background colors (SCR-04) are the only styles kept; anything else, urls
 // included, is dropped so the page can't load from the network.
@@ -26,6 +27,9 @@ function safeHtml(text: string): string {
   });
 }
 
+/** Last jump scrolled to, kept across read-mode toggles so a jump is followed only once. */
+let scrolledSeq = 0;
+
 export function NoteView({ path, text, onToggleTask }: { path: string; text: string; onToggleTask: (index: number) => void }) {
   const box = useRef<HTMLDivElement>(null);
   const html = useMemo(() => safeHtml(text), [text]);
@@ -37,6 +41,7 @@ export function NoteView({ path, text, onToggleTask }: { path: string; text: str
     if (!el) return;
     el.querySelectorAll<HTMLAnchorElement>("a.wikilink[data-target]").forEach((a) => {
       const t = a.dataset.target!;
+      if (!t) return; // [[#제목]]: a heading in this note
       const file = /\.[a-z0-9]{1,8}$/i.test(t) && !/\.md$/i.test(t);
       a.classList.toggle("unresolved", !file && !noteExists(notes, t));
     });
@@ -58,6 +63,17 @@ export function NoteView({ path, text, onToggleTask }: { path: string; text: str
     };
   }, [html, notes, path]);
 
+  // [[노트#제목]]: scroll to the heading once the note is shown.
+  const jumpSeq = useApp((s) => s.jumpSeq);
+  useEffect(() => {
+    const { jumpHeading, openPath } = useApp.getState();
+    if (jumpSeq === scrolledSeq || !jumpHeading || openPath !== path || !box.current) return;
+    scrolledSeq = jumpSeq;
+    const want = headingKey(jumpHeading);
+    const h = [...box.current.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")].find((e) => headingKey(e.textContent ?? "") === want);
+    h?.scrollIntoView({ block: "start" });
+  }, [html, jumpSeq, path]);
+
   const onClick = (e: React.MouseEvent) => {
     const t = e.target as HTMLElement;
     if (t instanceof HTMLInputElement && t.classList.contains("task")) {
@@ -70,8 +86,9 @@ export function NoteView({ path, text, onToggleTask }: { path: string; text: str
     if (!a) return;
     // Never let the app window navigate away.
     e.preventDefault();
-    const { followLink } = useApp.getState();
-    if (a.dataset.target) void followLink(a.dataset.target);
+    const { followLink, searchTag } = useApp.getState();
+    if (a.dataset.tag) searchTag(a.dataset.tag);
+    else if (a.dataset.target !== undefined) void followLink(a.dataset.target, a.dataset.heading ?? null);
     else if (a.dataset.dest) {
       const r = resolveDest(path, a.dataset.dest);
       if (r) void followLink(r);

@@ -16,13 +16,19 @@ describe("noteToHtml", () => {
 
   it("turns Notevine syntax into clickable elements", () => {
     const html = noteToHtml("[[회의록#결정|지난 회의]] ![[그림.png|300]] ==중요== #업무/기획 a#b\n[문서](https://x.y) [노트](../a.md)");
-    expect(html).toContain('<a href="#" class="wikilink" data-target="회의록">지난 회의</a>');
+    expect(html).toContain('<a href="#" class="wikilink" data-target="회의록" data-heading="결정">지난 회의</a>');
     expect(html).toContain('<img data-embed="그림.png" alt="그림.png" width="300">');
     expect(html).toContain("<mark>중요</mark>");
     expect(html).toContain('data-tag="업무/기획"');
     expect(html).not.toContain('data-tag="b"');
     expect(html).toContain('data-url="https://x.y"');
     expect(html).toContain('data-dest="../a.md"');
+  });
+
+  it("links to headings in another note or this one", () => {
+    expect(noteToHtml("[[회의록#결정]]")).toContain('data-target="회의록" data-heading="결정">회의록 › 결정</a>');
+    expect(noteToHtml("[[#할 일]]")).toContain('data-target="" data-heading="할 일">할 일</a>');
+    expect(noteToHtml("[[회의록]]")).not.toContain("data-heading");
   });
 
   it("never points an image at the web", () => {

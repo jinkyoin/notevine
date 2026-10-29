@@ -20,6 +20,7 @@ export function registerAppCommands(): () => void {
       id: "note.insertTemplate",
       title: "템플릿 삽입 (현재 노트)",
       keywords: "템플릿 넣기 붙이기 양식 서식 template",
+      keys: "Ctrl+T",
       when: () => hasNote() && noModal(),
       run: () => st().setModal("insertTemplate"),
     },

@@ -123,6 +123,21 @@ export function Editor({ path }: { path: string }) {
     else v.focus();
   }, [readMode]);
 
+  // A jump within this note ([[#제목]], a search hit here): the note is already
+  // loaded, so move the cursor now. Jumps into a newly opened note happen on load.
+  const jumpSeq = useApp((s) => s.jumpSeq);
+  const seenJump = useRef(jumpSeq);
+  useEffect(() => {
+    if (jumpSeq === seenJump.current) return;
+    seenJump.current = jumpSeq;
+    const v = viewRef.current;
+    const line = useApp.getState().jumpLine;
+    if (!v || !line || line > v.state.doc.lines) return;
+    const at = v.state.doc.line(line).from;
+    v.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: "start", yMargin: 40 }) });
+    if (!readModeRef.current) v.focus();
+  }, [jumpSeq]);
+
   const applyFormat = (a: FormatAction) => {
     const v = viewRef.current;
     if (!v || readModeRef.current) return;
@@ -231,7 +246,7 @@ export function Editor({ path }: { path: string }) {
               wikiLinks({
                 path: () => path,
                 notes: () => useApp.getState().notes,
-                follow: (target) => void useApp.getState().followLink(target),
+                follow: (target, heading) => void useApp.getState().followLink(target, heading),
                 openPath: (p) => {
                   const st = useApp.getState();
                   const node = findNode(st.tree, p);

@@ -35,6 +35,12 @@ export function SearchPanel() {
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    // A clicked #태그 fills the box once; a plain Ctrl+Shift+F keeps what was typed.
+    const seed = useApp.getState().searchSeed;
+    if (seed !== null) {
+      setText(seed);
+      useApp.setState({ searchSeed: null });
+    }
     input.current?.focus();
     input.current?.select();
   }, [focusSeq]);

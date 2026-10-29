@@ -10,10 +10,14 @@ describe("wikilinks", () => {
 
   it("finds the link under a position", () => {
     const state = EditorState.create({ doc: "참고 [[회의록#결정|어제 회의]] 그리고 [자료](../a%20b.md \"t\")" });
-    expect(linkAt(state, 6)).toEqual({ kind: "wiki", target: "회의록" });
+    expect(linkAt(state, 6)).toEqual({ kind: "wiki", target: "회의록", heading: "결정" });
     const md = state.doc.toString().indexOf("자료");
     expect(linkAt(state, md)).toEqual({ kind: "md", dest: "../a%20b.md" });
     expect(linkAt(state, 1)).toBeNull();
+    const plain = EditorState.create({ doc: "[[회의록]] [[#할 일]] [[#]]" });
+    expect(linkAt(plain, 2)).toEqual({ kind: "wiki", target: "회의록", heading: null });
+    expect(linkAt(plain, 10)).toEqual({ kind: "wiki", target: "", heading: "할 일" });
+    expect(linkAt(plain, 19)).toBeNull();
   });
 
   it("resolves markdown destinations relative to the note", () => {

@@ -15,6 +15,7 @@ function splitTarget(inner: string) {
   const hash = head.indexOf("#");
   return {
     target: (hash < 0 ? head : head.slice(0, hash)).trim(),
+    heading: hash < 0 ? null : head.slice(hash + 1).trim() || null,
     alias: bar < 0 ? null : inner.slice(bar + 1).trim(),
   };
 }
@@ -26,17 +27,25 @@ const wiki: TokenizerAndRendererExtension = {
   tokenizer(src) {
     const m = /^(!?)\[\[([^[\]\n]+?)\]\]/.exec(src);
     if (!m) return undefined;
-    const { target, alias } = splitTarget(m[2]);
-    if (!target) return undefined;
-    return { type: "wiki", raw: m[0], embed: m[1] === "!", target, alias };
+    const { target, heading, alias } = splitTarget(m[2]);
+    // [[#제목]] points at a heading in the same note.
+    if (!target && !heading) return undefined;
+    return { type: "wiki", raw: m[0], embed: m[1] === "!", target, heading, alias };
   },
   renderer(t) {
-    const { embed, target, alias } = t as unknown as { embed: boolean; target: string; alias: string | null };
+    const { embed, target, heading, alias } = t as unknown as {
+      embed: boolean;
+      target: string;
+      heading: string | null;
+      alias: string | null;
+    };
     if (embed && IMAGE.test(target)) {
       const width = alias && /^\d+$/.test(alias) ? ` width="${alias}"` : "";
       return `<img data-embed="${esc(target)}" alt="${esc(alias && !width ? alias : target)}"${width}>`;
     }
-    return `<a href="#" class="wikilink" data-target="${esc(target)}">${esc(alias || target)}</a>`;
+    const h = heading ? ` data-heading="${esc(heading)}"` : "";
+    const label = alias || (heading ? (target ? `${target} › ${heading}` : heading) : target);
+    return `<a href="#" class="wikilink" data-target="${esc(target)}"${h}>${esc(label)}</a>`;
   },
 };
 

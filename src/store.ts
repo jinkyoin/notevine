@@ -13,6 +13,7 @@ import {
 } from "./api";
 import { ancestors, findNode, remapPath } from "./lib/tree";
 import { insertTemplate } from "./editor/template";
+import { findHeadingLine } from "./lib/headings";
 
 export type ToastKind = "info" | "error";
 
@@ -79,6 +80,10 @@ interface AppStore {
   pendingRelocate: PendingRelocate | null;
   /** Line to put the cursor on when the next note opens (from a backlink). */
   jumpLine: number | null;
+  /** Heading the jump is for, so read mode can scroll to it ([[노트#제목]]). */
+  jumpHeading: string | null;
+  /** Bumped on every jump, so a jump within the open note is noticed too. */
+  jumpSeq: number;
   /** Show the note formatted (read mode) instead of the editor (Ctrl+E). */
   readMode: boolean;
   /** Bumped after each save so panels that depend on links refresh. */
@@ -98,6 +103,8 @@ interface AppStore {
   forward: string[];
   /** Bumped to move focus into the search box (Ctrl+Shift+F). */
   searchFocusSeq: number;
+  /** Text to put in the search box on the next focus (a clicked #태그), or null to keep it. */
+  searchSeed: string | null;
   /** Bumped to start renaming the open note in its title (F2). */
   titleEditSeq: number;
   quickOpen: boolean;
@@ -124,9 +131,12 @@ interface AppStore {
   closeVault(): Promise<void>;
   refreshTree(): Promise<void>;
   toggleFolder(path: string, open?: boolean): void;
-  openNote(path: string, line?: number): void;
-  /** Opens the note a link points at, creating it when it doesn't exist (FR-LNK-02). */
-  followLink(target: string): Promise<void>;
+  openNote(path: string, line?: number, heading?: string): void;
+  /**
+   * Opens the note a link points at, creating it when it doesn't exist (FR-LNK-02),
+   * then goes to `heading` in it. An empty target with a heading means the open note.
+   */
+  followLink(target: string, heading?: string | null): Promise<void>;
   /** Opens a non-note file with its default program (FR-ATT-05). */
   openAttachment(target: string): Promise<void>;
   confirmRelocate(updateLinks: boolean | null): Promise<void>;
@@ -153,6 +163,8 @@ interface AppStore {
   /** Puts a template into the open note at the cursor ("템플릿 삽입"). */
   insertTemplate(template: string): Promise<void>;
   focusSearch(): void;
+  /** Shows the search tab filtered by a tag (clicking #태그 in read mode). */
+  searchTag(tag: string): void;
   editTitle(): void;
   setQuickOpen(open: boolean): void;
   setDocText(text: string | null): void;
@@ -224,6 +236,8 @@ export const useApp = create<AppStore>((set, get) => {
     notes: [],
     pendingRelocate: null,
     jumpLine: null,
+    jumpHeading: null,
+    jumpSeq: 0,
     readMode: false,
     savedSeq: 0,
     sidebarTab: "files",
@@ -237,6 +251,7 @@ export const useApp = create<AppStore>((set, get) => {
     back: [],
     forward: [],
     searchFocusSeq: 0,
+    searchSeed: null,
     titleEditSeq: 0,
     quickOpen: false,
     recent: [],
@@ -302,7 +317,7 @@ export const useApp = create<AppStore>((set, get) => {
       set({ expanded });
     },
 
-    openNote(path, line) {
+    openNote(path, line, heading) {
       void get().flushEditor();
       expandTo(path);
       const prev = get().openPath;
@@ -311,6 +326,8 @@ export const useApp = create<AppStore>((set, get) => {
         forward: prev && prev !== path ? [] : get().forward,
         openPath: path,
         jumpLine: line ?? null,
+        jumpHeading: heading ?? null,
+        jumpSeq: line ? get().jumpSeq + 1 : get().jumpSeq,
         recent: [path, ...get().recent.filter((p) => p !== path)].slice(0, 30),
       });
       void api.setWorkspace(path).catch(() => {});
@@ -357,12 +374,21 @@ export const useApp = create<AppStore>((set, get) => {
       }
     },
 
-    async followLink(target) {
+    async followLink(target, heading) {
       // [[견적서.xlsx]] and other non-note files open in their own program.
       if (/\.[a-z0-9]{1,8}$/i.test(target) && !/\.md$/i.test(target)) return get().openAttachment(target);
-      const found = await attempt(() => api.resolveLink(target));
+      const found = target ? await attempt(() => api.resolveLink(target)) : get().openPath;
       if (found === undefined) return;
+      if (found && heading) {
+        // Read the saved text, so flush the editor first when the heading is in the open note.
+        if (found === get().openPath) await get().flushEditor();
+        const text = await attempt(() => api.readNote(found));
+        const line = text === undefined ? null : findHeadingLine(text, heading);
+        if (line === null) get().toast(`'${heading}' 제목을 찾지 못해 노트 처음을 엽니다`);
+        return get().openNote(found, line ?? undefined, line === null ? undefined : heading);
+      }
       if (found) return get().openNote(found);
+      if (!target) return;
       // [[폴더/이름]] creates 폴더/이름.md; a bare [[이름]] creates it at the vault root.
       const clean = target.replace(/\.md$/i, "");
       const slash = clean.lastIndexOf("/");
@@ -517,6 +543,10 @@ export const useApp = create<AppStore>((set, get) => {
 
     focusSearch() {
       set({ sidebarTab: "search", searchFocusSeq: get().searchFocusSeq + 1 });
+    },
+
+    searchTag(tag) {
+      set({ leftOpen: true, sidebarTab: "search", searchSeed: `#${tag}`, searchFocusSeq: get().searchFocusSeq + 1 });
     },
 
     editTitle() {
