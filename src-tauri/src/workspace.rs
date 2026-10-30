@@ -682,7 +682,7 @@ mod tests {
     #[test]
     fn preset_definition_is_valid() {
         let p = preset().unwrap();
-        assert_eq!(p.folders.len(), 10);
+        assert_eq!(p.folders.len(), 9);
         let names: Vec<_> = p.templates.iter().map(|t| t.name.as_str()).collect();
         assert_eq!(names, ["프로젝트", "업무일지", "회의록", "아이디어", "자료"]);
     }
@@ -698,7 +698,6 @@ mod tests {
                 "00.Inbox",
                 "10.프로젝트",
                 "20.영역",
-                "20.영역/업무일지",
                 "30.자료",
                 "30.자료/아이디어",
                 "30.자료/조사자료",
@@ -741,7 +740,7 @@ mod tests {
         // applying again changes nothing
         let again = apply_preset_to(&v).unwrap();
         assert!(again.created_folders.is_empty() && again.created_templates.is_empty());
-        assert_eq!(again.skipped.len(), 15);
+        assert_eq!(again.skipped.len(), 14);
     }
 
     #[test]
@@ -760,7 +759,6 @@ mod tests {
             [
                 "10.프로젝트",
                 "20.영역",
-                "20.영역/업무일지",
                 "30.자료",
                 "30.자료/아이디어",
                 "30.자료/조사자료",

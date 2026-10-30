@@ -36,7 +36,7 @@ const ymd = `${today.getFullYear()}-${p2(today.getMonth() + 1)}-${p2(today.getDa
   console.log("confirm lists folders:", (await page.textContent(".confirm-msg")).includes("10.프로젝트"));
   await page.click(".modal .btn.primary");
   await page.waitForSelector(".tree-row >> text=90.템플릿", { timeout: 5000 });
-  console.log("preset folders:", ["00.Inbox", "10.프로젝트", "20.영역", "20.영역/업무일지", "30.자료", "30.자료/아이디어", "30.자료/조사자료", "40.보관", "90.템플릿", "첨부"].map(exists));
+  console.log("preset folders:", ["00.Inbox", "10.프로젝트", "20.영역", "30.자료", "30.자료/아이디어", "30.자료/조사자료", "40.보관", "90.템플릿", "첨부"].map(exists));
   console.log("templates:", fs.readdirSync(path.join(VAULT, "90.템플릿")));
   console.log("existing note untouched:", read("기존 노트.md") === "원래 있던 노트\n");
   console.log("top bar now offers:", (await page.$$eval(".topbar .btn", (bs) => bs.map((b) => b.textContent.trim()))).join(" · "));

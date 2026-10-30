@@ -83,7 +83,7 @@ export function MainLayout() {
   const rightOpen = useApp((s) => s.rightOpen);
   const canBack = useApp((s) => s.back.length > 0);
   const canForward = useApp((s) => s.forward.length > 0);
-  const { setSidebarTab, focusSearch, setPanels, setModal, goBack, goForward, openTodayJournal } = useApp.getState();
+  const { setSidebarTab, focusSearch, setPanels, setModal, goBack, goForward } = useApp.getState();
 
   // All shortcuts go through the command registry (FR-EXT-01).
   useEffect(() => {
@@ -122,12 +122,8 @@ export function MainLayout() {
           ))}
         </nav>
         <span className="spacer" />
-        {/* Before the folders exist the one thing to do is create them; afterwards, open today's journal. */}
-        {preset ? (
-          <button className="btn ghost small" onClick={() => void openTodayJournal()} title="오늘 날짜 업무일지 열기 (Ctrl+Shift+D)">
-            오늘 업무일지
-          </button>
-        ) : (
+        {/* Until the folders exist, offer to create them. Today's journal is Ctrl+Shift+D or the palette. */}
+        {!preset && (
           <button
             className="btn ghost small"
             onClick={() => void useApp.getState().applyPreset()}

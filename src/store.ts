@@ -583,7 +583,6 @@ export const useApp = create<AppStore>((set, get) => {
         `${c.inbox_folder}  — 정리 전 메모`,
         `${c.project_folder}  — 프로젝트: 끝과 목표가 있는 일`,
         `${c.area_folder}  — 영역: 계속 맡아 챙기는 일`,
-        `   ${c.journal_folder}`,
         `${c.resource_folder}  — 자료: 관심 주제·참고 자료`,
         `   ${c.idea_folder}`,
         `   ${c.research_folder}`,
