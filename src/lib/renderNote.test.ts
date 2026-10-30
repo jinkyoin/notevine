@@ -31,6 +31,18 @@ describe("noteToHtml", () => {
     expect(noteToHtml("[[회의록]]")).not.toContain("data-heading");
   });
 
+  it("marks note embeds, keeping a link to the note inside", () => {
+    expect(noteToHtml("![[회의록]]")).toContain(
+      '<span class="note-embed" data-note-embed="회의록"><a href="#" class="wikilink" data-target="회의록">회의록</a></span>',
+    );
+    expect(noteToHtml("![[회의록#결정]]")).toContain('<span class="note-embed" data-note-embed="회의록" data-heading="결정">');
+    expect(noteToHtml("![[#할 일]]")).toContain('<span class="note-embed" data-note-embed="" data-heading="할 일">');
+    expect(noteToHtml("![[회의록.md]]")).toContain('data-note-embed="회의록.md"');
+    // Other files stay plain links; images stay pictures.
+    expect(noteToHtml("![[견적서.xlsx]]")).not.toContain("note-embed");
+    expect(noteToHtml("![[그림.png]]")).not.toContain("note-embed");
+  });
+
   it("never points an image at the web", () => {
     const html = noteToHtml("![로고](https://x.y/a.png) ![로컬](첨부/a.png)");
     expect(html).not.toMatch(/<img[^>]+src=/);

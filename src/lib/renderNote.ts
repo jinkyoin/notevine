@@ -46,7 +46,12 @@ const wiki: TokenizerAndRendererExtension = {
     }
     const h = heading ? ` data-heading="${esc(heading)}"` : "";
     const label = alias || (heading ? (target ? `${target} › ${heading}` : heading) : target);
-    return `<a href="#" class="wikilink" data-target="${esc(target)}"${h}>${esc(label)}</a>`;
+    const link = `<a href="#" class="wikilink" data-target="${esc(target)}"${h}>${esc(label)}</a>`;
+    // ![[노트]] / ![[노트#제목]]: the read view puts the note's text under the link.
+    // Other files (![[견적서.xlsx]]) stay links.
+    const file = /\.[a-z0-9]{1,8}$/i.test(target) && !/\.md$/i.test(target);
+    if (embed && !file) return `<span class="note-embed" data-note-embed="${esc(target)}"${h}>${link}</span>`;
+    return link;
   },
 };
 
