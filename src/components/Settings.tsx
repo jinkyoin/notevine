@@ -108,7 +108,10 @@ function SettingsDialog({ close }: { close: () => void }) {
             )}
             {tab === "preset" && (
               <>
-                <Row label="기본 구조 (업무일지·아이디어·조사자료)" hint="켜면 폴더와 템플릿 4종을 만들고 오늘 업무일지·아이디어 보드를 씁니다. 끄면 이 기능만 숨기고 기존 노트·폴더는 그대로입니다">
+                <Row
+                  label="기본 구조 (PARA)"
+                  hint="켜면 프로젝트·영역·자료·보관 폴더와 템플릿 4종을 만들고 오늘 업무일지·아이디어 보드를 씁니다. 끄면 이 기능만 숨기고 기존 노트·폴더는 그대로입니다"
+                >
                   <input
                     type="checkbox"
                     checked={config.preset_enabled}
@@ -116,6 +119,10 @@ function SettingsDialog({ close }: { close: () => void }) {
                   />
                 </Row>
                 <TextRow label="Inbox 폴더" value={config.inbox_folder} onCommit={(v) => set("inbox_folder", v)} />
+                <TextRow label="프로젝트 폴더" value={config.project_folder} onCommit={(v) => set("project_folder", v)} />
+                <TextRow label="영역 폴더" value={config.area_folder} onCommit={(v) => set("area_folder", v)} />
+                <TextRow label="자료 폴더" value={config.resource_folder} onCommit={(v) => set("resource_folder", v)} />
+                <TextRow label="보관 폴더" value={config.archive_folder} onCommit={(v) => set("archive_folder", v)} />
                 <TextRow label="업무일지 폴더" value={config.journal_folder} onCommit={(v) => set("journal_folder", v)} />
                 <TextRow label="아이디어 폴더" value={config.idea_folder} onCommit={(v) => set("idea_folder", v)} />
                 <TextRow label="조사자료 폴더" value={config.research_folder} onCommit={(v) => set("research_folder", v)} />

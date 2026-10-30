@@ -50,13 +50,17 @@ export type SidebarTab = "files" | "search" | "ideas";
 /** Defaults used until the vault's config is loaded (mirrors the backend defaults). */
 export const DEFAULT_CONFIG: VaultConfig = {
   preset_enabled: false,
-  inbox_folder: "00 Inbox",
-  journal_folder: "10 업무일지",
-  idea_folder: "20 아이디어",
-  research_folder: "30 조사자료",
-  template_folder: "90 템플릿",
+  inbox_folder: "00.Inbox",
+  project_folder: "10.프로젝트",
+  area_folder: "20.영역",
+  resource_folder: "30.자료",
+  archive_folder: "40.보관",
+  journal_folder: "20.영역/업무일지",
+  idea_folder: "30.자료/아이디어",
+  research_folder: "30.자료/조사자료",
+  template_folder: "90.템플릿",
   attachment_folder: "첨부",
-  journal_path: "10 업무일지/{{YYYY}}/{{YYYY-MM-DD}}.md",
+  journal_path: "20.영역/업무일지/{{YYYY}}/{{YYYY-MM-DD}}.md",
   idea_statuses: ["아이디어", "검토", "진행", "완료", "보류"],
   link_click: "ctrl",
   update_links_on_rename: true,
@@ -545,10 +549,22 @@ export const useApp = create<AppStore>((set, get) => {
 
     async applyPreset() {
       const c = get().config;
-      const folders = [c.inbox_folder, c.journal_folder, c.idea_folder, c.research_folder, c.template_folder, c.attachment_folder];
+      // PARA (Projects·Areas·Resources·Archives), the app's folders inside them, then the rest.
+      const folders = [
+        `${c.inbox_folder}  — 정리 전 메모`,
+        `${c.project_folder}  — 프로젝트: 끝과 목표가 있는 일`,
+        `${c.area_folder}  — 영역: 계속 맡아 챙기는 일`,
+        `   ${c.journal_folder}`,
+        `${c.resource_folder}  — 자료: 관심 주제·참고 자료`,
+        `   ${c.idea_folder}`,
+        `   ${c.research_folder}`,
+        `${c.archive_folder}  — 보관: 끝났거나 쉬는 것`,
+        c.template_folder,
+        c.attachment_folder,
+      ];
       const ok = await get().ask(
-        "기본 구조 만들기",
-        `노트 폴더에 다음 폴더와 템플릿 4개(업무일지·회의록·아이디어·자료)를 만듭니다.\n\n${folders.join("\n")}\n\n이미 있는 폴더와 노트는 바꾸지 않습니다.`,
+        "기본 구조 만들기 (PARA)",
+        `노트 폴더에 PARA 방식의 폴더와 템플릿 4개(업무일지·회의록·아이디어·자료)를 만듭니다.\n\n${folders.join("\n")}\n\n이미 있는 폴더와 노트는 바꾸지 않습니다.`,
         "켜기",
       );
       if (!ok) return;

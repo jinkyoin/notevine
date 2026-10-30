@@ -115,8 +115,8 @@ export function registerAppCommands(): () => void {
     { id: "history.deleted", title: "삭제된 노트 히스토리", keywords: "휴지통 되살리기 복원", when: hasVault, run: () => st().setModal("deleted") },
     {
       id: "preset.enable",
-      title: "기본 구조 만들기 (폴더·템플릿)",
-      keywords: "기본 구조 디폴트 초기 설정 기록 관리 프리셋 업무일지 아이디어 조사자료 템플릿 폴더",
+      title: "기본 구조 만들기 (PARA 폴더·템플릿)",
+      keywords: "기본 구조 디폴트 초기 설정 기록 관리 프리셋 para 프로젝트 영역 자료 보관 업무일지 아이디어 조사자료 템플릿 폴더",
       when: () => hasVault() && !st().config.preset_enabled,
       run: () => st().applyPreset(),
     },

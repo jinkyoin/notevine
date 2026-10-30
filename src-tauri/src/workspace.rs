@@ -32,6 +32,11 @@ const PRESET_JSON: &str = include_str!("../presets/default.json");
 pub struct VaultConfig {
     pub preset_enabled: bool,
     pub inbox_folder: String,
+    /// PARA (Tiago Forte): Projects, Areas, Resources, Archives.
+    pub project_folder: String,
+    pub area_folder: String,
+    pub resource_folder: String,
+    pub archive_folder: String,
     pub journal_folder: String,
     pub idea_folder: String,
     pub research_folder: String,
@@ -56,13 +61,17 @@ impl Default for VaultConfig {
     fn default() -> Self {
         Self {
             preset_enabled: false,
-            inbox_folder: "00 Inbox".into(),
-            journal_folder: "10 업무일지".into(),
-            idea_folder: "20 아이디어".into(),
-            research_folder: "30 조사자료".into(),
-            template_folder: "90 템플릿".into(),
+            inbox_folder: "00.Inbox".into(),
+            project_folder: "10.프로젝트".into(),
+            area_folder: "20.영역".into(),
+            resource_folder: "30.자료".into(),
+            archive_folder: "40.보관".into(),
+            journal_folder: "20.영역/업무일지".into(),
+            idea_folder: "30.자료/아이디어".into(),
+            research_folder: "30.자료/조사자료".into(),
+            template_folder: "90.템플릿".into(),
             attachment_folder: "첨부".into(),
-            journal_path: "10 업무일지/{{YYYY}}/{{YYYY-MM-DD}}.md".into(),
+            journal_path: "20.영역/업무일지/{{YYYY}}/{{YYYY-MM-DD}}.md".into(),
             idea_statuses: ["아이디어", "검토", "진행", "완료", "보류"].map(String::from).to_vec(),
             link_click: "ctrl".into(),
             update_links_on_rename: true,
@@ -80,6 +89,10 @@ impl VaultConfig {
     fn folder_for<'a>(&'a self, key: &'a str) -> &'a str {
         match key {
             "inbox_folder" => &self.inbox_folder,
+            "project_folder" => &self.project_folder,
+            "area_folder" => &self.area_folder,
+            "resource_folder" => &self.resource_folder,
+            "archive_folder" => &self.archive_folder,
             "journal_folder" => &self.journal_folder,
             "idea_folder" => &self.idea_folder,
             "research_folder" => &self.research_folder,
@@ -606,7 +619,7 @@ mod tests {
         let c = load_config(&v).unwrap();
         assert_eq!(c.theme, "dark");
         assert_eq!(c.inbox_folder, "받은 메모");
-        assert_eq!(c.journal_folder, "10 업무일지");
+        assert_eq!(c.journal_folder, "20.영역/업무일지");
 
         let changed = VaultConfig {
             autosave_ms: 2500,
@@ -625,7 +638,7 @@ mod tests {
     #[test]
     fn preset_definition_is_valid() {
         let p = preset().unwrap();
-        assert_eq!(p.folders.len(), 6);
+        assert_eq!(p.folders.len(), 10);
         let names: Vec<_> = p.templates.iter().map(|t| t.name.as_str()).collect();
         assert_eq!(names, ["업무일지", "회의록", "아이디어", "자료"]);
     }
@@ -634,66 +647,93 @@ mod tests {
     fn apply_preset_on_empty_vault() {
         let (dir, v) = vault();
         let r = apply_preset_to(&v).unwrap();
-        assert_eq!(r.created_folders, ["00 Inbox", "10 업무일지", "20 아이디어", "30 조사자료", "90 템플릿", "첨부"]);
+        // PARA's four folders, the app's folders inside them, then the folders outside PARA.
+        assert_eq!(
+            r.created_folders,
+            [
+                "00.Inbox",
+                "10.프로젝트",
+                "20.영역",
+                "20.영역/업무일지",
+                "30.자료",
+                "30.자료/아이디어",
+                "30.자료/조사자료",
+                "40.보관",
+                "90.템플릿",
+                "첨부"
+            ]
+        );
         assert_eq!(
             r.created_templates,
-            ["90 템플릿/업무일지.md", "90 템플릿/회의록.md", "90 템플릿/아이디어.md", "90 템플릿/자료.md"]
+            ["90.템플릿/업무일지.md", "90.템플릿/회의록.md", "90.템플릿/아이디어.md", "90.템플릿/자료.md"]
         );
         assert!(r.skipped.is_empty());
         assert!(load_config(&v).unwrap().preset_enabled);
 
-        let idea = read(&dir, "90 템플릿/아이디어.md");
+        let idea = read(&dir, "90.템플릿/아이디어.md");
         assert!(
             idea.starts_with(
-                "---\ntype: idea\nstatus: 아이디어\ntags: []\ncreated: {{date}}\nfolder: 20 아이디어\n---\n"
+                "---\ntype: idea\nstatus: 아이디어\ntags: []\ncreated: {{date}}\nfolder: 30.자료/아이디어\n---\n"
             ),
             "{idea}"
         );
-        let research = read(&dir, "90 템플릿/자료.md");
+        let research = read(&dir, "90.템플릿/자료.md");
         assert!(research.contains("type: research\nsource: \ncreated: {{date}}\n"));
-        assert!(research.contains("folder: 30 조사자료\n") && research.contains("## 요약"));
-        assert!(read(&dir, "90 템플릿/업무일지.md").contains("type: journal\ndate: {{date}}\n"));
-        assert!(read(&dir, "90 템플릿/회의록.md").contains("type: meeting\ndate: {{date}}\nparticipants: []\n"));
+        assert!(research.contains("folder: 30.자료/조사자료\n") && research.contains("## 요약"));
+        assert!(read(&dir, "90.템플릿/업무일지.md").contains("type: journal\ndate: {{date}}\n"));
+        assert!(read(&dir, "90.템플릿/회의록.md").contains("type: meeting\ndate: {{date}}\nparticipants: []\n"));
 
         // applying again changes nothing
         let again = apply_preset_to(&v).unwrap();
         assert!(again.created_folders.is_empty() && again.created_templates.is_empty());
-        assert_eq!(again.skipped.len(), 10);
+        assert_eq!(again.skipped.len(), 14);
     }
 
     #[test]
     fn apply_preset_leaves_existing_files_untouched() {
         let (dir, v) = vault();
-        fs::create_dir_all(dir.path().join("00 Inbox")).unwrap();
-        fs::create_dir_all(dir.path().join("90 템플릿")).unwrap();
+        fs::create_dir_all(dir.path().join("00.Inbox")).unwrap();
+        fs::create_dir_all(dir.path().join("90.템플릿")).unwrap();
         let mine = "---\ntype: journal\n---\n내 업무일지 양식\r\n";
-        fs::write(dir.path().join("90 템플릿/업무일지.md"), mine).unwrap();
-        fs::write(dir.path().join("00 Inbox/메모.md"), "그대로").unwrap();
+        fs::write(dir.path().join("90.템플릿/업무일지.md"), mine).unwrap();
+        fs::write(dir.path().join("00.Inbox/메모.md"), "그대로").unwrap();
 
         let r = apply_preset_to(&v).unwrap();
-        assert_eq!(r.skipped, ["00 Inbox", "90 템플릿", "90 템플릿/업무일지.md"]);
-        assert_eq!(r.created_folders, ["10 업무일지", "20 아이디어", "30 조사자료", "첨부"]);
+        assert_eq!(r.skipped, ["00.Inbox", "90.템플릿", "90.템플릿/업무일지.md"]);
+        assert_eq!(
+            r.created_folders,
+            [
+                "10.프로젝트",
+                "20.영역",
+                "20.영역/업무일지",
+                "30.자료",
+                "30.자료/아이디어",
+                "30.자료/조사자료",
+                "40.보관",
+                "첨부"
+            ]
+        );
         assert_eq!(r.created_templates.len(), 3);
-        assert_eq!(fs::read(dir.path().join("90 템플릿/업무일지.md")).unwrap(), mine.as_bytes());
-        assert_eq!(read(&dir, "00 Inbox/메모.md"), "그대로");
+        assert_eq!(fs::read(dir.path().join("90.템플릿/업무일지.md")).unwrap(), mine.as_bytes());
+        assert_eq!(read(&dir, "00.Inbox/메모.md"), "그대로");
     }
 
     #[test]
     fn lists_templates_with_preview_and_folder() {
         let (dir, v) = vault();
         apply_preset_to(&v).unwrap();
-        fs::create_dir_all(dir.path().join("90 템플릿/내 양식")).unwrap();
-        fs::write(dir.path().join("90 템플릿/내 양식/가 주간보고.md"), "\n\n# 주간보고\n\n- 한 일\n- 할 일\n- 이슈\n")
+        fs::create_dir_all(dir.path().join("90.템플릿/내 양식")).unwrap();
+        fs::write(dir.path().join("90.템플릿/내 양식/가 주간보고.md"), "\n\n# 주간보고\n\n- 한 일\n- 할 일\n- 이슈\n")
             .unwrap();
-        fs::write(dir.path().join("90 템플릿/그림.png"), "x").unwrap();
+        fs::write(dir.path().join("90.템플릿/그림.png"), "x").unwrap();
         let t = templates_in(&v).unwrap();
         let titles: Vec<_> = t.iter().map(|t| t.title.as_str()).collect();
         assert_eq!(titles, ["가 주간보고", "아이디어", "업무일지", "자료", "회의록"]);
-        assert_eq!(t[0].path, "90 템플릿/내 양식/가 주간보고.md");
+        assert_eq!(t[0].path, "90.템플릿/내 양식/가 주간보고.md");
         assert_eq!(t[0].preview, "# 주간보고\n- 한 일\n- 할 일");
         assert_eq!(t[0].folder, None);
-        assert_eq!(t[1].folder.as_deref(), Some("20 아이디어"));
-        assert_eq!(t[3].folder.as_deref(), Some("30 조사자료"));
+        assert_eq!(t[1].folder.as_deref(), Some("30.자료/아이디어"));
+        assert_eq!(t[3].folder.as_deref(), Some("30.자료/조사자료"));
         assert!(!t[3].preview.contains("type:"));
     }
 
@@ -702,7 +742,7 @@ mod tests {
         let (dir, v) = vault();
         apply_preset_to(&v).unwrap();
         let p =
-            create_from_template_at(&v, "30 조사자료", Some("자동화 도구"), Some("90 템플릿/자료.md"), now()).unwrap();
+            create_from_template_at(&v, "30 조사자료", Some("자동화 도구"), Some("90.템플릿/자료.md"), now()).unwrap();
         assert_eq!(p, "30 조사자료/자동화 도구.md");
         assert_eq!(
             read(&dir, &p),
@@ -710,7 +750,7 @@ mod tests {
         );
         assert!(v.index().notes().unwrap().iter().any(|n| n.path == p));
 
-        let a = create_from_template_at(&v, "", None, Some("90 템플릿/회의록.md"), now()).unwrap();
+        let a = create_from_template_at(&v, "", None, Some("90.템플릿/회의록.md"), now()).unwrap();
         let b = create_from_template_at(&v, "", None, None, now()).unwrap();
         assert_eq!((a.as_str(), b.as_str()), ("제목 없음.md", "제목 없음 1.md"));
         assert!(read(&dir, &a).contains("# 제목 없음\n\n- 일시: 2026-10-28 09:05"));
@@ -723,7 +763,7 @@ mod tests {
         let (_dir, v) = vault();
         apply_preset_to(&v).unwrap();
         let before = v.index().notes().unwrap().len();
-        let text = render_template_file(&v, "90 템플릿/자료.md", "기존 노트", now()).unwrap();
+        let text = render_template_file(&v, "90.템플릿/자료.md", "기존 노트", now()).unwrap();
         assert!(text.starts_with("---\ntype: research\n"));
         assert!(text.contains("# 기존 노트\n"));
         assert!(!text.contains("folder:"));
@@ -743,7 +783,7 @@ mod tests {
     fn today_journal_is_created_once() {
         let (dir, v) = vault();
         let p = open_journal_at(&v, now()).unwrap();
-        assert_eq!(p, "10 업무일지/2026/2026-10-28.md");
+        assert_eq!(p, "20.영역/업무일지/2026/2026-10-28.md");
         assert_eq!(read(&dir, &p), "# 2026-10-28 업무일지\n");
         fs::write(dir.path().join(&p), "적은 내용").unwrap();
         assert_eq!(open_journal_at(&v, now()).unwrap(), p);
@@ -767,16 +807,16 @@ mod tests {
         let (dir, v) = vault();
         enable_preset(&v);
         let p = quick_memo_at(&v, "회의록 자동 요약\n#자동화", None, now()).unwrap();
-        assert_eq!(p, "00 Inbox/메모 2026-10-28 0905.md");
+        assert_eq!(p, "00.Inbox/메모 2026-10-28 0905.md");
         assert_eq!(
             read(&dir, &p),
             "---\ntype: idea\nstatus: 아이디어\ncreated: 2026-10-28\n---\n\n회의록 자동 요약\n#자동화"
         );
-        assert_eq!(quick_memo_at(&v, "둘째", Some("  "), now()).unwrap(), "00 Inbox/메모 2026-10-28 0905 1.md");
-        assert_eq!(quick_memo_at(&v, "x", Some("a/b: c?"), now()).unwrap(), "00 Inbox/ab c.md");
-        assert_eq!(quick_memo_at(&v, "y", Some("ab c"), now()).unwrap(), "00 Inbox/ab c 1.md");
-        assert_eq!(quick_memo_at(&v, "z", Some("??"), now()).unwrap(), "00 Inbox/메모 2026-10-28 0905 2.md");
-        assert_eq!(quick_memo_at(&v, "z", Some("CON"), now()).unwrap(), "00 Inbox/메모 2026-10-28 0905 3.md");
+        assert_eq!(quick_memo_at(&v, "둘째", Some("  "), now()).unwrap(), "00.Inbox/메모 2026-10-28 0905 1.md");
+        assert_eq!(quick_memo_at(&v, "x", Some("a/b: c?"), now()).unwrap(), "00.Inbox/ab c.md");
+        assert_eq!(quick_memo_at(&v, "y", Some("ab c"), now()).unwrap(), "00.Inbox/ab c 1.md");
+        assert_eq!(quick_memo_at(&v, "z", Some("??"), now()).unwrap(), "00.Inbox/메모 2026-10-28 0905 2.md");
+        assert_eq!(quick_memo_at(&v, "z", Some("CON"), now()).unwrap(), "00.Inbox/메모 2026-10-28 0905 3.md");
         let ideas = idea_list(&v).unwrap();
         assert_eq!(ideas.len(), 6);
         assert!(ideas.iter().all(|i| i.status == "아이디어"));
@@ -788,7 +828,7 @@ mod tests {
         let p = quick_memo_at(&v, "그냥 메모", Some("할 일"), now()).unwrap();
         assert_eq!(p, "할 일.md");
         assert_eq!(read(&dir, &p), "그냥 메모");
-        assert!(!dir.path().join("00 Inbox").exists());
+        assert!(!dir.path().join("00.Inbox").exists());
     }
 
     #[test]

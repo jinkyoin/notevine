@@ -131,7 +131,7 @@ export function MainLayout() {
           <button
             className="btn ghost small"
             onClick={() => void useApp.getState().applyPreset()}
-            title="업무일지·아이디어·조사자료 폴더와 템플릿을 만듭니다"
+            title="PARA(프로젝트·영역·자료·보관) 폴더와 템플릿을 만듭니다"
           >
             기본 구조 만들기
           </button>
@@ -186,7 +186,7 @@ export function MainLayout() {
               </button>
               {!preset && (
                 <p className="muted small">
-                  업무일지·아이디어·조사자료 폴더와 템플릿이 필요하면{" "}
+                  PARA(프로젝트·영역·자료·보관) 폴더와 템플릿이 필요하면{" "}
                   <button className="link-btn" onClick={() => void useApp.getState().applyPreset()}>
                     기본 구조 만들기
                   </button>

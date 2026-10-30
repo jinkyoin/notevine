@@ -33,18 +33,18 @@ const ymd = `${today.getFullYear()}-${p2(today.getMonth() + 1)}-${p2(today.getDa
   // 1) base structure from the top bar (shown until it exists)
   await page.click(".topbar .btn >> text=기본 구조 만들기");
   await page.waitForSelector(".modal >> text=기본 구조 만들기");
-  console.log("confirm lists folders:", (await page.textContent(".confirm-msg")).includes("10 업무일지"));
+  console.log("confirm lists folders:", (await page.textContent(".confirm-msg")).includes("10.프로젝트"));
   await page.click(".modal .btn.primary");
-  await page.waitForSelector(".tree-row >> text=90 템플릿", { timeout: 5000 });
-  console.log("preset folders:", ["00 Inbox", "10 업무일지", "20 아이디어", "30 조사자료", "90 템플릿", "첨부"].map(exists));
-  console.log("templates:", fs.readdirSync(path.join(VAULT, "90 템플릿")));
+  await page.waitForSelector(".tree-row >> text=90.템플릿", { timeout: 5000 });
+  console.log("preset folders:", ["00.Inbox", "10.프로젝트", "20.영역", "20.영역/업무일지", "30.자료", "30.자료/아이디어", "30.자료/조사자료", "40.보관", "90.템플릿", "첨부"].map(exists));
+  console.log("templates:", fs.readdirSync(path.join(VAULT, "90.템플릿")));
   console.log("existing note untouched:", read("기존 노트.md") === "원래 있던 노트\n");
   console.log("top bar now offers:", (await page.$$eval(".topbar .btn", (bs) => bs.map((b) => b.textContent.trim()))).join(" · "));
 
   // 2) today journal
   await page.keyboard.press("Control+Shift+D");
   await page.waitForSelector(`.note-title >> text=${ymd}`, { timeout: 5000 });
-  console.log("journal:", exists(`10 업무일지/${today.getFullYear()}/${ymd}.md`), JSON.stringify(read(`10 업무일지/${today.getFullYear()}/${ymd}.md`).slice(0, 80)));
+  console.log("journal:", exists(`20.영역/업무일지/${today.getFullYear()}/${ymd}.md`), JSON.stringify(read(`20.영역/업무일지/${today.getFullYear()}/${ymd}.md`).slice(0, 80)));
 
   // 3) quick memo
   await page.keyboard.press("Control+Shift+N");
@@ -54,7 +54,7 @@ const ymd = `${today.getFullYear()}-${p2(today.getMonth() + 1)}-${p2(today.getDa
   await page.keyboard.type("주간 보고를 템플릿으로");
   await page.keyboard.press("Control+Enter");
   await page.waitForSelector(".toast >> text=Inbox에 저장됨");
-  console.log("memo:", JSON.stringify(read("00 Inbox/보고 자동화 아이디어.md")));
+  console.log("memo:", JSON.stringify(read("00.Inbox/보고 자동화 아이디어.md")));
 
   // 4) idea board: right-click → 검토
   await page.click(".side-tabs button >> text=아이디어");
@@ -62,10 +62,10 @@ const ymd = `${today.getFullYear()}-${p2(today.getMonth() + 1)}-${p2(today.getDa
   await page.click(".idea-group li >> text=보고 자동화 아이디어", { button: "right" });
   await page.click(".menu li >> text=검토");
   await sleep(800);
-  console.log("status changed:", /status: 검토/.test(read("00 Inbox/보고 자동화 아이디어.md")));
+  console.log("status changed:", /status: 검토/.test(read("00.Inbox/보고 자동화 아이디어.md")));
   await page.screenshot({ path: path.join(OUT, "13-ideas.png") });
 
-  // 5) template picker → 자료 goes to 30 조사자료
+  // 5) template picker → 자료 goes to 30.자료/조사자료
   await page.keyboard.press("Control+n");
   await page.waitForSelector(".palette-list.templates li");
   console.log("template options:", await page.$$eval(".palette-list.templates li", (els) => els.map((e) => e.textContent.slice(0, 30))));
@@ -74,7 +74,7 @@ const ymd = `${today.getFullYear()}-${p2(today.getMonth() + 1)}-${p2(today.getDa
   await page.fill(".palette-input", "도구 비교");
   await page.keyboard.press("Enter");
   await sleep(800);
-  console.log("from template:", exists("30 조사자료/도구 비교.md"), JSON.stringify(read("30 조사자료/도구 비교.md").slice(0, 90)));
+  console.log("from template:", exists("30.자료/조사자료/도구 비교.md"), JSON.stringify(read("30.자료/조사자료/도구 비교.md").slice(0, 90)));
 
   // 6) attachments: paste an image, drop a file, preview renders
   await page.click(".side-tabs button >> text=파일");
@@ -99,7 +99,7 @@ const ymd = `${today.getFullYear()}-${p2(today.getMonth() + 1)}-${p2(today.getDa
   await page.keyboard.press("Control+Home");
   await sleep(500);
   console.log("attachments folder:", fs.readdirSync(path.join(VAULT, "첨부")));
-  console.log("note has links:", /!\[\[첨부\/이미지 \d{8}-\d{6}\.png\]\]/.test(read("30 조사자료/도구 비교.md")), /\[\[첨부\/견적서\.xlsx\]\]/.test(read("30 조사자료/도구 비교.md")));
+  console.log("note has links:", /!\[\[첨부\/이미지 \d{8}-\d{6}\.png\]\]/.test(read("30.자료/조사자료/도구 비교.md")), /\[\[첨부\/견적서\.xlsx\]\]/.test(read("30.자료/조사자료/도구 비교.md")));
   console.log("image preview rendered:", await page.$$eval("img.cm-embed-img", (els) => els.length));
   console.log("file link chip:", await page.$$eval(".cm-wikilink-file", (els) => els.map((e) => e.textContent)));
   await page.screenshot({ path: path.join(OUT, "14-attach.png") });
@@ -146,7 +146,7 @@ const ymd = `${today.getFullYear()}-${p2(today.getMonth() + 1)}-${p2(today.getDa
   console.log("origins after restore:", after.map((v) => v.origin));
 
   // 8) deleted note → restore from history
-  await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("delete_entry", { path: "30 조사자료/도구 비교.md" }));
+  await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("delete_entry", { path: "30.자료/조사자료/도구 비교.md" }));
   await sleep(600);
   await page.keyboard.press("Control+p");
   await page.keyboard.type("삭제된");
@@ -166,7 +166,7 @@ const ymd = `${today.getFullYear()}-${p2(today.getMonth() + 1)}-${p2(today.getDa
   await page.keyboard.press("Escape");
 
   // 10) back / forward
-  await page.evaluate(() => window.__notevine.getState().openNote("00 Inbox/보고 자동화 아이디어.md"));
+  await page.evaluate(() => window.__notevine.getState().openNote("00.Inbox/보고 자동화 아이디어.md"));
   await page.waitForSelector(".note-title >> text=보고 자동화 아이디어");
   await page.keyboard.press("Alt+ArrowLeft");
   await page.waitForSelector(".note-title >> text=기존 노트");

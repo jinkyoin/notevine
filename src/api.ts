@@ -101,6 +101,11 @@ export interface SearchResult {
 export interface VaultConfig {
   preset_enabled: boolean;
   inbox_folder: string;
+  /** PARA (Tiago Forte): Projects, Areas, Resources, Archives. */
+  project_folder: string;
+  area_folder: string;
+  resource_folder: string;
+  archive_folder: string;
   journal_folder: string;
   idea_folder: string;
   research_folder: string;
