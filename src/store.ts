@@ -14,6 +14,7 @@ import {
 import { ancestors, findNode, remapPath } from "./lib/tree";
 import { insertTemplate } from "./editor/template";
 import { findHeadingLine } from "./lib/headings";
+import { closeOtherTabs, closeTab, dropTabs, goHistory, openTab, remapTabs, stepTab, type Tab, type Tabs } from "./lib/tabs";
 
 export type ToastKind = "info" | "error";
 
@@ -72,6 +73,9 @@ export function applyTheme(theme: VaultConfig["theme"]) {
 /** A tree row currently being named inline (new note/folder or rename). */
 export type Editing = { mode: "rename"; path: string } | { mode: "new-folder"; parent: string };
 
+/** How to open a note: in a new tab (Ctrl+click, middle click) instead of the current one. */
+export type OpenOpts = { newTab?: boolean };
+
 interface AppStore {
   vault: VaultInfo | null;
   tree: TreeNode[];
@@ -98,9 +102,13 @@ interface AppStore {
   versionView: { path: string; id: number | null } | null;
   leftOpen: boolean;
   rightOpen: boolean;
-  /** Back/forward note navigation (Alt+←/→). */
+  /** Back/forward note navigation (Alt+←/→) of the tab on screen. */
   back: string[];
   forward: string[];
+  /** Open notes, one tab each (FR-EDT-07). The one on screen is `openPath`. */
+  tabs: Tab[];
+  /** Recently closed tabs, newest last (Ctrl+Shift+T). */
+  closedTabs: string[];
   /** Bumped to move focus into the search box (Ctrl+Shift+F). */
   searchFocusSeq: number;
   /** Text to put in the search box on the next focus (a clicked #태그), or null to keep it. */
@@ -131,12 +139,13 @@ interface AppStore {
   closeVault(): Promise<void>;
   refreshTree(): Promise<void>;
   toggleFolder(path: string, open?: boolean): void;
-  openNote(path: string, line?: number, heading?: string): void;
+  /** Opens a note in the current tab, or in a new one with `newTab`; an open note's tab is reused. */
+  openNote(path: string, line?: number, heading?: string, opts?: OpenOpts): void;
   /**
    * Opens the note a link points at, creating it when it doesn't exist (FR-LNK-02),
    * then goes to `heading` in it. An empty target with a heading means the open note.
    */
-  followLink(target: string, heading?: string | null): Promise<void>;
+  followLink(target: string, heading?: string | null, opts?: OpenOpts): Promise<void>;
   /** Opens a non-note file with its default program (FR-ATT-05). */
   openAttachment(target: string): Promise<void>;
   confirmRelocate(updateLinks: boolean | null): Promise<void>;
@@ -151,6 +160,11 @@ interface AppStore {
   setVersionView(v: { path: string; id: number | null } | null): void;
   setPanels(p: { leftOpen?: boolean; rightOpen?: boolean }): void;
   goBack(): void;
+  /** Closes a tab (the one on screen by default). */
+  closeTab(path?: string): void;
+  closeOtherTabs(path?: string): void;
+  stepTab(dir: 1 | -1): void;
+  reopenClosedTab(): void;
   setReadMode(on: boolean): void;
   goForward(): void;
   saveConfig(c: VaultConfig): Promise<void>;
@@ -217,11 +231,34 @@ export const useApp = create<AppStore>((set, get) => {
   }
 
   async function afterRelocate(from: string, to: string) {
-    const { openPath } = get();
-    // Set the new path before the tree refresh so it isn't reported as deleted.
-    if (openPath) set({ openPath: remapPath(openPath, from, to) });
+    // Set the new paths before the tree refresh so they aren't reported as deleted.
+    if (get().tabs.length || get().openPath) applyTabs(remapTabs(tabState(), (p) => remapPath(p, from, to)));
     await get().refreshTree();
     get().noteSaved();
+  }
+
+  const tabState = (): Tabs => ({ tabs: get().tabs, active: get().openPath });
+
+  /** Puts a tab state on screen; the shown tab's history drives the back/forward buttons. */
+  function applyTabs(next: Tabs, extra: Partial<AppStore> = {}) {
+    const cur = next.tabs.find((t) => t.path === next.active);
+    set({ tabs: next.tabs, openPath: next.active, back: cur?.back ?? [], forward: cur?.forward ?? [], ...extra });
+    if (next.active) expandTo(next.active);
+    if (get().vault) void api.setWorkspace(next.active, next.tabs.map((t) => t.path)).catch(() => {});
+  }
+
+  function rememberClosed(paths: string[]) {
+    if (paths.length) set({ closedTabs: [...get().closedTabs.filter((p) => !paths.includes(p)), ...paths].slice(-20) });
+  }
+
+  /** Drops tabs of notes `keep` rejects; if the shown note goes, another tab (or none) shows. */
+  function dropMissing(keep: (path: string) => boolean): boolean {
+    const s = tabState();
+    if (s.tabs.every((t) => keep(t.path)) && (!s.active || keep(s.active))) return false;
+    let next = dropTabs(s, keep);
+    if (next.active && !keep(next.active)) next = { ...next, active: next.tabs[0]?.path ?? null };
+    applyTabs(next);
+    return !!s.active && !keep(s.active);
   }
 
   function expandTo(path: string) {
@@ -250,6 +287,8 @@ export const useApp = create<AppStore>((set, get) => {
     rightOpen: true,
     back: [],
     forward: [],
+    tabs: [],
+    closedTabs: [],
     searchFocusSeq: 0,
     searchSeed: null,
     titleEditSeq: 0,
@@ -268,7 +307,7 @@ export const useApp = create<AppStore>((set, get) => {
     async openVault(path) {
       const info = await attempt(() => api.openVault(path));
       if (!info) return;
-      set({ vault: info, tree: [], expanded: new Set(), openPath: null, editing: null, back: [], forward: [] });
+      set({ vault: info, tree: [], expanded: new Set(), openPath: null, editing: null, back: [], forward: [], tabs: [], closedTabs: [] });
       const config = await api.getConfig().catch(() => DEFAULT_CONFIG);
       set({ config, sidebarTab: get().sidebarTab === "ideas" && !config.preset_enabled ? "files" : get().sidebarTab });
       applyTheme(config.theme);
@@ -284,9 +323,13 @@ export const useApp = create<AppStore>((set, get) => {
         treeTimer = window.setTimeout(() => get().refreshTree(), 150);
       });
 
-      // Reopen the note that was open last time (FR-VLT-02).
+      // Reopen the tabs and the note that were open last time (FR-VLT-02).
       const ws = await api.getWorkspace().catch(() => null);
-      if (ws?.open_path && findNode(get().tree, ws.open_path)) get().openNote(ws.open_path);
+      const exists = (p: string) => !!findNode(get().tree, p);
+      const saved = (ws?.tabs ?? []).filter(exists);
+      if (saved.length) set({ tabs: saved.map((path) => ({ path, back: [], forward: [] })) });
+      const last = ws?.open_path && exists(ws.open_path) ? ws.open_path : saved[0];
+      if (last) get().openNote(last);
     },
 
     async closeVault() {
@@ -294,7 +337,7 @@ export const useApp = create<AppStore>((set, get) => {
       unlistenChanges?.();
       unlistenChanges = null;
       await attempt(() => api.closeVault());
-      set({ vault: null, tree: [], openPath: null, editing: null });
+      set({ vault: null, tree: [], openPath: null, editing: null, tabs: [], back: [], forward: [] });
     },
 
     async refreshTree() {
@@ -302,11 +345,7 @@ export const useApp = create<AppStore>((set, get) => {
       if (notes) set({ notes });
       if (!tree) return;
       set({ tree });
-      const { openPath } = get();
-      if (openPath && !findNode(tree, openPath)) {
-        set({ openPath: null });
-        get().toast("열려 있던 노트가 다른 프로그램에서 삭제되거나 이동되었습니다");
-      }
+      if (dropMissing((p) => !!findNode(tree, p))) get().toast("열려 있던 노트가 다른 프로그램에서 삭제되거나 이동되었습니다");
     },
 
     toggleFolder(path, open) {
@@ -317,20 +356,14 @@ export const useApp = create<AppStore>((set, get) => {
       set({ expanded });
     },
 
-    openNote(path, line, heading) {
+    openNote(path, line, heading, opts) {
       void get().flushEditor();
-      expandTo(path);
-      const prev = get().openPath;
-      set({
-        back: prev && prev !== path ? [...get().back, prev].slice(-50) : get().back,
-        forward: prev && prev !== path ? [] : get().forward,
-        openPath: path,
+      applyTabs(openTab(tabState(), path, !!opts?.newTab), {
         jumpLine: line ?? null,
         jumpHeading: heading ?? null,
         jumpSeq: line ? get().jumpSeq + 1 : get().jumpSeq,
         recent: [path, ...get().recent.filter((p) => p !== path)].slice(0, 30),
       });
-      void api.setWorkspace(path).catch(() => {});
     },
 
     setReadMode(readMode) {
@@ -374,7 +407,7 @@ export const useApp = create<AppStore>((set, get) => {
       }
     },
 
-    async followLink(target, heading) {
+    async followLink(target, heading, opts) {
       // [[견적서.xlsx]] and other non-note files open in their own program.
       if (/\.[a-z0-9]{1,8}$/i.test(target) && !/\.md$/i.test(target)) return get().openAttachment(target);
       const found = target ? await attempt(() => api.resolveLink(target)) : get().openPath;
@@ -385,9 +418,9 @@ export const useApp = create<AppStore>((set, get) => {
         const text = await attempt(() => api.readNote(found));
         const line = text === undefined ? null : findHeadingLine(text, heading);
         if (line === null) get().toast(`'${heading}' 제목을 찾지 못해 노트 처음을 엽니다`);
-        return get().openNote(found, line ?? undefined, line === null ? undefined : heading);
+        return get().openNote(found, line ?? undefined, line === null ? undefined : heading, opts);
       }
-      if (found) return get().openNote(found);
+      if (found) return get().openNote(found, undefined, undefined, opts);
       if (!target) return;
       // [[폴더/이름]] creates 폴더/이름.md; a bare [[이름]] creates it at the vault root.
       const clean = target.replace(/\.md$/i, "");
@@ -400,7 +433,7 @@ export const useApp = create<AppStore>((set, get) => {
       const created = await attempt(() => api.createNote(dir, name));
       if (!created) return;
       await get().refreshTree();
-      get().openNote(created);
+      get().openNote(created, undefined, undefined, opts);
     },
 
     async confirmRelocate(updateLinks) {
@@ -446,31 +479,46 @@ export const useApp = create<AppStore>((set, get) => {
     },
 
     goBack() {
-      const { back, openPath, tree } = get();
-      const target = [...back].reverse().find((p) => findNode(tree, p));
-      if (!target) return;
+      const next = goHistory(tabState(), -1, (p) => !!findNode(get().tree, p));
+      if (!next) return;
       void get().flushEditor();
-      set({
-        back: back.slice(0, back.lastIndexOf(target)),
-        forward: openPath ? [openPath, ...get().forward] : get().forward,
-        openPath: target,
-        jumpLine: null,
-      });
-      expandTo(target);
+      applyTabs(next, { jumpLine: null });
+    },
+
+    closeTab(path = get().openPath ?? undefined) {
+      if (!path || !get().tabs.some((t) => t.path === path)) return;
+      if (path === get().openPath) void get().flushEditor();
+      rememberClosed([path]);
+      applyTabs(closeTab(tabState(), path), { jumpLine: null });
+    },
+
+    closeOtherTabs(path = get().openPath ?? undefined) {
+      if (!path) return;
+      rememberClosed(get().tabs.map((t) => t.path).filter((p) => p !== path));
+      if (path !== get().openPath) void get().flushEditor();
+      applyTabs(closeOtherTabs(tabState(), path), { jumpLine: null });
+    },
+
+    stepTab(dir) {
+      const next = stepTab(tabState(), dir);
+      if (next.active === get().openPath) return;
+      void get().flushEditor();
+      applyTabs(next, { jumpLine: null });
+    },
+
+    reopenClosedTab() {
+      const { closedTabs, tabs, tree } = get();
+      const open = new Set(tabs.map((t) => t.path));
+      const path = [...closedTabs].reverse().find((p) => !open.has(p) && findNode(tree, p));
+      set({ closedTabs: path ? closedTabs.filter((p) => p !== path) : [] });
+      if (path) get().openNote(path, undefined, undefined, { newTab: true });
     },
 
     goForward() {
-      const { forward, openPath, tree } = get();
-      const target = forward.find((p) => findNode(tree, p));
-      if (!target) return;
+      const next = goHistory(tabState(), 1, (p) => !!findNode(get().tree, p));
+      if (!next) return;
       void get().flushEditor();
-      set({
-        forward: forward.slice(forward.indexOf(target) + 1),
-        back: openPath ? [...get().back, openPath] : get().back,
-        openPath: target,
-        jumpLine: null,
-      });
-      expandTo(target);
+      applyTabs(next, { jumpLine: null });
     },
 
     async saveConfig(config) {
@@ -587,8 +635,8 @@ export const useApp = create<AppStore>((set, get) => {
       await get().flushEditor();
       const ok = await attempt(() => api.deleteEntry(path).then(() => true));
       if (!ok) return;
-      const { openPath } = get();
-      if (openPath && remapPath(openPath, path, "\0") !== openPath) set({ openPath: null });
+      // The deleted note (or everything in the deleted folder) leaves its tabs.
+      dropMissing((p) => remapPath(p, path, "\0") === p);
       await get().refreshTree();
       get().toast("휴지통으로 옮겼습니다");
     },

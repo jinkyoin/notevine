@@ -192,8 +192,8 @@ export const api = {
   readNote: (path: string) => invoke<string>("read_note", { path }),
   writeNote: (path: string, content: string, force = false) =>
     invoke<SaveOutcome>("write_note", { path, content, force }),
-  getWorkspace: () => invoke<{ open_path: string | null }>("get_workspace"),
-  setWorkspace: (openPath: string | null) => invoke<void>("set_workspace", { openPath }),
+  getWorkspace: () => invoke<{ open_path: string | null; tabs?: string[] }>("get_workspace"),
+  setWorkspace: (openPath: string | null, tabs: string[]) => invoke<void>("set_workspace", { openPath, tabs }),
   listVersions: (path: string) => invoke<VersionMeta[]>("list_versions", { path }),
   versionContent: (id: number) => invoke<string>("version_content", { id }),
   createNote: (dir: string, name?: string, content?: string) =>

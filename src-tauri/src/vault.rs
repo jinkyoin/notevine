@@ -42,6 +42,9 @@ pub struct TreeNode {
 #[derive(Debug, Clone, Default, Serialize, serde::Deserialize)]
 pub struct Workspace {
     pub open_path: Option<String>,
+    /// Open tabs in order (FR-EDT-07). Missing in files written before tabs.
+    #[serde(default)]
+    pub tabs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -571,6 +574,20 @@ mod tests {
         let f = dir.path().join("x.md");
         fs::write(&f, "").unwrap();
         assert!(Vault::open(&f).is_err());
+    }
+
+    #[test]
+    fn workspace_keeps_tabs_and_reads_files_from_before_tabs() {
+        let (dir, v) = vault();
+        let ws = Workspace { open_path: Some("b.md".into()), tabs: vec!["a.md".into(), "b.md".into()] };
+        v.set_workspace(&ws).unwrap();
+        let back = v.workspace();
+        assert_eq!(back.open_path.as_deref(), Some("b.md"));
+        assert_eq!(back.tabs, ["a.md", "b.md"]);
+        fs::write(dir.path().join(APP_DIR).join("workspace.json"), r#"{ "open_path": "a.md" }"#).unwrap();
+        let old = v.workspace();
+        assert_eq!(old.open_path.as_deref(), Some("a.md"));
+        assert!(old.tabs.is_empty());
     }
 
     #[test]

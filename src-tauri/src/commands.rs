@@ -64,8 +64,8 @@ pub fn get_workspace(state: State<AppState>) -> AppResult<Workspace> {
 }
 
 #[tauri::command]
-pub fn set_workspace(state: State<AppState>, open_path: Option<String>) -> AppResult<()> {
-    with_vault(&state, |v| v.set_workspace(&Workspace { open_path }))
+pub fn set_workspace(state: State<AppState>, open_path: Option<String>, tabs: Option<Vec<String>>) -> AppResult<()> {
+    with_vault(&state, |v| v.set_workspace(&Workspace { open_path, tabs: tabs.unwrap_or_default() }))
 }
 
 #[tauri::command]

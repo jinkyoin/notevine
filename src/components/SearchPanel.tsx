@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, errorMessage, type DateFilter, type PropFilter, type SearchResult } from "../api";
 import { useApp } from "../store";
+import { openProps } from "./TabBar";
 import { parseQuery } from "../lib/query";
 
 const DEBOUNCE_MS = 200;
@@ -131,7 +132,7 @@ export function SearchPanel() {
       )}
       <ul className="results">
         {result?.hits.map((h) => (
-          <li key={h.path} onClick={() => openNote(h.path, h.line ?? undefined)} title={h.path}>
+          <li key={h.path} {...openProps((o) => openNote(h.path, h.line ?? undefined, undefined, o))} title={h.path}>
             <div className="r-title">{h.title}</div>
             {h.parts.length > 0 && (
               <div className="r-snippet">

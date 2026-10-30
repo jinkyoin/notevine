@@ -5,6 +5,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { api, type TreeNode } from "../api";
 import { useApp } from "../store";
 import { baseName, countNotes, noteTitle, parentPath } from "../lib/tree";
+import { openProps } from "./TabBar";
 
 interface Menu {
   x: number;
@@ -109,7 +110,9 @@ function Row({ node, depth, onMenu }: { node: TreeNode; depth: number; onMenu: (
           const from = e.dataTransfer.getData(DRAG_TYPE);
           if (from && from !== node.path) move(from, node.path);
         }}
-        onClick={() => (isFolder ? toggleFolder(node.path) : node.kind === "note" && openNote(node.path))}
+        {...(isFolder
+          ? { onClick: () => toggleFolder(node.path) }
+          : openProps((o) => node.kind === "note" && openNote(node.path, undefined, undefined, o)))}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -230,6 +233,9 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
   ];
   if (node) {
     items.push(
+      ...(node.kind === "note"
+        ? ([["새 탭에서 열기", () => useApp.getState().openNote(node.path, undefined, undefined, { newTab: true })]] as [string, () => void][])
+        : []),
       ["이름 변경", () => setEditing({ mode: "rename", path: node.path })],
       ...(node.kind === "note" ? ([["히스토리 보기", () => setVersionView({ path: node.path, id: null })]] as [string, () => void][]) : []),
       [

@@ -44,6 +44,9 @@ type SaveState = "saved" | "dirty" | "saving" | "error";
 
 let historyWarned = false;
 
+/** Cursor and scroll of notes shown before, so going back to a tab finds them as they were. */
+const viewMemory = new Map<string, { anchor: number; head: number; top: number }>();
+
 /** The note's name above the editor; click it (or F2) to rename the note. */
 function NoteTitle({ path }: { path: string }) {
   const title = noteTitle(path);
@@ -104,6 +107,7 @@ function NoteTitle({ path }: { path: string }) {
 
 export function Editor({ path }: { path: string }) {
   const host = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [loadError, setLoadError] = useState<string | null>(null);
   const setFlushEditor = useApp((s) => s.setFlushEditor);
@@ -161,6 +165,11 @@ export function Editor({ path }: { path: string }) {
     let saving: Promise<void> = Promise.resolve();
     let docTimer: number | undefined;
     const { setDocText, setEditText } = useApp.getState();
+    const scrollEl = scroller.current;
+    // Read on scroll: by cleanup the editor may already be off the page and read as 0.
+    let top = 0;
+    const onScroll = () => scrollEl && (top = scrollEl.scrollTop);
+    scrollEl?.addEventListener("scroll", onScroll, { passive: true });
     const publishText = () => view && setDocText(view.state.doc.toString());
 
     /** Writes the note. `force` (Ctrl+S, app exit) always lands in a history version. */
@@ -306,9 +315,15 @@ export function Editor({ path }: { path: string }) {
         else if (readModeRef.current) setReadText(text);
         // Coming from a backlink: put the cursor on the linking line.
         const jump = useApp.getState().jumpLine;
+        const seen = viewMemory.get(path);
         if (jump && jump <= view.state.doc.lines) {
           const at = view.state.doc.line(jump).from;
           view.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: "center" }) });
+        } else if (seen) {
+          // Back to a note shown before (another tab, back/forward): where it was left.
+          const len = view.state.doc.length;
+          view.dispatch({ selection: { anchor: Math.min(seen.anchor, len), head: Math.min(seen.head, len) } });
+          requestAnimationFrame(() => scrollEl && (scrollEl.scrollTop = seen.top));
         } else {
           // Start below the properties so they stay folded (SCR-04).
           const fmEnd = frontmatterEnd(view.state);
@@ -366,6 +381,11 @@ export function Editor({ path }: { path: string }) {
     setFlushEditor((force) => save(force));
 
     return () => {
+      if (view) {
+        const sel = view.state.selection.main;
+        viewMemory.set(path, { anchor: sel.anchor, head: sel.head, top });
+      }
+      scrollEl?.removeEventListener("scroll", onScroll);
       void save();
       disposed = true;
       window.clearTimeout(docTimer);
@@ -382,7 +402,7 @@ export function Editor({ path }: { path: string }) {
   }, [path, setFlushEditor, toast, setReadMode]);
 
   return (
-    <div className="editor">
+    <div className="editor" ref={scroller}>
       <div className="editor-head">
         <NoteTitle path={path} />
         {!loadError && <ModeSwitch readMode={readMode} setReadMode={setReadMode} />}

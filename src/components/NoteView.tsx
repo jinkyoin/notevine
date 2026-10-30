@@ -169,18 +169,29 @@ export function NoteView({ path, text, onToggleTask }: { path: string; text: str
     if (!a) return;
     // Never let the app window navigate away.
     e.preventDefault();
+    // Ctrl+click (or a middle click, see onAuxClick) opens a note link in a new tab.
+    const opts = { newTab: e.ctrlKey || e.metaKey || e.button === 1 };
     const { followLink, searchTag } = useApp.getState();
     if (a.dataset.tag) searchTag(a.dataset.tag);
-    else if (a.dataset.target !== undefined) void followLink(a.dataset.target, a.dataset.heading ?? null);
+    else if (a.dataset.target !== undefined) void followLink(a.dataset.target, a.dataset.heading ?? null, opts);
     else if (a.dataset.dest) {
       const from = a.closest<HTMLElement>("[data-from]")?.dataset.from ?? path;
       const r = resolveDest(from, a.dataset.dest);
-      if (r) void followLink(r);
+      if (r) void followLink(r, null, opts);
     } else {
       const url = a.dataset.url ?? a.getAttribute("href") ?? "";
       if (/^(https?:|mailto:)/i.test(url)) void openUrl(url).catch(() => {});
     }
   };
 
-  return <div ref={box} className="note-view" onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />;
+  return (
+    <div
+      ref={box}
+      className="note-view"
+      onClick={onClick}
+      onMouseDown={(e) => e.button === 1 && (e.target as HTMLElement).closest("a") && e.preventDefault()}
+      onAuxClick={(e) => e.button === 1 && !(e.target instanceof HTMLInputElement) && onClick(e)}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
 }

@@ -5,6 +5,7 @@ import { useApp } from "../store";
 import { dispatchKey } from "../commands";
 import { Explorer } from "./Explorer";
 import { Editor } from "./Editor";
+import { TabBar } from "./TabBar";
 import { Backlinks } from "./Backlinks";
 import { RelocateDialog } from "./RelocateDialog";
 import { SearchPanel } from "./SearchPanel";
@@ -174,6 +175,7 @@ export function MainLayout() {
           </aside>
         )}
         <main className="center">
+          <TabBar />
           {openPath ? (
             <Editor key={openPath} path={openPath} />
           ) : (

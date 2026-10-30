@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { api, type Backlink } from "../api";
 import { useApp } from "../store";
+import { openProps } from "./TabBar";
 
 export function Backlinks() {
   const openPath = useApp((s) => s.openPath);
@@ -41,7 +42,7 @@ export function Backlinks() {
                 {items[0].title}
               </div>
               {items.map((b) => (
-                <button key={b.line} className="bl-line" onClick={() => openNote(b.path, b.line)}>
+                <button key={b.line} className="bl-line" {...openProps((o) => openNote(b.path, b.line, undefined, o))}>
                   {b.context || `${b.line}번째 줄`}
                 </button>
               ))}
