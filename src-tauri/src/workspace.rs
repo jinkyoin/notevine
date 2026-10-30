@@ -250,6 +250,9 @@ fn strip_folder_key(content: &str) -> String {
 struct Preset {
     folders: Vec<String>,
     templates: Vec<PresetTemplate>,
+    /// Folder key → file tree color, for folders that have none yet.
+    #[serde(default)]
+    colors: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -318,6 +321,14 @@ pub fn apply_preset_to(v: &Vault) -> AppResult<PresetResult> {
             Ok(rel) => res.created_templates.push(rel),
             Err(AppError::AlreadyExists(rel)) => res.skipped.push(rel),
             Err(e) => return Err(e),
+        }
+    }
+
+    // Colors keep a folder's own color if it already has one.
+    for (key, color) in &preset.colors {
+        let rel = checked_dir(config.folder_for(key))?;
+        if !rel.is_empty() {
+            config.folder_colors.entry(rel).or_insert_with(|| color.clone());
         }
     }
 
@@ -668,7 +679,12 @@ mod tests {
             ["90.템플릿/업무일지.md", "90.템플릿/회의록.md", "90.템플릿/아이디어.md", "90.템플릿/자료.md"]
         );
         assert!(r.skipped.is_empty());
-        assert!(load_config(&v).unwrap().preset_enabled);
+        let c = load_config(&v).unwrap();
+        assert!(c.preset_enabled);
+        // Top folders get a color; the folders inside take it from them.
+        let colored: Vec<_> = c.folder_colors.keys().map(String::as_str).collect();
+        assert_eq!(colored, ["00.Inbox", "10.프로젝트", "20.영역", "30.자료", "40.보관", "90.템플릿", "첨부"]);
+        assert_eq!(c.folder_colors["10.프로젝트"], "#e03131");
 
         let idea = read(&dir, "90.템플릿/아이디어.md");
         assert!(
@@ -716,6 +732,20 @@ mod tests {
         assert_eq!(r.created_templates.len(), 3);
         assert_eq!(fs::read(dir.path().join("90.템플릿/업무일지.md")).unwrap(), mine.as_bytes());
         assert_eq!(read(&dir, "00.Inbox/메모.md"), "그대로");
+    }
+
+    #[test]
+    fn apply_preset_keeps_a_folder_color_already_chosen() {
+        let (_dir, v) = vault();
+        let mine = VaultConfig {
+            folder_colors: BTreeMap::from([("10.프로젝트".into(), "#d6336c".into())]),
+            ..VaultConfig::default()
+        };
+        save_config(&v, &mine).unwrap();
+        apply_preset_to(&v).unwrap();
+        let c = load_config(&v).unwrap();
+        assert_eq!(c.folder_colors["10.프로젝트"], "#d6336c");
+        assert_eq!(c.folder_colors["20.영역"], "#1c7ed6");
     }
 
     #[test]

@@ -1,5 +1,5 @@
 {
-  "description": "기록 관리 프리셋: PARA(Projects·Areas·Resources·Archives, Tiago Forte) 네 폴더에 업무일지(영역)·아이디어·조사 자료(자료)를 넣는다 (FR-PRS-02, DR-05). 00.Inbox는 정리 전 수집함, 템플릿·첨부는 앱이 쓰는 폴더로 PARA 밖에 둔다. folders는 노트 폴더 설정(config.json)의 폴더 키를 가리키고 위에서부터 만들며, 템플릿은 template_folder에 만든다. 템플릿 본문의 {{idea_folder}}·{{idea_status}}(첫 번째 아이디어 상태) 같은 설정 키는 프리셋을 적용할 때 실제 폴더 이름으로 바뀌고, {{date}}·{{title}} 같은 변수는 템플릿을 쓸 때 치환된다.",
+  "description": "기록 관리 프리셋: PARA(Projects·Areas·Resources·Archives, Tiago Forte) 네 폴더에 업무일지(영역)·아이디어·조사 자료(자료)를 넣는다 (FR-PRS-02, DR-05). 00.Inbox는 정리 전 수집함, 템플릿·첨부는 앱이 쓰는 폴더로 PARA 밖에 둔다. folders는 노트 폴더 설정(config.json)의 폴더 키를 가리키고 위에서부터 만들며, colors는 그 폴더의 파일 트리 색(안의 폴더·노트도 같은 색, 이미 색이 있으면 그대로)이고, 템플릿은 template_folder에 만든다. 템플릿 본문의 {{idea_folder}}·{{idea_status}}(첫 번째 아이디어 상태) 같은 설정 키는 프리셋을 적용할 때 실제 폴더 이름으로 바뀌고, {{date}}·{{title}} 같은 변수는 템플릿을 쓸 때 치환된다.",
   "folders": [
     "inbox_folder",
     "project_folder",
@@ -12,6 +12,15 @@
     "template_folder",
     "attachment_folder"
   ],
+  "colors": {
+    "inbox_folder": "#868e96",
+    "project_folder": "#e03131",
+    "area_folder": "#1c7ed6",
+    "resource_folder": "#2f9e44",
+    "archive_folder": "#a0522d",
+    "template_folder": "#9c36b5",
+    "attachment_folder": "#868e96"
+  },
   "templates": [
     {
       "name": "업무일지",
