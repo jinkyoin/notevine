@@ -447,6 +447,65 @@ pub fn all_tags(ix: &Index) -> AppResult<Vec<TagCount>> {
     Ok(rows.collect::<Result<_, _>>()?)
 }
 
+/// One note of a folder table (FR-PRP-05).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TableRow {
+    pub path: String,
+    pub title: String,
+    /// Last modified, ms since epoch.
+    pub mtime: i64,
+    /// Property → value; a list's items (several rows of one key) are joined with ", ".
+    pub props: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct FolderTable {
+    /// Property keys, the most used first (then by name).
+    pub columns: Vec<String>,
+    /// Notes in the folder and its subfolders, by path.
+    pub rows: Vec<TableRow>,
+}
+
+/// The notes under `folder` ("" = the whole vault) with their properties, for a
+/// table with one column per property (FR-PRP-05).
+pub fn folder_table(ix: &Index, folder: &str) -> AppResult<FolderTable> {
+    let folder = folder.trim_matches('/');
+    let (filter, arg) =
+        if folder.is_empty() { ("1", String::new()) } else { ("n.path LIKE ?1 ESCAPE '\\'", like_prefix(folder)) };
+    let mut st = ix.conn().prepare(&format!(
+        "SELECT n.path, n.title, n.mtime, p.key, p.value FROM notes n
+         LEFT JOIN properties p ON p.note_id = n.id
+         WHERE {filter} ORDER BY n.path, p.rowid"
+    ))?;
+    let args: Vec<Value> = if folder.is_empty() { vec![] } else { vec![Value::Text(arg)] };
+    let mut rows: Vec<TableRow> = Vec::new();
+    let mut uses: HashMap<String, usize> = HashMap::new();
+    let mut q = st.query(params_from_iter(args))?;
+    while let Some(r) = q.next()? {
+        let path: String = r.get(0)?;
+        if rows.last().is_none_or(|row| row.path != path) {
+            rows.push(TableRow { path, title: r.get(1)?, mtime: r.get(2)?, props: HashMap::new() });
+        }
+        let (Some(key), Some(value)) = (r.get::<_, Option<String>>(3)?, r.get::<_, Option<String>>(4)?) else {
+            continue;
+        };
+        let row = rows.last_mut().expect("pushed above");
+        match row.props.get_mut(&key) {
+            Some(v) => {
+                v.push_str(", ");
+                v.push_str(&value);
+            }
+            None => {
+                *uses.entry(key.clone()).or_default() += 1;
+                row.props.insert(key, value);
+            }
+        }
+    }
+    let mut columns: Vec<String> = uses.keys().cloned().collect();
+    columns.sort_by(|a, b| uses[b].cmp(&uses[a]).then_with(|| name_key(a).cmp(&name_key(b))).then_with(|| a.cmp(b)));
+    Ok(FolderTable { columns, rows })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -806,5 +865,28 @@ mod tests {
             println!("search {term:?}: {ms} ms, total {}, took_ms {}", r.total, r.took_ms);
             assert!(ms < 200, "{term}: {ms} ms");
         }
+    }
+
+    #[test]
+    fn folder_table_lists_notes_with_their_properties() {
+        let (_dir, ix) = setup();
+        ix.upsert("p/a.md", "---\nstatus: 진행\ndeadline: 2026-11-30\ntags: [웹, 개편]\n---\n# A\n", 0, 5, 0).unwrap();
+        ix.upsert("p/sub/b.md", "---\nstatus: 완료\n---\n", 0, 6, 0).unwrap();
+        ix.upsert("p/c.md", "속성 없음", 0, 7, 0).unwrap();
+        ix.upsert("p%x/d.md", "---\nstatus: 밖\n---\n", 0, 8, 0).unwrap();
+        ix.upsert("q.md", "---\nowner: 나\n---\n", 0, 9, 0).unwrap();
+
+        let t = folder_table(&ix, "p").unwrap();
+        let paths: Vec<_> = t.rows.iter().map(|r| r.path.as_str()).collect();
+        assert_eq!(paths, ["p/a.md", "p/c.md", "p/sub/b.md"]);
+        assert_eq!(t.columns, ["status", "deadline", "tags"]);
+        assert_eq!(t.rows[0].props["status"], "진행");
+        assert_eq!(t.rows[0].props["tags"], "웹, 개편");
+        assert!(t.rows[1].props.is_empty());
+        assert_eq!((t.rows[2].mtime, t.rows[2].title.as_str()), (6, "b"));
+
+        let all = folder_table(&ix, "").unwrap();
+        assert_eq!(all.rows.len(), 5);
+        assert_eq!(all.columns[0], "status");
     }
 }

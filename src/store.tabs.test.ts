@@ -37,13 +37,41 @@ describe("tabs in the store", () => {
     s.openNote("a.md");
     s.openNote("b.md", undefined, undefined, { newTab: true });
     s.closeTab();
-    expect(useApp.getState()).toMatchObject({ openPath: "a.md", closedTabs: ["b.md"] });
+    expect(useApp.getState().openPath).toBe("a.md");
+    expect(useApp.getState().closedTabs.map((c) => c.tab.path)).toEqual(["b.md"]);
     s.reopenClosedTab();
     expect(tabPaths()).toEqual(["a.md", "b.md"]);
     expect(useApp.getState().openPath).toBe("b.md");
     s.closeTab("a.md");
     s.closeTab("b.md");
     expect(useApp.getState()).toMatchObject({ openPath: null, tabs: [] });
+  });
+
+  it("reopens a closed tab where it was, with its history", () => {
+    setup();
+    const s = useApp.getState();
+    s.openNote("a.md");
+    s.openNote("b.md", undefined, undefined, { newTab: true });
+    s.openNote("c.md"); // b's tab now shows c, with b behind it
+    s.openNote("a.md");
+    s.closeTab("a.md"); // the first tab
+    s.openNote("c.md");
+    s.reopenClosedTab();
+    expect(tabPaths()).toEqual(["a.md", "c.md"]);
+    s.openNote("c.md");
+    s.closeTab("c.md");
+    s.reopenClosedTab();
+    expect(useApp.getState()).toMatchObject({ openPath: "c.md", back: ["b.md"] });
+  });
+
+  it("keeps a renamed folder open", async () => {
+    setup(["d/x.md"]);
+    vi.spyOn(api, "renameEntry").mockResolvedValue("e");
+    vi.spyOn(api, "listNotes").mockResolvedValue([]);
+    vi.spyOn(api, "listTree").mockResolvedValue([{ name: "e", path: "e", kind: "folder", mtime: 0, children: [note("e/x.md")] }]);
+    useApp.setState({ config: { ...initial.config, update_links_on_rename: false }, expanded: new Set(["d"]) });
+    await useApp.getState().rename("d", "e");
+    expect([...useApp.getState().expanded]).toEqual(["e"]);
   });
 
   it("follows a rename and drops tabs of deleted notes", async () => {

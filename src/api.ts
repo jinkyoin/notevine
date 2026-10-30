@@ -45,6 +45,13 @@ export interface VaultChanged {
   external: string[];
 }
 
+/** A folder's notes with their properties (FR-PRP-05). */
+export interface FolderTable {
+  /** Property keys, the most used first. */
+  columns: string[];
+  rows: { path: string; title: string; mtime: number; props: Record<string, string> }[];
+}
+
 export interface NoteRef {
   path: string;
   title: string;
@@ -218,6 +225,7 @@ export const api = {
   backlinks: (path: string) => invoke<Backlink[]>("backlinks", { path }),
   search: (query: SearchQuery) => invoke<SearchResult>("search", { query }),
   propertyKeys: () => invoke<string[]>("property_keys"),
+  folderTable: (folder: string) => invoke<FolderTable>("folder_table", { folder }),
   propertyValues: (key: string) => invoke<string[]>("property_values", { key }),
   allTags: () => invoke<{ tag: string; count: number }[]>("all_tags"),
   getConfig: () => invoke<VaultConfig>("get_config"),

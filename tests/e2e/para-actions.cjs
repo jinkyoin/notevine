@@ -57,7 +57,8 @@ fs.mkdirSync(VAULT, { recursive: true });
   console.log("  link now:", JSON.stringify(fs.readFileSync(path.join(VAULT, "00.Inbox/메모.md"), "utf8").trim()));
 
   // 3) Take it back out to the areas.
-  await page.click(row("40.보관"));
+  // The archive opens to show what was moved in; open it only if it is still folded.
+  if (!(await page.$(row("홈페이지 개편")))) await page.click(row("40.보관"));
   await page.waitForSelector(row("홈페이지 개편"));
   console.log("3 menu inside the archive:", JSON.stringify(await menu("홈페이지 개편")));
   await pickMenu("영역으로 꺼내기");

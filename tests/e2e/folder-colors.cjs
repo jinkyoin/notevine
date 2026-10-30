@@ -55,9 +55,7 @@ w("밖.md", "# 밖\n");
   console.log("3 after rename 업무 → 회사:", JSON.stringify(await colors()));
   console.log("  config:", JSON.stringify(JSON.parse(fs.readFileSync(path.join(VAULT, ".app/config.json"), "utf8")).folder_colors));
 
-  // The renamed folder comes back folded.
-  await page.click(row("회사"));
-  await page.click(row("회의"));
+  // The renamed folder stays open.
   await page.waitForSelector(row("주간"));
   await pick("회의", "색 없음");
   console.log("4 회의 cleared (takes 회사's blue):", JSON.stringify(await colors()));

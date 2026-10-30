@@ -44,6 +44,21 @@ export function closeTab(s: Tabs, path: string): Tabs {
   return { tabs, active: (tabs[i] ?? tabs[i - 1])?.path ?? null };
 }
 
+/** A closed tab, kept so Ctrl+Shift+T brings it back where it was, history and all. */
+export interface ClosedTab {
+  tab: Tab;
+  /** Its place in the tab bar when it was closed. */
+  at: number;
+}
+
+/** Puts a closed tab back at its old place (or the end, if fewer tabs are open now) and shows it. */
+export function reopenTab(s: Tabs, closed: ClosedTab): Tabs {
+  if (s.tabs.some((t) => t.path === closed.tab.path)) return { ...s, active: closed.tab.path };
+  const tabs = [...s.tabs];
+  tabs.splice(Math.min(closed.at, tabs.length), 0, closed.tab);
+  return { tabs, active: closed.tab.path };
+}
+
 /** Keeps only the tab of `path`. */
 export function closeOtherTabs(s: Tabs, path: string): Tabs {
   const tab = s.tabs.find((t) => t.path === path);

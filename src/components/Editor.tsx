@@ -47,8 +47,8 @@ let historyWarned = false;
 /** Cursor and scroll of notes shown before, so going back to a tab finds them as they were. */
 const viewMemory = new Map<string, { anchor: number; head: number; top: number }>();
 
-/** The note's name above the editor; click it (or F2) to rename the note. */
-function NoteTitle({ path }: { path: string }) {
+/** The note's name above the editor; click it (or F2, unless `f2` is off) to rename the note. */
+function NoteTitle({ path, f2 = true }: { path: string; f2?: boolean }) {
   const title = noteTitle(path);
   const editSeq = useApp((s) => s.titleEditSeq);
   const [editing, setEditing] = useState(false);
@@ -56,8 +56,8 @@ function NoteTitle({ path }: { path: string }) {
   const done = useRef(false);
 
   useEffect(() => {
-    if (editSeq !== startSeq.current) setEditing(true);
-  }, [editSeq]);
+    if (f2 && editSeq !== startSeq.current) setEditing(true);
+  }, [editSeq, f2]);
 
   if (!editing) {
     return (
@@ -105,7 +105,11 @@ function NoteTitle({ path }: { path: string }) {
   );
 }
 
-export function Editor({ path }: { path: string }) {
+/**
+ * Edits a note. `side`: the split view's right pane, which keeps its own read mode
+ * and saving and leaves the shared hooks (AI, properties panel, F2, jumps) to the main editor.
+ */
+export function Editor({ path, side = false }: { path: string; side?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef<HTMLDivElement>(null);
@@ -113,8 +117,11 @@ export function Editor({ path }: { path: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const setFlushEditor = useApp((s) => s.setFlushEditor);
   const toast = useApp((s) => s.toast);
-  const readMode = useApp((s) => s.readMode);
-  const setReadMode = useApp((s) => s.setReadMode);
+  const sharedReadMode = useApp((s) => s.readMode);
+  const setSharedReadMode = useApp((s) => s.setReadMode);
+  const [sideReadMode, setSideReadMode] = useState(false);
+  const readMode = side ? sideReadMode : sharedReadMode;
+  const setReadMode = side ? setSideReadMode : setSharedReadMode;
   const viewRef = useRef<EditorView | null>(null);
   const readModeRef = useRef(readMode);
   // Text shown in read mode (kept in step with the editor while reading).
@@ -133,7 +140,7 @@ export function Editor({ path }: { path: string }) {
   const jumpSeq = useApp((s) => s.jumpSeq);
   const seenJump = useRef(jumpSeq);
   useEffect(() => {
-    if (jumpSeq === seenJump.current) return;
+    if (side || jumpSeq === seenJump.current) return;
     seenJump.current = jumpSeq;
     const v = viewRef.current;
     const line = useApp.getState().jumpLine;
@@ -141,7 +148,7 @@ export function Editor({ path }: { path: string }) {
     const at = v.state.doc.line(line).from;
     v.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: "start", yMargin: 40 }) });
     if (!readModeRef.current) v.focus();
-  }, [jumpSeq]);
+  }, [jumpSeq, side]);
 
   const applyFormat = (a: FormatAction) => {
     const v = viewRef.current;
@@ -165,7 +172,10 @@ export function Editor({ path }: { path: string }) {
     let disposed = false;
     let saving: Promise<void> = Promise.resolve();
     let docTimer: number | undefined;
-    const { setDocText, setEditText } = useApp.getState();
+    // The right pane leaves the shared hooks alone: they belong to the main editor.
+    const { setDocText, setEditText, setEditorApi } = side
+      ? { setDocText: () => {}, setEditText: () => {}, setEditorApi: () => {} }
+      : useApp.getState();
     const scrollEl = scroller.current;
     // Read on scroll: by cleanup the editor may already be off the page and read as 0.
     let top = 0;
@@ -317,7 +327,7 @@ export function Editor({ path }: { path: string }) {
         if (!text.slice(frontmatterEnd(view.state)).trim() && readModeRef.current) setReadMode(false);
         else if (readModeRef.current) setReadText(text);
         // Coming from a backlink: put the cursor on the linking line.
-        const jump = useApp.getState().jumpLine;
+        const jump = side ? null : useApp.getState().jumpLine;
         const seen = viewMemory.get(path);
         if (jump && jump <= view.state.doc.lines) {
           const at = view.state.doc.line(jump).from;
@@ -333,7 +343,7 @@ export function Editor({ path }: { path: string }) {
           if (fmEnd) view.dispatch({ selection: { anchor: Math.min(fmEnd, view.state.doc.length) } });
         }
         publishText();
-        useApp.getState().setEditorApi({
+        setEditorApi({
           selection: () => {
             if (!view) return { from: 0, to: 0, text: "", whole: false };
             const s = view.state.selection.main;
@@ -381,7 +391,7 @@ export function Editor({ path }: { path: string }) {
       })
       .catch((e) => !disposed && setLoadError(errorMessage(e)));
 
-    setFlushEditor((force) => save(force));
+    setFlushEditor((force) => save(force), side);
 
     return () => {
       if (view) {
@@ -394,22 +404,22 @@ export function Editor({ path }: { path: string }) {
       window.clearTimeout(docTimer);
       setDocText(null);
       setEditText(() => false);
-      useApp.getState().setEditorApi(null);
+      setEditorApi(null);
       unsubscribe();
       unsubscribeNotes();
-      setFlushEditor(async () => {});
+      setFlushEditor(async () => {}, side);
       viewRef.current = null;
       setReadText(null);
       view?.destroy();
     };
-  }, [path, setFlushEditor, toast, setReadMode]);
+  }, [path, side, setFlushEditor, toast, setReadMode]);
 
   return (
     <div className="editor" ref={scroller}>
       {/* Title, mode switch and format bar stay on screen while the note scrolls. */}
       <div className="editor-top" ref={pinned}>
         <div className="editor-head">
-          <NoteTitle path={path} />
+          <NoteTitle path={path} f2={!side} />
           {!loadError && <ModeSwitch readMode={readMode} setReadMode={setReadMode} />}
           <span className={`save-state ${saveState}`}>
             {saveState === "saved" && "√ 저장됨"}

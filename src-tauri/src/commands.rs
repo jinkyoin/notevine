@@ -204,6 +204,12 @@ pub fn property_keys(state: State<AppState>) -> AppResult<Vec<String>> {
     with_vault(&state, |v| crate::search::property_keys(v.index()))
 }
 
+/// Notes of a folder with their properties, for the table view (FR-PRP-05).
+#[tauri::command]
+pub fn folder_table(state: State<AppState>, folder: String) -> AppResult<crate::search::FolderTable> {
+    with_vault(&state, |v| crate::search::folder_table(v.index(), &folder))
+}
+
 /// Most frequent values of a property (key compared case-insensitively), max 50.
 #[tauri::command]
 pub fn property_values(state: State<AppState>, key: String) -> AppResult<Vec<String>> {

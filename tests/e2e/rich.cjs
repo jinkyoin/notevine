@@ -42,7 +42,7 @@ w(
 );
 w("회의록.md", ["# 회의록", "", filler, "", "## 결정 사항", "", "- 하나", ""].join("\n"));
 w("업무.md", "# 업무\n\n#업무/기획 관련 노트\n");
-w("90 템플릿/짧은 양식.md", "---\nkind: memo\n---\n\n## {{title}} 메모\n");
+w("90.템플릿/짧은 양식.md", "---\nkind: memo\n---\n\n## {{title}} 메모\n");
 const OUT = path.join(os.tmpdir(), "notevine-e2e");
 
 (async () => {

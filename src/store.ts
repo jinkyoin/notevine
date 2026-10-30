@@ -15,7 +15,19 @@ import { ancestors, findNode, remapPath } from "./lib/tree";
 import type { ParaFolder } from "./lib/para";
 import { insertTemplate } from "./editor/template";
 import { findHeadingLine } from "./lib/headings";
-import { closeOtherTabs, closeTab, dropTabs, goHistory, openTab, remapTabs, stepTab, type Tab, type Tabs } from "./lib/tabs";
+import {
+  closeOtherTabs,
+  closeTab,
+  dropTabs,
+  goHistory,
+  openTab,
+  remapTabs,
+  reopenTab,
+  stepTab,
+  type ClosedTab,
+  type Tab,
+  type Tabs,
+} from "./lib/tabs";
 
 export type ToastKind = "info" | "error";
 
@@ -105,6 +117,10 @@ interface AppStore {
   modal: Modal;
   /** Version viewer (SCR-10): the note and the version to select first. */
   versionView: { path: string; id: number | null } | null;
+  /** Folder shown as a table of its notes' properties in place of the editor (FR-PRP-05), or null. */
+  tableView: string | null;
+  /** Note shown beside the current one, in the right pane of the split view (FR-EDT-07), or null. */
+  splitPath: string | null;
   leftOpen: boolean;
   rightOpen: boolean;
   /** Back/forward note navigation (Alt+←/→) of the tab on screen. */
@@ -113,7 +129,7 @@ interface AppStore {
   /** Open notes, one tab each (FR-EDT-07). The one on screen is `openPath`. */
   tabs: Tab[];
   /** Recently closed tabs, newest last (Ctrl+Shift+T). */
-  closedTabs: string[];
+  closedTabs: ClosedTab[];
   /** Bumped to move focus into the search box (Ctrl+Shift+F). */
   searchFocusSeq: number;
   /** Text to put in the search box on the next focus (a clicked #태그), or null to keep it. */
@@ -163,6 +179,10 @@ interface AppStore {
   /** Asks in an in-app dialog; resolves true when the user agrees. */
   ask(title: string, message: string, okLabel: string): Promise<boolean>;
   setVersionView(v: { path: string; id: number | null } | null): void;
+  setTableView(folder: string | null): void;
+  /** Opens a note in the right pane, beside the current note. */
+  openSplit(path: string): void;
+  closeSplit(): void;
   setPanels(p: { leftOpen?: boolean; rightOpen?: boolean }): void;
   goBack(): void;
   /** Closes a tab (the one on screen by default). */
@@ -204,7 +224,8 @@ interface AppStore {
   move(path: string, newParent: string): Promise<void>;
   remove(path: string): Promise<void>;
   setEditing(e: Editing | null): void;
-  setFlushEditor(fn: (force?: boolean) => Promise<void>): void;
+  /** Registers how the main editor (or, with `side`, the right pane's) saves; flushEditor saves both. */
+  setFlushEditor(fn: (force?: boolean) => Promise<void>, side?: boolean): void;
   toast(message: string, kind?: ToastKind, action?: Toast["action"]): void;
   dismissToast(id: number): void;
 }
@@ -220,6 +241,12 @@ function baseOf(p: string) {
 }
 let unlistenChanges: UnlistenFn | null = null;
 let treeTimer: number | undefined;
+// The two editors' save functions: the main one and the split view's right pane.
+let flushMain = async (_force?: boolean) => {};
+let flushSide = async (_force?: boolean) => {};
+const flushBoth = async (force?: boolean) => {
+  await Promise.all([flushMain(force), flushSide(force)]);
+};
 
 export const useApp = create<AppStore>((set, get) => {
   /** Runs a backend call and reports failures as an error toast. */
@@ -259,6 +286,10 @@ export const useApp = create<AppStore>((set, get) => {
   async function afterRelocate(from: string, to: string) {
     // Set the new paths before the tree refresh so they aren't reported as deleted.
     if (get().tabs.length || get().openPath) applyTabs(remapTabs(tabState(), (p) => remapPath(p, from, to)));
+    // Folders that were open stay open under their new path.
+    set({ expanded: new Set([...get().expanded].map((p) => remapPath(p, from, to))) });
+    const split = get().splitPath;
+    if (split) set({ splitPath: remapPath(split, from, to) });
     await recolor((p) => remapPath(p, from, to));
     await get().refreshTree();
     get().noteSaved();
@@ -269,17 +300,24 @@ export const useApp = create<AppStore>((set, get) => {
   /** Puts a tab state on screen; the shown tab's history drives the back/forward buttons. */
   function applyTabs(next: Tabs, extra: Partial<AppStore> = {}) {
     const cur = next.tabs.find((t) => t.path === next.active);
-    set({ tabs: next.tabs, openPath: next.active, back: cur?.back ?? [], forward: cur?.forward ?? [], ...extra });
+    // Showing another note closes the table view.
+    const tableView = next.active !== get().openPath ? null : get().tableView;
+    set({ tabs: next.tabs, openPath: next.active, back: cur?.back ?? [], forward: cur?.forward ?? [], tableView, ...extra });
     if (next.active) expandTo(next.active);
     if (get().vault) void api.setWorkspace(next.active, next.tabs.map((t) => t.path)).catch(() => {});
   }
 
+  /** Remembers tabs about to close, with their place and history, for Ctrl+Shift+T. */
   function rememberClosed(paths: string[]) {
-    if (paths.length) set({ closedTabs: [...get().closedTabs.filter((p) => !paths.includes(p)), ...paths].slice(-20) });
+    const { tabs } = get();
+    const closed = tabs.flatMap((tab, at) => (paths.includes(tab.path) ? [{ tab, at }] : []));
+    if (closed.length) set({ closedTabs: [...get().closedTabs.filter((c) => !paths.includes(c.tab.path)), ...closed].slice(-20) });
   }
 
   /** Drops tabs of notes `keep` rejects; if the shown note goes, another tab (or none) shows. */
   function dropMissing(keep: (path: string) => boolean): boolean {
+    const split = get().splitPath;
+    if (split && !keep(split)) set({ splitPath: null });
     const s = tabState();
     if (s.tabs.every((t) => keep(t.path)) && (!s.active || keep(s.active))) return false;
     let next = dropTabs(s, keep);
@@ -310,6 +348,8 @@ export const useApp = create<AppStore>((set, get) => {
     config: DEFAULT_CONFIG,
     modal: null,
     versionView: null,
+    tableView: null,
+    splitPath: null,
     leftOpen: true,
     rightOpen: true,
     back: [],
@@ -329,12 +369,12 @@ export const useApp = create<AppStore>((set, get) => {
     toasts: [],
     externalSeq: 0,
     externalPaths: [],
-    flushEditor: async () => {},
+    flushEditor: flushBoth,
 
     async openVault(path) {
       const info = await attempt(() => api.openVault(path));
       if (!info) return;
-      set({ vault: info, tree: [], expanded: new Set(), openPath: null, editing: null, back: [], forward: [], tabs: [], closedTabs: [] });
+      set({ vault: info, tree: [], expanded: new Set(), openPath: null, editing: null, back: [], forward: [], tabs: [], closedTabs: [], tableView: null, splitPath: null });
       const config = await api.getConfig().catch(() => DEFAULT_CONFIG);
       set({ config, sidebarTab: get().sidebarTab === "ideas" && !config.preset_enabled ? "files" : get().sidebarTab });
       applyTheme(config.theme);
@@ -386,6 +426,7 @@ export const useApp = create<AppStore>((set, get) => {
     openNote(path, line, heading, opts) {
       void get().flushEditor();
       applyTabs(openTab(tabState(), path, !!opts?.newTab), {
+        tableView: null,
         jumpLine: line ?? null,
         jumpHeading: heading ?? null,
         jumpSeq: line ? get().jumpSeq + 1 : get().jumpSeq,
@@ -522,6 +563,20 @@ export const useApp = create<AppStore>((set, get) => {
       set({ versionView });
     },
 
+    openSplit(path) {
+      void flushSide();
+      set({ splitPath: path });
+    },
+
+    closeSplit() {
+      set({ splitPath: null });
+    },
+
+    setTableView(tableView) {
+      if (tableView !== null) void get().flushEditor();
+      set({ tableView });
+    },
+
     setPanels(p) {
       set(p);
     },
@@ -557,9 +612,11 @@ export const useApp = create<AppStore>((set, get) => {
     reopenClosedTab() {
       const { closedTabs, tabs, tree } = get();
       const open = new Set(tabs.map((t) => t.path));
-      const path = [...closedTabs].reverse().find((p) => !open.has(p) && findNode(tree, p));
-      set({ closedTabs: path ? closedTabs.filter((p) => p !== path) : [] });
-      if (path) get().openNote(path, undefined, undefined, { newTab: true });
+      const closed = [...closedTabs].reverse().find((c) => !open.has(c.tab.path) && findNode(tree, c.tab.path));
+      set({ closedTabs: closed ? closedTabs.filter((c) => c !== closed) : [] });
+      if (!closed) return;
+      void get().flushEditor();
+      applyTabs(reopenTab(tabState(), closed), { jumpLine: null });
     },
 
     goForward() {
@@ -706,8 +763,10 @@ export const useApp = create<AppStore>((set, get) => {
       get().toast("휴지통으로 옮겼습니다");
     },
 
-    setFlushEditor(flushEditor) {
-      set({ flushEditor });
+    setFlushEditor(fn, side) {
+      if (side) flushSide = fn;
+      else flushMain = fn;
+      set({ flushEditor: flushBoth });
     },
 
     setEditing(editing) {

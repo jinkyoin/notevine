@@ -60,7 +60,8 @@ export function TabBar() {
           aria-selected={t.path === active}
           className={`tab${t.path === active ? " on" : ""}`}
           title={t.path}
-          onClick={() => t.path !== active && openNote(t.path)}
+          // The active tab is clickable too while a folder table covers its note.
+          onClick={() => (t.path !== active || useApp.getState().tableView !== null) && openNote(t.path)}
           // Middle click closes, as in a browser.
           onMouseDown={(e) => e.button === 1 && e.preventDefault()}
           onAuxClick={(e) => {
@@ -93,6 +94,10 @@ export function TabBar() {
             [
               ["탭 닫기", () => closeTab(menu.path)],
               ["다른 탭 모두 닫기", () => closeOtherTabs(menu.path)],
+              // The note on screen can't also be edited on the right.
+              ...(menu.path !== active
+                ? ([["오른쪽에 나란히 열기", () => useApp.getState().openSplit(menu.path)]] as [string, () => void][])
+                : []),
             ] as [string, () => void][]
           ).map(([label, run]) => (
             <li

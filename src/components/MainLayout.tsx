@@ -13,6 +13,8 @@ import { QuickOpen } from "./QuickOpen";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { HistoryPanel } from "./HistoryPanel";
 import { VersionView } from "./VersionView";
+import { FolderTable } from "./FolderTable";
+import { SplitPane } from "./SplitPane";
 import { DeletedNotes } from "./DeletedNotes";
 import { MarkdownHelp } from "./MarkdownHelp";
 import { IdeaBoard } from "./IdeaBoard";
@@ -77,6 +79,8 @@ function VaultMenu({ name, root }: { name: string; root: string }) {
 export function MainLayout() {
   const vault = useApp((s) => s.vault);
   const openPath = useApp((s) => s.openPath);
+  const tableView = useApp((s) => s.tableView);
+  const splitPath = useApp((s) => s.splitPath);
   const sidebarTab = useApp((s) => s.sidebarTab);
   const preset = useApp((s) => s.config.preset_enabled);
   const leftOpen = useApp((s) => s.leftOpen);
@@ -171,25 +175,30 @@ export function MainLayout() {
           </aside>
         )}
         <main className="center">
-          <TabBar />
-          {openPath ? (
-            <Editor key={openPath} path={openPath} />
-          ) : (
-            <div className="empty">
-              <p>열린 노트가 없습니다.</p>
-              <button className="btn primary" onClick={() => setModal("template")}>
-                새 노트 (Ctrl+N)
-              </button>
-              {!preset && (
-                <p className="muted small">
-                  PARA(프로젝트·영역·자료·보관) 폴더와 템플릿이 필요하면{" "}
-                  <button className="link-btn" onClick={() => void useApp.getState().applyPreset()}>
-                    기본 구조 만들기
-                  </button>
-                </p>
-              )}
-            </div>
-          )}
+          <div className="pane">
+            <TabBar />
+            {tableView !== null ? (
+              <FolderTable key={tableView} folder={tableView} />
+            ) : openPath ? (
+              <Editor key={openPath} path={openPath} />
+            ) : (
+              <div className="empty">
+                <p>열린 노트가 없습니다.</p>
+                <button className="btn primary" onClick={() => setModal("template")}>
+                  새 노트 (Ctrl+N)
+                </button>
+                {!preset && (
+                  <p className="muted small">
+                    PARA(프로젝트·영역·자료·보관) 폴더와 템플릿이 필요하면{" "}
+                    <button className="link-btn" onClick={() => void useApp.getState().applyPreset()}>
+                      기본 구조 만들기
+                    </button>
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+          {splitPath && <SplitPane path={splitPath} />}
         </main>
         {rightOpen && (
           <aside className="rightpanel">

@@ -107,6 +107,28 @@ export function registerAppCommands(): () => void {
       run: () => st().reopenClosedTab(),
     },
     {
+      id: "split.close",
+      title: "나란히 보기 닫기",
+      keywords: "분할 창 나란히 오른쪽 닫기 split",
+      when: () => !!st().splitPath && noModal(),
+      run: () => st().closeSplit(),
+    },
+    {
+      id: "split.swap",
+      title: "나란히 보기: 왼쪽·오른쪽 노트 바꾸기",
+      keywords: "분할 창 나란히 바꾸기 교체 swap split",
+      when: () => !!st().splitPath && hasNote() && noModal(),
+      run: async () => {
+        const left = st().openPath!;
+        const right = st().splitPath!;
+        // Save both first, so neither side reads the other's note before its edits are on disk.
+        await st().flushEditor();
+        st().closeSplit();
+        st().openNote(right);
+        st().openSplit(left);
+      },
+    },
+    {
       id: "history.open",
       title: "현재 노트 히스토리 보기",
       keywords: "버전 되돌리기 복원 이전 내용 변경 기록",
@@ -120,6 +142,16 @@ export function registerAppCommands(): () => void {
       keywords: "기본 구조 디폴트 초기 설정 기록 관리 프리셋 para 프로젝트 영역 자료 보관 업무일지 아이디어 조사자료 템플릿 폴더",
       when: () => hasVault() && !st().config.preset_enabled,
       run: () => st().applyPreset(),
+    },
+    {
+      id: "view.folderTable",
+      title: "현재 폴더를 표로 보기",
+      keywords: "표 테이블 속성 목록 데이터베이스 table properties 폴더",
+      when: () => hasNote() && noModal(),
+      run: () => {
+        const p = st().openPath!;
+        st().setTableView(p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
+      },
     },
     {
       id: "para.newProject",

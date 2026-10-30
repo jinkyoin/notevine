@@ -244,8 +244,12 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
     const para = paraActions(node.path, node.kind === "folder", config, (f) => !!f && !!findNode(tree, f));
     items.push(
       ...(node.kind === "note"
-        ? ([["새 탭에서 열기", () => useApp.getState().openNote(node.path, undefined, undefined, { newTab: true })]] as [string, () => void][])
+        ? ([
+            ["새 탭에서 열기", () => useApp.getState().openNote(node.path, undefined, undefined, { newTab: true })],
+            ["오른쪽에 나란히 열기", () => useApp.getState().openSplit(node.path)],
+          ] as [string, () => void][])
         : []),
+      ...(node.kind === "folder" ? ([["표로 보기", () => useApp.getState().setTableView(node.path)]] as [string, () => void][]) : []),
       ...para.map(
         (a): [string, () => void] => [
           a.label,

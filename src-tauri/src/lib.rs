@@ -83,6 +83,7 @@ pub fn run() {
             commands::reveal_entry,
             commands::search,
             commands::property_keys,
+            commands::folder_table,
             commands::property_values,
             commands::all_tags,
         ])

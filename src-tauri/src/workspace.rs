@@ -756,15 +756,7 @@ mod tests {
         assert_eq!(r.skipped, ["00.Inbox", "90.템플릿", "90.템플릿/업무일지.md"]);
         assert_eq!(
             r.created_folders,
-            [
-                "10.프로젝트",
-                "20.영역",
-                "30.자료",
-                "30.자료/아이디어",
-                "30.자료/조사자료",
-                "40.보관",
-                "첨부"
-            ]
+            ["10.프로젝트", "20.영역", "30.자료", "30.자료/아이디어", "30.자료/조사자료", "40.보관", "첨부"]
         );
         assert_eq!(r.created_templates.len(), 4);
         assert_eq!(fs::read(dir.path().join("90.템플릿/업무일지.md")).unwrap(), mine.as_bytes());
