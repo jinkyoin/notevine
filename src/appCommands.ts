@@ -114,7 +114,7 @@ export function registerAppCommands(): () => void {
         void st().saveConfig({ ...c, theme: order[(order.indexOf(c.theme) + 1) % order.length] });
       },
     },
-    { id: "vault.switch", title: "볼트 바꾸기", when: hasVault, run: () => st().closeVault() },
+    { id: "vault.switch", title: "노트 폴더 바꾸기", when: hasVault, run: () => st().closeVault() },
     {
       id: "ai.panel",
       title: "AI: 질문하기 (노트·웹)",

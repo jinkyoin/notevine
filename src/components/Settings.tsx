@@ -70,8 +70,8 @@ function SettingsDialog({ close }: { close: () => void }) {
                     <option value="ko">한국어</option>
                   </select>
                 </Row>
-                <Row label="시작할 때" hint="앱을 켜면 마지막 볼트와 노트를 다시 엽니다">
-                  <span className="muted small">마지막 볼트 열기 (항상)</span>
+                <Row label="시작할 때" hint="앱을 켜면 마지막 노트 폴더와 노트를 다시 엽니다">
+                  <span className="muted small">마지막 노트 폴더 열기 (항상)</span>
                 </Row>
               </>
             )}
@@ -148,7 +148,7 @@ function SettingsDialog({ close }: { close: () => void }) {
                 <Row label="묶음 간격" hint="같은 노트를 이어서 저장하면 5분 단위로 한 버전으로 묶습니다">
                   <span>5분</span>
                 </Row>
-                <Row label="저장 위치" hint="다시 만들 수 없는 파일이니 볼트와 함께 백업하세요">
+                <Row label="저장 위치" hint="다시 만들 수 없는 파일이니 노트 폴더와 함께 백업하세요">
                   <span className="mono small">.app/history.db</span>
                   <button
                     className="btn small"

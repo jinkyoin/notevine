@@ -1,4 +1,4 @@
-// NFR-PRF-01~05 측정: 릴리스 빌드(notevine.exe)를 직접 띄워 1만 노트 볼트로 잰다.
+// NFR-PRF-01~05 측정: 릴리스 빌드(notevine.exe)를 직접 띄워 노트 1만 개짜리 노트 폴더로 잰다.
 const { chromium } = require("playwright-core");
 const { spawn, execFileSync } = require("child_process");
 const path = require("path");

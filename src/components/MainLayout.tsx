@@ -56,16 +56,16 @@ function VaultMenu({ name, root }: { name: string; root: string }) {
   };
   return (
     <div className="vault-menu" ref={box}>
-      <button className="vault-name" title={`${root}\n눌러서 볼트 바꾸기`} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button className="vault-name" title={`${root}\n눌러서 노트 폴더 바꾸기`} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(!open)}>
         {name} <span className="caret">▾</span>
       </button>
       {open && (
         <div className="menu" role="menu">
           <button role="menuitem" onClick={() => run(() => useApp.getState().closeVault())}>
-            볼트 바꾸기…
+            노트 폴더 바꾸기…
           </button>
           <button role="menuitem" onClick={() => run(() => void revealItemInDir(root).catch(() => {}))}>
-            탐색기에서 볼트 폴더 열기
+            탐색기에서 노트 폴더 열기
           </button>
         </div>
       )}

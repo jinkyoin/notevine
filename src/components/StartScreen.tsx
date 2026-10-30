@@ -1,10 +1,10 @@
-// SCR-01 시작 화면: 볼트 열기·만들기, 최근 볼트 목록.
+// SCR-01 시작 화면: 노트 폴더 열기·만들기, 최근 노트 폴더 목록.
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, type RecentVault } from "../api";
 import { useApp } from "../store";
 
-// Reopen the last vault only when the app starts, not after "볼트 바꾸기" (FR-VLT-02).
+// Reopen the last vault only when the app starts, not after "노트 폴더 바꾸기" (FR-VLT-02).
 let autoOpenTried = false;
 
 export function StartScreen() {
@@ -47,17 +47,17 @@ export function StartScreen() {
         <p className="muted">내 컴퓨터의 마크다운 폴더에 기록하고, 연결하고, 다시 찾습니다.</p>
 
         <div className="start-actions">
-          <button className="btn primary" onClick={() => pick("볼트로 열 폴더 선택")}>
-            폴더를 볼트로 열기
+          <button className="btn primary" onClick={() => pick("열 노트 폴더 선택")}>
+            노트 폴더 열기
           </button>
-          <button className="btn" onClick={() => pick("새 볼트로 쓸 폴더 선택 (빈 폴더 권장)")}>
-            새 볼트 만들기
+          <button className="btn" onClick={() => pick("새 노트 폴더로 쓸 폴더 선택 (빈 폴더 권장)")}>
+            새 노트 폴더 만들기
           </button>
         </div>
 
-        <h2 className="section-label">최근 볼트</h2>
+        <h2 className="section-label">최근 노트 폴더</h2>
         {recent.length === 0 ? (
-          <p className="muted small">아직 연 볼트가 없습니다.</p>
+          <p className="muted small">아직 연 노트 폴더가 없습니다.</p>
         ) : (
           <ul className="recent-list">
             {recent.map((v) => (

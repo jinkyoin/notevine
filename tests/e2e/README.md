@@ -19,7 +19,7 @@ node tests/e2e/ai-login.cjs    # 로그아웃·미설치일 때 로그인 버튼
 ```
 
 - 개발 모드에서만 열리는 `window.__notevine`(앱 상태)으로 폴더 선택 대화상자 같은 OS 창을 건너뛴다.
-- 테스트 볼트와 스크린샷은 `%TEMP%\notevine-e2e`에 만들어진다.
+- 테스트 노트 폴더와 스크린샷은 `%TEMP%\notevine-e2e`에 만들어진다.
 
 ## 성능 측정 (NFR-PRF-01~05)
 

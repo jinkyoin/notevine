@@ -4,7 +4,7 @@ use serde::Serialize;
 /// can branch on `code` and show `message` in a toast.
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    #[error("볼트가 열려 있지 않습니다")]
+    #[error("노트 폴더가 열려 있지 않습니다")]
     NoVault,
     #[error("폴더를 찾을 수 없습니다: {0}")]
     NotADirectory(String),
@@ -14,7 +14,7 @@ pub enum AppError {
     AlreadyExists(String),
     #[error("사용할 수 없는 이름입니다: {0}")]
     InvalidName(String),
-    #[error("볼트 밖의 경로는 사용할 수 없습니다: {0}")]
+    #[error("노트 폴더 밖의 경로는 사용할 수 없습니다: {0}")]
     OutsideVault(String),
     #[error("{0}")]
     Io(#[from] std::io::Error),
