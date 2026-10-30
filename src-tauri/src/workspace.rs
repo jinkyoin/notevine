@@ -464,6 +464,34 @@ pub fn open_journal_at(v: &Vault, now: DateTime<Local>) -> AppResult<String> {
     v.create_note(parent_rel(&rel), Some(&name), &content)
 }
 
+// ---------- PARA projects ----------
+
+/// Starts a PARA project: a folder named `name` in the project folder and an
+/// overview note of the same name in it, from the vault's "프로젝트" template or,
+/// without one, the preset's. Returns the note's path.
+pub fn create_project_at(v: &Vault, name: &str, now: DateTime<Local>) -> AppResult<String> {
+    let config = load_config(v)?;
+    let parent = checked_dir(&config.project_folder)?;
+    let name = name.trim();
+    validate_name(name)?;
+    let dir = join_rel(&parent, name);
+    if v.abs(&dir)?.exists() {
+        return Err(AppError::AlreadyExists(dir));
+    }
+    fs::create_dir_all(v.abs(&dir)?)?;
+    let template = templates_in(v)?.into_iter().find(|t| name_key(&t.title) == name_key("프로젝트"));
+    let text = match template {
+        Some(t) => fs::read_to_string(v.abs(&t.path)?)?,
+        None => preset()?
+            .templates
+            .into_iter()
+            .find(|t| t.name == "프로젝트")
+            .map(|t| t.lines.join("\n"))
+            .unwrap_or_else(|| "# {{title}}\n".into()),
+    };
+    v.create_note(&dir, Some(&format!("{name}.md")), &strip_folder_key(&render_template(&text, name, now)))
+}
+
 // ---------- quick memo ----------
 
 /// File name from a user-typed memo title: characters Windows refuses are
@@ -570,6 +598,11 @@ pub fn open_today_journal(state: State<AppState>) -> AppResult<String> {
 }
 
 #[tauri::command]
+pub fn create_project(state: State<AppState>, name: String) -> AppResult<String> {
+    with_vault(&state, |v| create_project_at(v, &name, Local::now()))
+}
+
+#[tauri::command]
 pub fn quick_memo(state: State<AppState>, text: String, title: Option<String>) -> AppResult<String> {
     with_vault(&state, |v| quick_memo_at(v, &text, title.as_deref(), Local::now()))
 }
@@ -651,7 +684,7 @@ mod tests {
         let p = preset().unwrap();
         assert_eq!(p.folders.len(), 10);
         let names: Vec<_> = p.templates.iter().map(|t| t.name.as_str()).collect();
-        assert_eq!(names, ["업무일지", "회의록", "아이디어", "자료"]);
+        assert_eq!(names, ["프로젝트", "업무일지", "회의록", "아이디어", "자료"]);
     }
 
     #[test]
@@ -676,7 +709,13 @@ mod tests {
         );
         assert_eq!(
             r.created_templates,
-            ["90.템플릿/업무일지.md", "90.템플릿/회의록.md", "90.템플릿/아이디어.md", "90.템플릿/자료.md"]
+            [
+                "90.템플릿/프로젝트.md",
+                "90.템플릿/업무일지.md",
+                "90.템플릿/회의록.md",
+                "90.템플릿/아이디어.md",
+                "90.템플릿/자료.md"
+            ]
         );
         assert!(r.skipped.is_empty());
         let c = load_config(&v).unwrap();
@@ -702,7 +741,7 @@ mod tests {
         // applying again changes nothing
         let again = apply_preset_to(&v).unwrap();
         assert!(again.created_folders.is_empty() && again.created_templates.is_empty());
-        assert_eq!(again.skipped.len(), 14);
+        assert_eq!(again.skipped.len(), 15);
     }
 
     #[test]
@@ -729,7 +768,7 @@ mod tests {
                 "첨부"
             ]
         );
-        assert_eq!(r.created_templates.len(), 3);
+        assert_eq!(r.created_templates.len(), 4);
         assert_eq!(fs::read(dir.path().join("90.템플릿/업무일지.md")).unwrap(), mine.as_bytes());
         assert_eq!(read(&dir, "00.Inbox/메모.md"), "그대로");
     }
@@ -758,7 +797,7 @@ mod tests {
         fs::write(dir.path().join("90.템플릿/그림.png"), "x").unwrap();
         let t = templates_in(&v).unwrap();
         let titles: Vec<_> = t.iter().map(|t| t.title.as_str()).collect();
-        assert_eq!(titles, ["가 주간보고", "아이디어", "업무일지", "자료", "회의록"]);
+        assert_eq!(titles, ["가 주간보고", "아이디어", "업무일지", "자료", "프로젝트", "회의록"]);
         assert_eq!(t[0].path, "90.템플릿/내 양식/가 주간보고.md");
         assert_eq!(t[0].preview, "# 주간보고\n- 한 일\n- 할 일");
         assert_eq!(t[0].folder, None);
@@ -807,6 +846,25 @@ mod tests {
         assert_eq!(strip_folder_key(src), "---\ntype: x\nfolders: keep\n# comment\n---\nfolder: body stays\n");
         assert_eq!(strip_folder_key("folder: no frontmatter"), "folder: no frontmatter");
         assert_eq!(strip_folder_key("---\r\nfolder: a\r\nb: 1\r\n---\r\n"), "---\r\nb: 1\r\n---\r\n");
+    }
+
+    #[test]
+    fn new_project_gets_a_folder_and_an_overview_note() {
+        let (dir, v) = vault();
+        // No template in the vault yet: the preset's is used.
+        let p = create_project_at(&v, " 홈페이지 개편 ", now()).unwrap();
+        assert_eq!(p, "10.프로젝트/홈페이지 개편/홈페이지 개편.md");
+        let text = read(&dir, &p);
+        assert!(text.starts_with("---\ntype: project\nstatus: 진행\ndeadline: \ncreated: 2026-10-28\n---\n"), "{text}");
+        assert!(text.contains("# 홈페이지 개편\n") && text.contains("## 목표") && text.contains("## 할 일"));
+        assert!(matches!(create_project_at(&v, "홈페이지 개편", now()), Err(AppError::AlreadyExists(_))));
+        assert!(create_project_at(&v, "a/b", now()).is_err());
+
+        // The vault's own "프로젝트" template wins.
+        fs::create_dir_all(dir.path().join("90.템플릿")).unwrap();
+        fs::write(dir.path().join("90.템플릿/프로젝트.md"), "---\nfolder: x\n---\n# {{title}} 계획\n").unwrap();
+        let p = create_project_at(&v, "이사", now()).unwrap();
+        assert_eq!(read(&dir, &p), "---\n---\n# 이사 계획\n");
     }
 
     #[test]

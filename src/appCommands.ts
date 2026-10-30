@@ -3,6 +3,7 @@ import { registerCommands } from "./commands";
 import { useApp } from "./store";
 import { useAi } from "./aiStore";
 import { WRITE_LABEL, type WriteTask } from "./ai";
+import { findNode } from "./lib/tree";
 
 const st = () => useApp.getState();
 const hasVault = () => !!st().vault;
@@ -119,6 +120,13 @@ export function registerAppCommands(): () => void {
       keywords: "기본 구조 디폴트 초기 설정 기록 관리 프리셋 para 프로젝트 영역 자료 보관 업무일지 아이디어 조사자료 템플릿 폴더",
       when: () => hasVault() && !st().config.preset_enabled,
       run: () => st().applyPreset(),
+    },
+    {
+      id: "para.newProject",
+      title: "새 프로젝트 (PARA)",
+      keywords: "프로젝트 새로 만들기 시작 para project 폴더 개요",
+      when: () => noModal() && !!findNode(st().tree, st().config.project_folder),
+      run: () => st().startNewProject(),
     },
     {
       id: "ideas.board",

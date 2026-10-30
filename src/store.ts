@@ -12,6 +12,7 @@ import {
   type VaultInfo,
 } from "./api";
 import { ancestors, findNode, remapPath } from "./lib/tree";
+import type { ParaFolder } from "./lib/para";
 import { insertTemplate } from "./editor/template";
 import { findHeadingLine } from "./lib/headings";
 import { closeOtherTabs, closeTab, dropTabs, goHistory, openTab, remapTabs, stepTab, type Tab, type Tabs } from "./lib/tabs";
@@ -75,9 +76,8 @@ export function applyTheme(theme: VaultConfig["theme"]) {
   document.documentElement.dataset.theme = theme;
 }
 
-/** A tree row currently being named inline (new note/folder or rename). */
-export type Editing = { mode: "rename"; path: string } | { mode: "new-folder"; parent: string };
-
+/** A tree row currently being named inline (new note/folder or rename). `project`: a new PARA project. */
+export type Editing = { mode: "rename"; path: string } | { mode: "new-folder"; parent: string; project?: boolean };
 /** How to open a note: in a new tab (Ctrl+click, middle click) instead of the current one. */
 export type OpenOpts = { newTab?: boolean };
 
@@ -190,6 +190,14 @@ interface AppStore {
   setEditText(fn: AppStore["editText"]): void;
   createNote(dir: string): Promise<void>;
   createFolder(parent: string, name: string): Promise<void>;
+  /** PARA: a project folder with an overview note, which then opens. */
+  createProject(name: string): Promise<void>;
+  /** Starts naming a new project in the file tree. */
+  startNewProject(): void;
+  /** PARA: moves a finished or paused note/folder into the archive folder. */
+  archive(path: string): Promise<void>;
+  /** PARA: moves an archived note/folder back out, into a project, area or resource folder. */
+  unarchive(path: string, to: ParaFolder): Promise<void>;
   rename(path: string, newName: string): Promise<void>;
   /** Colors a folder's name in the file tree, and what is inside it; `null` clears it. */
   setFolderColor(path: string, color: string | null): Promise<void>;
@@ -406,6 +414,27 @@ export const useApp = create<AppStore>((set, get) => {
       expandTo(path + "/");
     },
 
+    async createProject(name) {
+      const path = await attempt(() => api.createProject(name));
+      if (!path) return;
+      await get().refreshTree();
+      get().openNote(path);
+    },
+
+    startNewProject() {
+      const parent = get().config.project_folder;
+      get().toggleFolder(parent, true);
+      set({ editing: { mode: "new-folder", parent, project: true }, sidebarTab: "files", leftOpen: true });
+    },
+
+    async archive(path) {
+      await get().move(path, get().config.archive_folder);
+    },
+
+    async unarchive(path, to) {
+      await get().move(path, get().config[to]);
+    },
+
     async openAttachment(target) {
       const rel = await api.resolveAttachment(target, get().openPath ?? "").catch(() => null);
       const folder = get().config.attachment_folder;
@@ -564,7 +593,7 @@ export const useApp = create<AppStore>((set, get) => {
       ];
       const ok = await get().ask(
         "기본 구조 만들기 (PARA)",
-        `노트 폴더에 PARA 방식의 폴더와 템플릿 4개(업무일지·회의록·아이디어·자료)를 만듭니다.\n\n${folders.join("\n")}\n\n이미 있는 폴더와 노트는 바꾸지 않습니다.`,
+        `노트 폴더에 PARA 방식의 폴더와 템플릿 5개(프로젝트·업무일지·회의록·아이디어·자료)를 만듭니다.\n\n${folders.join("\n")}\n\n이미 있는 폴더와 노트는 바꾸지 않습니다.`,
         "켜기",
       );
       if (!ok) return;

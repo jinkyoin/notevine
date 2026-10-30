@@ -62,6 +62,7 @@ pub fn run() {
             workspace::render_template_text,
             workspace::open_today_journal,
             workspace::quick_memo,
+            workspace::create_project,
             workspace::ideas,
             extras::cmd::restore_version,
             extras::cmd::version_diff,

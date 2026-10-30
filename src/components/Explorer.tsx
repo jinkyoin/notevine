@@ -4,7 +4,8 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { api, type TreeNode } from "../api";
 import { useApp } from "../store";
-import { baseName, countNotes, noteTitle, parentPath } from "../lib/tree";
+import { baseName, countNotes, findNode, noteTitle, parentPath } from "../lib/tree";
+import { paraActions } from "../lib/para";
 import { openProps } from "./TabBar";
 import { TEXT_COLORS } from "../editor/colors";
 
@@ -47,7 +48,7 @@ export function Explorer() {
           if (from) move(from, "");
         }}
       >
-        {editing?.mode === "new-folder" && editing.parent === "" && <NewFolderRow parent="" depth={0} />}
+        {editing?.mode === "new-folder" && editing.parent === "" && <NewFolderRow parent="" depth={0} project={editing.project} />}
         {tree.map((n) => (
           <Row key={n.path} node={n} depth={0} onMenu={setMenu} />
         ))}
@@ -137,7 +138,7 @@ function Row({ node, depth, onMenu, color }: { node: TreeNode; depth: number; on
       {isFolder && expanded && (
         <>
           {editing?.mode === "new-folder" && editing.parent === node.path && (
-            <NewFolderRow parent={node.path} depth={depth + 1} />
+            <NewFolderRow parent={node.path} depth={depth + 1} project={editing.project} />
           )}
           {node.children?.map((c) => (
             <Row key={c.path} node={c} depth={depth + 1} onMenu={onMenu} color={shown} />
@@ -191,8 +192,10 @@ function RenameInput({ node }: { node: TreeNode }) {
   );
 }
 
-function NewFolderRow({ parent, depth }: { parent: string; depth: number }) {
+/** Names a new folder, or a new PARA project (a folder with an overview note). */
+function NewFolderRow({ parent, depth, project }: { parent: string; depth: number; project?: boolean }) {
   const createFolder = useApp((s) => s.createFolder);
+  const createProject = useApp((s) => s.createProject);
   const setEditing = useApp((s) => s.setEditing);
   return (
     <div className="tree-row folder" style={{ paddingLeft: 8 + depth * 14 }}>
@@ -200,10 +203,10 @@ function NewFolderRow({ parent, depth }: { parent: string; depth: number }) {
         <Chevron open={false} />
       </span>
       <NameInput
-        initial="새 폴더"
+        initial={project ? "새 프로젝트" : "새 폴더"}
         onCommit={(name) => {
           setEditing(null);
-          if (name) createFolder(parent, name);
+          if (name) void (project ? createProject(name) : createFolder(parent, name));
         }}
       />
     </div>
@@ -237,10 +240,18 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
     ],
   ];
   if (node) {
+    const { config, tree, startNewProject, archive, unarchive } = useApp.getState();
+    const para = paraActions(node.path, node.kind === "folder", config, (f) => !!f && !!findNode(tree, f));
     items.push(
       ...(node.kind === "note"
         ? ([["새 탭에서 열기", () => useApp.getState().openNote(node.path, undefined, undefined, { newTab: true })]] as [string, () => void][])
         : []),
+      ...para.map(
+        (a): [string, () => void] => [
+          a.label,
+          () => void (a.kind === "newProject" ? startNewProject() : a.kind === "archive" ? archive(node.path) : unarchive(node.path, a.to)),
+        ],
+      ),
       ["이름 변경", () => setEditing({ mode: "rename", path: node.path })],
       ...(node.kind === "note" ? ([["히스토리 보기", () => setVersionView({ path: node.path, id: null })]] as [string, () => void][]) : []),
       [

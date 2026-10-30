@@ -230,6 +230,8 @@ export const api = {
   renderTemplate: (template: string, title: string) => invoke<string>("render_template_text", { template, title }),
   openTodayJournal: () => invoke<string>("open_today_journal"),
   quickMemo: (text: string, title: string | null) => invoke<string>("quick_memo", { text, title }),
+  /** PARA project folder + overview note; returns the note's path. */
+  createProject: (name: string) => invoke<string>("create_project", { name }),
   ideas: () => invoke<IdeaItem[]>("ideas"),
   restoreVersion: (path: string, id: number) => invoke<void>("restore_version", { path, id }),
   versionDiff: (path: string, fromId: number | null, toId: number | null) =>
