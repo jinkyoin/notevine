@@ -3,7 +3,7 @@
 import { syntaxTree } from "@codemirror/language";
 import { EditorSelection, type EditorState, type Range, type TransactionSpec } from "@codemirror/state";
 import { Decoration, type DecorationSet, type EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
-import { frontmatterEnd } from "./livePreview";
+import { composingStep, frontmatterEnd } from "./livePreview";
 
 export type ColorProp = "color" | "background-color";
 
@@ -178,12 +178,14 @@ function build(view: EditorView): DecorationSet {
 export const colorSpans = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
+    composed = false;
     constructor(view: EditorView) {
       this.decorations = build(view);
     }
     update(u: ViewUpdate) {
-      if (u.view.composing) return; // keep the IME span stable (FR-EDT-05)
-      if (u.docChanged || u.selectionSet || u.viewportChanged) this.decorations = build(u.view);
+      const step = composingStep(u, this); // keep the IME span stable (FR-EDT-05)
+      if (step === "skip") return;
+      if (step === "rebuild" || u.docChanged || u.selectionSet || u.viewportChanged) this.decorations = build(u.view);
     }
   },
   { decorations: (v) => v.decorations },

@@ -167,17 +167,39 @@ export function buildDecorations(view: EditorView): DecorationSet {
   return Decoration.set(out, true);
 }
 
+/**
+ * While composing Korean text, decorations aren't rebuilt so the IME span isn't redrawn
+ * mid-syllable (FR-EDT-05). They still have to follow the edits: left where they were, a
+ * hidden "## " further down ends up over other text or a line break, and the IME's DOM
+ * changes are then read back wrong, pulling the lines below up into the one being typed.
+ * "skip": composing, nothing more to do. "rebuild": the first update after composing,
+ * which rebuilds even if it changed nothing itself. null: an ordinary update.
+ */
+export function composingStep(
+  u: ViewUpdate,
+  plugin: { decorations: DecorationSet; composed: boolean },
+): "skip" | "rebuild" | null {
+  if (u.view.composing) {
+    plugin.decorations = plugin.decorations.map(u.changes);
+    plugin.composed = true;
+    return "skip";
+  }
+  if (!plugin.composed) return null;
+  plugin.composed = false;
+  return "rebuild";
+}
+
 export const livePreview = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
+    composed = false;
     constructor(view: EditorView) {
       this.decorations = buildDecorations(view);
     }
     update(u: ViewUpdate) {
-      // While composing Korean text, keep decorations stable so the IME span isn't
-      // redrawn mid-syllable (FR-EDT-05).
-      if (u.view.composing) return;
-      if (u.docChanged || u.selectionSet || u.viewportChanged || syntaxTree(u.startState) !== syntaxTree(u.state)) {
+      const step = composingStep(u, this);
+      if (step === "skip") return;
+      if (step === "rebuild" || u.docChanged ||u.selectionSet || u.viewportChanged || syntaxTree(u.startState) !== syntaxTree(u.state)) {
         this.decorations = buildDecorations(u.view);
       }
     }

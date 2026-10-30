@@ -5,7 +5,7 @@ import { syntaxTree } from "@codemirror/language";
 import { type EditorState, type Extension, type Range, StateEffect } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type { NoteRef } from "../api";
-import { frontmatterEnd } from "./livePreview";
+import { composingStep, frontmatterEnd } from "./livePreview";
 
 export interface LinkEnv {
   /** Path of the note being edited. */
@@ -210,12 +210,15 @@ export function wikiLinks(env: LinkEnv): Extension {
   const plugin = ViewPlugin.fromClass(
     class {
       decorations: DecorationSet;
+      composed = false;
       constructor(view: EditorView) {
         this.decorations = buildDecorations(view, env);
       }
       update(u: ViewUpdate) {
-        if (u.view.composing) return;
+        const step = composingStep(u, this);
+        if (step === "skip") return;
         if (
+          step === "rebuild" ||
           u.docChanged ||
           u.selectionSet ||
           u.viewportChanged ||

@@ -3,7 +3,7 @@
 import { type EditorState, type Extension, type Range, StateEffect } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { frontmatterEnd } from "./livePreview";
+import { composingStep, frontmatterEnd } from "./livePreview";
 import { resolveDest } from "./wikilinks";
 
 export interface AttachEnv {
@@ -147,12 +147,14 @@ export function attachments(env: AttachEnv): Extension {
   const plugin = ViewPlugin.fromClass(
     class {
       decorations: DecorationSet;
+      composed = false;
       constructor(view: EditorView) {
         this.decorations = build(view);
       }
       update(u: ViewUpdate) {
-        if (u.view.composing) return;
-        if (u.docChanged || u.selectionSet || u.viewportChanged || u.transactions.some((t) => t.effects.some((e) => e.is(refreshEmbeds)))) {
+        const step = composingStep(u, this);
+        if (step === "skip") return;
+        if (step === "rebuild" || u.docChanged || u.selectionSet || u.viewportChanged || u.transactions.some((t) => t.effects.some((e) => e.is(refreshEmbeds)))) {
           this.decorations = build(u.view);
         }
       }
