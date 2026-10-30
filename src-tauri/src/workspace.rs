@@ -5,6 +5,7 @@
 //! The preset itself (folders and template text) lives in `presets/default.json`;
 //! this module only knows how to apply it.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -47,6 +48,8 @@ pub struct VaultConfig {
     pub theme: String,
     /// "ko" | "en"
     pub language: String,
+    /// Folder path → color of its name in the file tree; notes and folders inside take it too.
+    pub folder_colors: BTreeMap<String, String>,
 }
 
 impl Default for VaultConfig {
@@ -66,6 +69,7 @@ impl Default for VaultConfig {
             autosave_ms: 1000,
             theme: "system".into(),
             language: "ko".into(),
+            folder_colors: BTreeMap::new(),
         }
     }
 }
@@ -604,7 +608,12 @@ mod tests {
         assert_eq!(c.inbox_folder, "받은 메모");
         assert_eq!(c.journal_folder, "10 업무일지");
 
-        let changed = VaultConfig { autosave_ms: 2500, idea_statuses: vec!["새".into()], ..c };
+        let changed = VaultConfig {
+            autosave_ms: 2500,
+            idea_statuses: vec!["새".into()],
+            folder_colors: BTreeMap::from([("업무".into(), "#1c7ed6".into())]),
+            ..c
+        };
         save_config(&v, &changed).unwrap();
         assert_eq!(load_config(&v).unwrap(), changed);
         let text = fs::read_to_string(&cfg).unwrap();

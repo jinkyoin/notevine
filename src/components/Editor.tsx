@@ -108,6 +108,7 @@ function NoteTitle({ path }: { path: string }) {
 export function Editor({ path }: { path: string }) {
   const host = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
+  const pinned = useRef<HTMLDivElement>(null);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [loadError, setLoadError] = useState<string | null>(null);
   const setFlushEditor = useApp((s) => s.setFlushEditor);
@@ -245,6 +246,8 @@ export function Editor({ path }: { path: string }) {
               history(),
               drawSelection(),
               EditorView.lineWrapping,
+              // Keep the cursor out from under the title and format bar pinned at the top.
+              EditorView.scrollMargins.of(() => ({ top: (pinned.current?.offsetHeight ?? 0) + 8 })),
               EditorView.contentAttributes.of({ spellcheck: "false", autocorrect: "off" }),
               markdown({ base: markdownLanguage, codeLanguages: languages }),
               syntaxHighlighting(noteHighlight),
@@ -403,17 +406,20 @@ export function Editor({ path }: { path: string }) {
 
   return (
     <div className="editor" ref={scroller}>
-      <div className="editor-head">
-        <NoteTitle path={path} />
-        {!loadError && <ModeSwitch readMode={readMode} setReadMode={setReadMode} />}
-        <span className={`save-state ${saveState}`}>
-          {saveState === "saved" && "√ 저장됨"}
-          {saveState === "dirty" && "편집 중"}
-          {saveState === "saving" && "저장 중…"}
-          {saveState === "error" && "저장 실패"}
-        </span>
+      {/* Title, mode switch and format bar stay on screen while the note scrolls. */}
+      <div className="editor-top" ref={pinned}>
+        <div className="editor-head">
+          <NoteTitle path={path} />
+          {!loadError && <ModeSwitch readMode={readMode} setReadMode={setReadMode} />}
+          <span className={`save-state ${saveState}`}>
+            {saveState === "saved" && "√ 저장됨"}
+            {saveState === "dirty" && "편집 중"}
+            {saveState === "saving" && "저장 중…"}
+            {saveState === "error" && "저장 실패"}
+          </span>
+        </div>
+        {!loadError && <FormatBar apply={applyFormat} readMode={readMode} />}
       </div>
-      {!loadError && <FormatBar apply={applyFormat} readMode={readMode} />}
       {loadError ? (
         <p className="error pad">노트를 열지 못했습니다: {loadError}</p>
       ) : (

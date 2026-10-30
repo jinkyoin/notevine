@@ -419,6 +419,40 @@ button {
 .menu li.danger {
   color: var(--danger);
 }
+/* SCR-03 폴더 색: 우클릭 메뉴 아래쪽 색 칸 */
+.menu li.menu-colors {
+  cursor: default;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+}
+.menu li.menu-colors:hover {
+  background: none;
+}
+.menu-swatches {
+  display: grid;
+  grid-template-columns: repeat(5, 20px);
+  gap: 6px;
+  margin-top: 6px;
+}
+.menu-swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.menu-swatch:hover,
+.menu-swatch.on {
+  border-color: var(--text);
+}
+/* "No color": an empty circle with a slash. */
+.menu-swatch.none {
+  border: 1px solid var(--border);
+  background: linear-gradient(135deg, transparent 45%, var(--muted) 45% 55%, transparent 55%);
+}
 
 /* FR-EDT-07 탭 막대 */
 .tabbar {
@@ -492,6 +526,15 @@ button {
   display: flex;
   flex-direction: column;
   overflow: auto;
+}
+/* Title, mode switch and format bar, pinned while the note scrolls. */
+.editor-top {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  flex: none;
+  margin-bottom: 8px;
+  background: var(--bg);
 }
 .editor-head,
 .cm-host {
@@ -1645,13 +1688,9 @@ kbd {
   /* Same column as the title and the text. */
   width: calc(100% - 64px);
   max-width: calc(var(--editor-max) - 64px);
-  margin: 4px auto 8px;
+  margin: 4px auto 0;
   padding: 4px 0 8px;
   border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: var(--bg);
 }
 .fb-group {
   display: flex;

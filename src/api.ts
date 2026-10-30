@@ -113,6 +113,8 @@ export interface VaultConfig {
   autosave_ms: number;
   theme: "system" | "light" | "dark";
   language: "ko" | "en";
+  /** Folder path → color of its name in the file tree; what is inside takes it too. */
+  folder_colors: Record<string, string>;
 }
 
 export interface PresetResult {

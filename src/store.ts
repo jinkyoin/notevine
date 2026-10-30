@@ -63,6 +63,7 @@ export const DEFAULT_CONFIG: VaultConfig = {
   autosave_ms: 1000,
   theme: "system",
   language: "ko",
+  folder_colors: {},
 };
 
 /** Applies the theme setting (FR-UI-02) to the document. */
@@ -186,6 +187,8 @@ interface AppStore {
   createNote(dir: string): Promise<void>;
   createFolder(parent: string, name: string): Promise<void>;
   rename(path: string, newName: string): Promise<void>;
+  /** Colors a folder's name in the file tree, and what is inside it; `null` clears it. */
+  setFolderColor(path: string, color: string | null): Promise<void>;
   move(path: string, newParent: string): Promise<void>;
   remove(path: string): Promise<void>;
   setEditing(e: Editing | null): void;
@@ -230,9 +233,21 @@ export const useApp = create<AppStore>((set, get) => {
     expandTo(to);
   }
 
+  /** Moves or drops (`null`) folder colors whose folder moved or went away. */
+  async function recolor(map: (path: string) => string | null) {
+    const colors = get().config.folder_colors ?? {};
+    const next: Record<string, string> = {};
+    for (const [p, c] of Object.entries(colors)) {
+      const to = map(p);
+      if (to) next[to] = c;
+    }
+    if (JSON.stringify(next) !== JSON.stringify(colors)) await get().saveConfig({ ...get().config, folder_colors: next });
+  }
+
   async function afterRelocate(from: string, to: string) {
     // Set the new paths before the tree refresh so they aren't reported as deleted.
     if (get().tabs.length || get().openPath) applyTabs(remapTabs(tabState(), (p) => remapPath(p, from, to)));
+    await recolor((p) => remapPath(p, from, to));
     await get().refreshTree();
     get().noteSaved();
   }
@@ -622,6 +637,11 @@ export const useApp = create<AppStore>((set, get) => {
       await doRename(path, newName, true);
     },
 
+    async setFolderColor(path, color) {
+      const { [path]: _old, ...rest } = get().config.folder_colors ?? {};
+      await get().saveConfig({ ...get().config, folder_colors: color ? { ...rest, [path]: color } : rest });
+    },
+
     async move(path, newParent) {
       await get().flushEditor();
       if (!get().config.update_links_on_rename) return doMove(path, newParent, false);
@@ -637,6 +657,7 @@ export const useApp = create<AppStore>((set, get) => {
       if (!ok) return;
       // The deleted note (or everything in the deleted folder) leaves its tabs.
       dropMissing((p) => remapPath(p, path, "\0") === p);
+      await recolor((p) => (remapPath(p, path, "\0") === p ? p : null));
       await get().refreshTree();
       get().toast("휴지통으로 옮겼습니다");
     },

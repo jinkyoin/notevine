@@ -6,6 +6,7 @@ import { api, type TreeNode } from "../api";
 import { useApp } from "../store";
 import { baseName, countNotes, noteTitle, parentPath } from "../lib/tree";
 import { openProps } from "./TabBar";
+import { TEXT_COLORS } from "../editor/colors";
 
 interface Menu {
   x: number;
@@ -67,7 +68,10 @@ function Chevron({ open }: { open: boolean }) {
 }
 
 
-function Row({ node, depth, onMenu }: { node: TreeNode; depth: number; onMenu: (m: Menu) => void }) {
+/** `color` comes from the nearest colored folder above; a folder's own color wins. */
+function Row({ node, depth, onMenu, color }: { node: TreeNode; depth: number; onMenu: (m: Menu) => void; color?: string }) {
+  const own = useApp((s) => (node.kind === "folder" ? s.config.folder_colors?.[node.path] : undefined));
+  const shown = own ?? color;
   const expanded = useApp((s) => s.expanded.has(node.path));
   const openPath = useApp((s) => s.openPath);
   const editing = useApp((s) => s.editing);
@@ -89,7 +93,7 @@ function Row({ node, depth, onMenu }: { node: TreeNode; depth: number; onMenu: (
           openPath === node.path ? "active" : "",
           dropHover ? "drop-target" : "",
         ].join(" ")}
-        style={{ paddingLeft: 8 + depth * 14 }}
+        style={{ paddingLeft: 8 + depth * 14, color: shown }}
         draggable={!isRenaming}
         onDragStart={(e) => {
           e.dataTransfer.setData(DRAG_TYPE, node.path);
@@ -136,7 +140,7 @@ function Row({ node, depth, onMenu }: { node: TreeNode; depth: number; onMenu: (
             <NewFolderRow parent={node.path} depth={depth + 1} />
           )}
           {node.children?.map((c) => (
-            <Row key={c.path} node={c} depth={depth + 1} onMenu={onMenu} />
+            <Row key={c.path} node={c} depth={depth + 1} onMenu={onMenu} color={shown} />
           ))}
         </>
       )}
@@ -207,8 +211,9 @@ function NewFolderRow({ parent, depth }: { parent: string; depth: number }) {
 }
 
 function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
-  const { createNote, setEditing, remove, toggleFolder, toast, setVersionView, setModal } = useApp.getState();
+  const { createNote, setEditing, remove, toggleFolder, toast, setVersionView, setModal, setFolderColor } = useApp.getState();
   const node = menu.node;
+  const folderColor = node?.kind === "folder" ? useApp.getState().config.folder_colors?.[node.path] : undefined;
   const dir = !node ? "" : node.kind === "folder" ? node.path : parentPath(node.path);
 
   useEffect(() => {
@@ -278,6 +283,35 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
           {label}
         </li>
       ))}
+      {node?.kind === "folder" && (
+        <li className="menu-colors" aria-label="폴더 색">
+          <span className="muted small">폴더 색</span>
+          <div className="menu-swatches">
+            {TEXT_COLORS.map((c) => (
+              <button
+                key={c.value}
+                className={`menu-swatch${folderColor === c.value ? " on" : ""}`}
+                title={c.name}
+                aria-label={c.name}
+                style={{ background: c.value }}
+                onClick={() => {
+                  onClose();
+                  void setFolderColor(node.path, c.value);
+                }}
+              />
+            ))}
+            <button
+              className="menu-swatch none"
+              title="색 없음"
+              aria-label="색 없음"
+              onClick={() => {
+                onClose();
+                void setFolderColor(node.path, null);
+              }}
+            />
+          </div>
+        </li>
+      )}
     </ul>
   );
 }
