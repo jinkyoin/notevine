@@ -183,7 +183,7 @@ function ColorButton({ prop, apply, disabled }: { prop: ColorProp; apply: (a: Ac
     <div className="fb-color" ref={box}>
       <button
         className="fb-btn"
-        title={`${label} (선택한 글)`}
+        data-tip={`${label} (선택한 글)`}
         aria-label={label}
         aria-haspopup="true"
         aria-expanded={open}
@@ -251,16 +251,46 @@ export function ModeSwitch({ readMode, setReadMode }: { readMode: boolean; setRe
   );
 }
 
+/**
+ * The buttons' tooltip, shown above the button: the browser's own (title) sits below
+ * the pointer, where the pointer hides it.
+ */
+function useTip() {
+  const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
+  const show = (e: React.MouseEvent) => {
+    const el = (e.target as HTMLElement).closest<HTMLElement>("[data-tip]");
+    if (!el) return setTip(null);
+    const r = el.getBoundingClientRect();
+    setTip({ text: el.dataset.tip!, x: r.left + r.width / 2, y: r.top });
+  };
+  const hide = () => setTip(null);
+  const node = tip && (
+    <div className="fb-tip" role="tooltip" style={{ left: tip.x, top: tip.y }}>
+      {tip.text}
+    </div>
+  );
+  return { show, hide, node };
+}
+
 export function FormatBar({ apply, readMode }: { apply: (a: Action) => void; readMode: boolean }) {
+  const tip = useTip();
   return (
-    <div className="format-bar" role="toolbar" aria-label="서식">
+    <div
+      className="format-bar"
+      role="toolbar"
+      aria-label="서식"
+      onMouseOver={tip.show}
+      onMouseLeave={tip.hide}
+      onMouseDown={tip.hide}
+    >
+      {tip.node}
       {GROUPS.map((g, i) => (
         <div className="fb-group" key={i}>
           {g.map((t) => (
             <button
               key={t.label}
               className="fb-btn"
-              title={t.keys ? `${t.label} (${t.keys})` : t.label}
+              data-tip={t.keys ? `${t.label} (${t.keys})` : t.label}
               aria-label={t.label}
               disabled={readMode}
               // Keep the editor's focus and selection.
@@ -283,7 +313,7 @@ export function FormatBar({ apply, readMode }: { apply: (a: Action) => void; rea
       <div className="fb-group">
         <button
           className="fb-btn"
-          title="마크다운 문법 도움말 (F1)"
+          data-tip="마크다운 문법 도움말 (F1)"
           aria-label="마크다운 문법 도움말"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => useApp.getState().setModal("mdHelp")}
