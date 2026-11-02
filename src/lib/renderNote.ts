@@ -3,6 +3,7 @@
 // 결과는 신뢰하지 않는 HTML이므로 화면에 넣기 전에 반드시 정화(DOMPurify)한다.
 // 수식($…$, $$…$$)과 ```mermaid 블록은 원문만 data-* 속성에 담아 두고, 정화가 끝난 뒤 읽기 화면이 그린다.
 import { Marked, type TokenizerAndRendererExtension, type Tokens } from "marked";
+import { calloutHead } from "./callout";
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
 const FRONTMATTER = /^---\r?\n[\s\S]*?\r?\n---[ \t]*(\r?\n|$)/;
@@ -147,10 +148,25 @@ const blockId: TokenizerAndRendererExtension = {
   },
 };
 
+/**
+ * A line starting with a Korean-style date ("2026. 06. 22 ~ …") is text, not a list
+ * numbered from 2026 whose marker juts out to the left.
+ */
+const koDate: TokenizerAndRendererExtension = {
+  name: "koDate",
+  level: "block",
+  tokenizer(src) {
+    const m = /^ {0,3}\d{4}\. {0,2}\d{1,2}\. {0,2}\d{1,2}\b[^\n]*(?:\n|$)/.exec(src);
+    if (!m) return undefined;
+    const text = m[0].trim();
+    return { type: "paragraph", raw: m[0], text, tokens: this.lexer.inline(text) };
+  },
+};
+
 function makeMarked() {
   const m = new Marked({ gfm: true, breaks: true });
   m.use({
-    extensions: [mathBlock, wiki, highlight, tag, mathInline, blockId],
+    extensions: [koDate, mathBlock, wiki, highlight, tag, mathInline, blockId],
     renderer: {
       // Clickable task boxes: data-task is the n-th task in the note (see toggleTask).
       // ```mermaid blocks show as code until drawn. The source stays in the <code> text, not an
@@ -158,6 +174,22 @@ function makeMarked() {
       code({ text, lang }) {
         if ((lang ?? "").trim().toLowerCase() !== "mermaid") return false;
         return `<div class="mermaid-block" data-mermaid=""><pre><code>${esc(text)}</code></pre></div>\n`;
+      },
+      // "> [!중요] 제목": a colored box (see callout.ts) instead of a plain quote.
+      blockquote({ tokens }) {
+        const first = tokens[0];
+        if (first?.type !== "paragraph") return false;
+        const line = (first as Tokens.Paragraph).text.split("\n")[0];
+        const head = calloutHead(line);
+        if (!head) return false;
+        const rest = (first as Tokens.Paragraph).text.slice(line.length + 1);
+        const body = this.parser.parse([...(rest.trim() ? m.lexer(rest) : []), ...tokens.slice(1)]);
+        const title = head.title ? (m.parseInline(head.title, { async: false }) as string) : esc(head.type.label);
+        const { kind, icon } = head.type;
+        return (
+          `<div class="callout callout-${kind}"><div class="callout-title"><span class="callout-icon">${esc(icon)}</span>` +
+          `${title}</div>${body.trim() ? `<div class="callout-body">${body}</div>` : ""}</div>\n`
+        );
       },
       checkbox({ checked }) {
         return `<input type="checkbox" class="task"${checked ? " checked" : ""}> `;

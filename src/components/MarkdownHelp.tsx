@@ -31,6 +31,7 @@ const SECTIONS: { title: string; rows: Row[] }[] = [
       ["- [ ] 할 일", "체크리스트 (읽기 모드에서 눌러 체크)", "Ctrl+L"],
       ["- [x] 한 일", "체크한 항목"],
       ["> 인용", "인용문"],
+      ["> [!중요] 제목\n> 내용", "강조 상자: 중요·주의·참고·팁 (서식 막대의 ! 단추로 넣기)"],
     ],
   },
   {
@@ -95,6 +96,9 @@ export function MarkdownHelp() {
           ))}
         </div>
         <div className="modal-actions">
+          <button className="btn ghost" onClick={() => setModal("manual")} title="Shift+F1">
+            사용자 매뉴얼
+          </button>
           <button className="btn" onClick={close}>
             닫기
           </button>

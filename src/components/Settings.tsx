@@ -1,16 +1,18 @@
 // SCR-16 설정: 일반 · 편집기 · 파일·링크 · 프리셋 · 히스토리 · 정보.
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
-import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
-import { api, errorMessage, type VaultConfig } from "../api";
+import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
+import { allCommands, keysFromEvent, keysOf, onCommandsChanged, type Command } from "../commands";
+import { api, errorMessage, type HistoryStats, type VaultConfig } from "../api";
 import { useApp } from "../store";
 import { useAi } from "../aiStore";
 import { ProviderFix } from "./AiPanel";
 
-type Tab = "general" | "editor" | "files" | "preset" | "ai" | "history" | "about";
+type Tab = "general" | "editor" | "keys" | "files" | "preset" | "ai" | "history" | "about";
 const TABS: [Tab, string][] = [
   ["general", "일반"],
   ["editor", "편집기"],
+  ["keys", "단축키"],
   ["files", "파일·링크"],
   ["preset", "프리셋"],
   ["ai", "AI"],
@@ -73,6 +75,26 @@ function SettingsDialog({ close }: { close: () => void }) {
                 <Row label="시작할 때" hint="앱을 켜면 마지막 노트 폴더와 노트를 다시 엽니다">
                   <span className="muted small">마지막 노트 폴더 열기 (항상)</span>
                 </Row>
+                <Row
+                  label="사용자 CSS"
+                  hint="이 노트 폴더의 .app/custom.css로 색·글꼴·크기를 바꿉니다. 파일을 저장하고 Notevine 창으로 돌아오면 바로 반영됩니다"
+                >
+                  <input type="checkbox" checked={config.custom_css} onChange={(e) => set("custom_css", e.target.checked)} />
+                  <button
+                    className="btn small"
+                    onClick={async () => {
+                      try {
+                        const [path] = await api.customCss(true);
+                        if (!config.custom_css) set("custom_css", true);
+                        await openPath(path);
+                      } catch (e) {
+                        toast(errorMessage(e), "error");
+                      }
+                    }}
+                  >
+                    파일 열기
+                  </button>
+                </Row>
               </>
             )}
             {tab === "editor" && (
@@ -94,6 +116,7 @@ function SettingsDialog({ close }: { close: () => void }) {
                 </Row>
               </>
             )}
+            {tab === "keys" && <ShortcutSettings />}
             {tab === "files" && (
               <>
                 <TextRow label="첨부 폴더" value={config.attachment_folder} onCommit={(v) => set("attachment_folder", v)} />
@@ -152,6 +175,7 @@ function SettingsDialog({ close }: { close: () => void }) {
             {tab === "ai" && <AiSettings />}
             {tab === "history" && (
               <>
+                <HistoryUsage />
                 <Row label="묶음 간격" hint="같은 노트를 이어서 저장하면 5분 단위로 한 버전으로 묶습니다">
                   <span>5분</span>
                 </Row>
@@ -177,6 +201,11 @@ function SettingsDialog({ close }: { close: () => void }) {
               <>
                 <Row label="버전">
                   <span>Notevine {version}</span>
+                </Row>
+                <Row label="사용자 매뉴얼" hint="기능별 사용법과 단축키 (Shift+F1)">
+                  <button className="btn small" onClick={() => useApp.getState().setModal("manual")}>
+                    매뉴얼 열기
+                  </button>
                 </Row>
                 <Row label="라이선스">
                   <span>MIT</span>
@@ -208,6 +237,190 @@ function SettingsDialog({ close }: { close: () => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n}B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
+  return `${(n / 1024 / 1024).toFixed(1)}MB`;
+}
+
+const THIN_DAYS = [0, 7, 30, 90, 365];
+const DELETE_DAYS = [0, 90, 180, 365, 730];
+const daysLabel = (d: number) => (d === 0 ? "끄기 (모두 보관)" : d % 365 === 0 ? `${d / 365}년` : `${d}일`);
+
+/** History usage and how long to keep versions (FR-HIS-08). */
+function HistoryUsage() {
+  const config = useApp((s) => s.config);
+  const { saveConfig, toast, ask } = useApp.getState();
+  const [stats, setStats] = useState<HistoryStats | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = () => void api.historyStats().then(setStats).catch(() => setStats(null));
+  useEffect(load, []);
+  const off = !config.history_thin_days && !config.history_delete_days;
+
+  const prune = async () => {
+    setBusy(true);
+    try {
+      const n = await api.pruneHistory(true);
+      if (n === 0) {
+        toast("지금 정리할 오래된 버전이 없습니다");
+        return;
+      }
+      if (!(await ask("오래된 버전 정리", `버전 ${n.toLocaleString()}개를 지웁니다. 지운 버전은 되살릴 수 없습니다.`, "정리"))) return;
+      const before = stats?.file_bytes ?? 0;
+      await api.pruneHistory(false);
+      const after = await api.historyStats();
+      setStats(after);
+      toast(`버전 ${n.toLocaleString()}개를 정리했습니다 · ${formatBytes(Math.max(0, before - after.file_bytes))} 줄어듦`);
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <Row label="사용량" hint="노트 내용은 압축해서 저장합니다">
+        <span className="small">
+          {stats
+            ? `노트 ${stats.notes.toLocaleString()}개 · 버전 ${stats.versions.toLocaleString()}개 · ${formatBytes(stats.file_bytes)}` +
+              (stats.oldest ? ` · ${new Date(stats.oldest).toLocaleDateString("ko-KR")}부터` : "")
+            : "…"}
+        </span>
+      </Row>
+      <Row label="오래된 버전 줄이기" hint="이보다 오래된 버전은 노트마다 하루에 하나(그날 마지막)만 남깁니다">
+        <select value={config.history_thin_days} onChange={(e) => void saveConfig({ ...config, history_thin_days: Number(e.target.value) })}>
+          {THIN_DAYS.map((d) => (
+            <option key={d} value={d}>
+              {daysLabel(d)}
+            </option>
+          ))}
+        </select>
+      </Row>
+      <Row label="오래된 버전 지우기" hint="이보다 오래된 버전은 지웁니다. 노트마다 가장 최근 버전 하나는 늘 남깁니다">
+        <select
+          value={config.history_delete_days}
+          onChange={(e) => void saveConfig({ ...config, history_delete_days: Number(e.target.value) })}
+        >
+          {DELETE_DAYS.map((d) => (
+            <option key={d} value={d}>
+              {daysLabel(d)}
+            </option>
+          ))}
+        </select>
+      </Row>
+      <Row label="정리" hint="위 규칙은 노트 폴더를 열 때마다 자동으로 적용됩니다. 지금 바로 정리하고 파일 크기를 줄일 수도 있습니다">
+        <button className="btn small" disabled={off || busy} onClick={() => void prune()}>
+          {busy ? "정리 중…" : "지금 정리"}
+        </button>
+      </Row>
+    </>
+  );
+}
+
+/** Shortcuts of the app's commands, changed per vault (FR-UI-05). */
+function ShortcutSettings() {
+  const config = useApp((s) => s.config);
+  const { saveConfig } = useApp.getState();
+  const [, setTick] = useState(0);
+  const [filter, setFilter] = useState("");
+  const [capturing, setCapturing] = useState<string | null>(null);
+  useEffect(() => onCommandsChanged(() => setTick((n) => n + 1)), []);
+
+  const cmds = allCommands().sort((a, b) => a.title.localeCompare(b.title, "ko"));
+  const q = filter.trim().toLowerCase();
+  const shown = q
+    ? cmds.filter((c) => `${c.title} ${c.keywords ?? ""} ${keysOf(c) ?? ""}`.toLowerCase().includes(q))
+    : cmds;
+  const owner = (keys: string, except: string) => cmds.find((c) => c.id !== except && keysOf(c)?.toLowerCase() === keys.toLowerCase());
+
+  const save = (map: Record<string, string>) => void saveConfig({ ...config, keybindings: map });
+  const bind = (c: Command, keys: string) => {
+    const map = { ...config.keybindings };
+    if (keys === (c.keys ?? "")) delete map[c.id];
+    else map[c.id] = keys;
+    // A key does one thing: the command that had it loses it.
+    const other = keys && owner(keys, c.id);
+    if (other) map[other.id] = "";
+    save(map);
+  };
+
+  // While waiting for a key, take every key press before the app's own shortcuts do.
+  useEffect(() => {
+    if (!capturing) return;
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const c = cmds.find((x) => x.id === capturing);
+      if (e.key === "Escape" || !c) return setCapturing(null);
+      if ((e.key === "Backspace" || e.key === "Delete") && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        bind(c, "");
+        return setCapturing(null);
+      }
+      const keys = keysFromEvent(e);
+      if (!keys) return;
+      bind(c, keys);
+      setCapturing(null);
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  });
+
+  return (
+    <>
+      <p className="muted small pad">
+        단추를 누르고 새 단축키를 누르세요. Backspace는 단축키 없애기, Esc는 취소입니다. 다른 명령이 쓰던 단축키를 고르면 그
+        명령의 단축키는 없어집니다. 편집기 안의 서식 단축키(Ctrl+B 등)와 다른 프로그램에서 쓰는 빠른 메모(Ctrl+Alt+N)는
+        바꿀 수 없습니다.
+      </p>
+      <div className="keys-tools">
+        <input placeholder="명령 찾기" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <button
+          className="btn small"
+          disabled={!Object.keys(config.keybindings).length}
+          onClick={() => save({})}
+          title="바꾼 단축키를 모두 처음대로"
+        >
+          모두 기본값
+        </button>
+      </div>
+      {shown.map((c) => {
+        const keys = keysOf(c);
+        const changed = c.id in config.keybindings;
+        return (
+          <div key={c.id} className="set-row keys-row">
+            <div>
+              <div>{c.title}</div>
+              {changed && <div className="muted small">기본: {c.keys ?? "없음"}</div>}
+            </div>
+            <div className="set-ctl">
+              <button
+                className={`btn small keys-btn ${capturing === c.id ? "capturing" : ""}`}
+                onClick={() => setCapturing(capturing === c.id ? null : c.id)}
+              >
+                {capturing === c.id ? "키를 누르세요…" : keys ? <kbd>{keys}</kbd> : <span className="muted">없음</span>}
+              </button>
+              {changed && (
+                <button
+                  className="btn ghost small"
+                  title="기본값으로"
+                  onClick={() => {
+                    const map = { ...config.keybindings };
+                    delete map[c.id];
+                    save(map);
+                  }}
+                >
+                  ↺
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </>
   );
 }
 

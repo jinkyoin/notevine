@@ -60,7 +60,7 @@ export interface EditorApi {
   rewrite(fn: (text: string, cursor: number) => { text: string; cursor: number }): void;
 }
 
-export type Modal = "palette" | "quickMemo" | "template" | "settings" | "deleted" | "mdHelp" | "insertTemplate" | null;
+export type Modal = "palette" | "quickMemo" | "template" | "settings" | "deleted" | "mdHelp" | "manual" | "insertTemplate" | null;
 export type SidebarTab = "files" | "search" | "ideas";
 /** How a folder is shown in place of the editor: properties table, status board, calendar or link graph. */
 export type FolderMode = "table" | "board" | "calendar" | "graph";
@@ -87,6 +87,10 @@ export const DEFAULT_CONFIG: VaultConfig = {
   language: "ko",
   folder_colors: {},
   saved_searches: [],
+  history_thin_days: 0,
+  history_delete_days: 0,
+  keybindings: {},
+  custom_css: false,
 };
 
 /** Applies the theme setting (FR-UI-02) to the document. */
@@ -392,14 +396,8 @@ export const useApp = create<AppStore>((set, get) => {
     flushEditor: flushBoth,
 
     async openVault(path) {
-      const info = await attempt(() => api.openVault(path));
-      if (!info) return;
-      set({ vault: info, tree: [], expanded: new Set(), openPath: null, editing: null, back: [], forward: [], tabs: [], closedTabs: [], tableView: null, splitPath: null });
-      const config = await api.getConfig().catch(() => DEFAULT_CONFIG);
-      set({ config, sidebarTab: get().sidebarTab === "ideas" && !config.preset_enabled ? "files" : get().sidebarTab });
-      applyTheme(config.theme);
-      await get().refreshTree();
-
+      // Listen before opening: indexing starts with the open and, in a small vault,
+      // is done before anything after the open could start listening.
       unlistenChanges?.();
       const changes = await listen<VaultChanged>("vault-changed", ({ payload }) => {
         if (payload.external.length) {
@@ -411,11 +409,19 @@ export const useApp = create<AppStore>((set, get) => {
       });
       // Indexing runs in the background after opening: reload the note list (link
       // completion, idea board, folder views) once it is done.
-      const indexed = await listen("index-ready", () => void get().refreshTree());
+      const indexed = await listen("index-ready", () => void (get().vault && get().refreshTree()));
       unlistenChanges = () => {
         changes();
         indexed();
       };
+
+      const info = await attempt(() => api.openVault(path));
+      if (!info) return;
+      set({ vault: info, tree: [], expanded: new Set(), openPath: null, editing: null, back: [], forward: [], tabs: [], closedTabs: [], tableView: null, splitPath: null });
+      const config = await api.getConfig().catch(() => DEFAULT_CONFIG);
+      set({ config, sidebarTab: get().sidebarTab === "ideas" && !config.preset_enabled ? "files" : get().sidebarTab });
+      applyTheme(config.theme);
+      await get().refreshTree();
 
       // Reopen the tabs and the note that were open last time (FR-VLT-02).
       const ws = await api.getWorkspace().catch(() => null);
@@ -424,6 +430,9 @@ export const useApp = create<AppStore>((set, get) => {
       if (saved.length) set({ tabs: saved.map((path) => ({ path, back: [], forward: [] })) });
       const last = ws?.open_path && exists(ws.open_path) ? ws.open_path : saved[0];
       if (last) get().openNote(last);
+
+      // The history policy (FR-HIS-08) is applied each time the vault opens.
+      if (config.history_thin_days || config.history_delete_days) void api.pruneHistory(false).catch(() => {});
     },
 
     async closeVault() {

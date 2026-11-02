@@ -1,7 +1,8 @@
 // SCR-04 서식 막대: 자주 쓰는 마크다운을 아이콘으로 넣고, 편집/읽기 모드를 바꾼다.
 import { useEffect, useRef, useState } from "react";
 import type { EditorState, TransactionSpec } from "@codemirror/state";
-import { codeBlock, insertBlock, TABLE, toggleLines, toggleWrap, webLink, wikiLink } from "../editor/format";
+import { callout, codeBlock, insertBlock, TABLE, toggleLines, toggleWrap, webLink, wikiLink } from "../editor/format";
+import { CALLOUTS } from "../lib/callout";
 import { applyColor, BG_COLORS, TEXT_COLORS, type ColorProp } from "../editor/colors";
 import { useApp } from "../store";
 
@@ -230,6 +231,65 @@ function ColorButton({ prop, apply, disabled }: { prop: ColorProp; apply: (a: Ac
   );
 }
 
+/** Callout box (`> [!중요]`): a button that opens the list of importance types. */
+function CalloutButton({ apply, disabled }: { apply: (a: Action) => void; disabled: boolean }) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", esc);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+
+  return (
+    <div className="fb-color" ref={box}>
+      <button
+        className="fb-btn"
+        data-tip="강조 상자 (중요도 표시)"
+        aria-label="강조 상자"
+        aria-haspopup="true"
+        aria-expanded={open}
+        disabled={disabled}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setOpen(!open)}
+      >
+        {svg(
+          <>
+            <rect x="1.8" y="2.5" width="12.4" height="11" rx="1.5" />
+            <path d="M8 5v4M8 11.2v.1" />
+          </>,
+        )}
+      </button>
+      {open && (
+        <div className="fb-callouts" role="menu" aria-label="강조 상자">
+          {CALLOUTS.map((c) => (
+            <button
+              key={c.kind}
+              role="menuitem"
+              className={`fb-callout callout-${c.kind}`}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setOpen(false);
+                apply((s) => callout(s, c));
+              }}
+            >
+              <span className="callout-icon">{c.icon}</span>
+              {c.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** [편집 | 읽기] switch, shown in the title row (Ctrl+E). */
 export function ModeSwitch({ readMode, setReadMode }: { readMode: boolean; setReadMode: (on: boolean) => void }) {
   return (
@@ -307,6 +367,7 @@ export function FormatBar({ apply, readMode }: { apply: (a: Action) => void; rea
               <ColorButton prop="background-color" apply={apply} disabled={readMode} />
             </>
           )}
+          {i === 2 && <CalloutButton apply={apply} disabled={readMode} />}
         </div>
       ))}
       {/* Help stays usable in read mode too. */}

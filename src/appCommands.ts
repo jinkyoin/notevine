@@ -63,6 +63,14 @@ export function registerAppCommands(): () => void {
       when: noModal,
       run: () => st().setModal("mdHelp"),
     },
+    {
+      id: "help.manual",
+      title: "사용자 매뉴얼",
+      keywords: "도움말 사용법 설명서 안내 help manual",
+      keys: "Shift+F1",
+      when: noModal,
+      run: () => st().setModal("manual"),
+    },
     { id: "app.settings", title: "설정", keys: "Ctrl+,", when: noModal, run: () => st().setModal("settings") },
     {
       id: "note.rename",

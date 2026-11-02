@@ -68,6 +68,18 @@ pub struct VersionMeta {
     pub origin: Origin,
 }
 
+/// How much history there is (FR-HIS-08).
+#[derive(Debug, Clone, Serialize)]
+pub struct HistoryStats {
+    pub versions: i64,
+    pub notes: i64,
+    /// Compressed note text stored.
+    pub stored_bytes: i64,
+    /// `history.db` on disk (with its write-ahead log).
+    pub file_bytes: i64,
+    pub oldest: Option<i64>,
+}
+
 pub struct History {
     conn: Connection,
 }
@@ -194,6 +206,42 @@ impl History {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
+    /// Version and note counts, compressed bytes stored, and the oldest version time.
+    pub fn stats(&self) -> AppResult<HistoryStats> {
+        Ok(self.conn.query_row(
+            "SELECT COUNT(*), COUNT(DISTINCT path), COALESCE(SUM(length(content_zstd)), 0), MIN(saved_at) FROM versions",
+            [],
+            |r| Ok(HistoryStats { versions: r.get(0)?, notes: r.get(1)?, stored_bytes: r.get(2)?, oldest: r.get(3)?, file_bytes: 0 }),
+        )?)
+    }
+
+    /// Applies the retention policy (FR-HIS-08) and returns how many versions it
+    /// removes; `dry_run` only counts them. Versions older than `thin_days` keep one
+    /// per note per day (that day's last); versions older than `delete_days` go.
+    /// 0 turns a rule off. Each note's newest version always stays, so a deleted
+    /// note can still be brought back.
+    pub fn prune(&self, thin_days: u32, delete_days: u32, now: i64, dry_run: bool) -> AppResult<u32> {
+        const DAY: i64 = 24 * 60 * 60 * 1000;
+        let doomed = "SELECT id FROM (
+               SELECT id, saved_at,
+                 ROW_NUMBER() OVER (PARTITION BY path ORDER BY saved_at DESC, id DESC) AS newest,
+                 ROW_NUMBER() OVER (PARTITION BY path, date(saved_at / 1000, 'unixepoch', 'localtime')
+                                    ORDER BY saved_at DESC, id DESC) AS in_day
+               FROM versions)
+             WHERE newest > 1 AND ((?1 > 0 AND saved_at < ?2 AND in_day > 1) OR (?3 > 0 AND saved_at < ?4))";
+        let args = params![thin_days, now - thin_days as i64 * DAY, delete_days, now - delete_days as i64 * DAY];
+        if dry_run {
+            return Ok(self.conn.query_row(&format!("SELECT COUNT(*) FROM ({doomed})"), args, |r| r.get(0))?);
+        }
+        Ok(self.conn.execute(&format!("DELETE FROM versions WHERE id IN ({doomed})"), args)? as u32)
+    }
+
+    /// Gives the space freed by [`prune`](Self::prune) back to the disk.
+    pub fn compact(&self) -> AppResult<()> {
+        self.conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE); VACUUM;")?;
+        Ok(())
+    }
+
     pub fn content(&self, id: i64) -> AppResult<String> {
         let blob: Vec<u8> =
             self.conn.query_row("SELECT content_zstd FROM versions WHERE id = ?1", params![id], |r| r.get(0))?;
@@ -294,5 +342,41 @@ mod tests {
         assert_eq!(a.len(), 1);
         assert_eq!(a[0].size, text.len() as i64);
         assert_eq!(h.content(a[0].id).unwrap(), text);
+    }
+
+    #[test]
+    fn prune_thins_old_days_deletes_older_and_keeps_each_newest() {
+        const DAY: i64 = 24 * 60 * MIN;
+        let (_d, h) = history();
+        // Noon UTC: minutes apart stay on the same local day in any time zone used here.
+        let noon = |d: i64| 20_000 * DAY + d * DAY + 12 * 60 * MIN;
+        // a.md: three versions 100 days ago, three 40 days ago, two today.
+        for (d, n) in [(-100, 3), (-40, 3), (0, 2)] {
+            for i in 0..n {
+                h.record_at("a.md", &format!("{d} {i}"), Origin::External, false, noon(d) + i * 10 * MIN).unwrap();
+            }
+        }
+        // gone.md: a deleted note whose only versions are old.
+        h.record_at("gone.md", "1", Origin::External, false, noon(-200)).unwrap();
+        h.record_at("gone.md", "2", Origin::External, false, noon(-200) + MIN).unwrap();
+        let now = noon(0) + 60 * MIN;
+        assert_eq!(h.stats().unwrap().versions, 10);
+
+        // Off: nothing goes.
+        assert_eq!(h.prune(0, 0, now, false).unwrap(), 0);
+        // Thin after 30 days: -100 and -40 keep one each (4 go), gone.md keeps its last (1 goes).
+        assert_eq!(h.prune(30, 0, now, true).unwrap(), 5);
+        assert_eq!(h.stats().unwrap().versions, 10, "a dry run changes nothing");
+        assert_eq!(h.prune(30, 0, now, false).unwrap(), 5);
+        let a: Vec<String> = h.list("a.md").unwrap().iter().map(|v| h.content(v.id).unwrap()).collect();
+        assert_eq!(a, ["0 1", "0 0", "-40 2", "-100 2"]);
+        // Delete after 90 days: a.md's -100 goes; gone.md keeps its newest.
+        assert_eq!(h.prune(30, 90, now, false).unwrap(), 1);
+        assert_eq!(h.list("a.md").unwrap().len(), 3);
+        assert_eq!(h.content(h.list("gone.md").unwrap()[0].id).unwrap(), "2");
+        h.compact().unwrap();
+        let s = h.stats().unwrap();
+        assert_eq!((s.versions, s.notes), (4, 2));
+        assert!(s.stored_bytes > 0);
     }
 }

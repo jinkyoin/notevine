@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { availableCommands, matchKeys, registerCommands, runCommand } from "./commands";
+import { availableCommands, keysFromEvent, matchKeys, registerCommands, runCommand, setKeyOverrides } from "./commands";
 
 const ev = (key: string, mods: { ctrl?: boolean; shift?: boolean; alt?: boolean } = {}) => ({
   key,
@@ -42,5 +42,34 @@ describe("registry", () => {
     expect(ran).toBe(1);
     off();
     expect(runCommand("t.a")).toBe(false);
+  });
+});
+
+describe("user shortcuts", () => {
+  const ev = (key: string, code: string, mods: Partial<KeyboardEvent> = {}) =>
+    ({ key, code, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, ...mods }) as KeyboardEvent;
+
+  it("writes a key press the way commands do", () => {
+    expect(keysFromEvent(ev("n", "KeyN", { ctrlKey: true, shiftKey: true }))).toBe("Ctrl+Shift+N");
+    expect(keysFromEvent(ev("!", "Digit1", { ctrlKey: true, shiftKey: true }))).toBe("Ctrl+Shift+1");
+    expect(keysFromEvent(ev("F2", "F2"))).toBe("F2");
+    expect(keysFromEvent(ev("ArrowLeft", "ArrowLeft", { altKey: true }))).toBe("Alt+ArrowLeft");
+    expect(keysFromEvent(ev("Control", "ControlLeft", { ctrlKey: true }))).toBeNull();
+    // A Korean keyboard layout still gives the key's letter.
+    expect(keysFromEvent(ev("ㅜ", "KeyN", { ctrlKey: true }))).toBe("Ctrl+N");
+    expect(matchKeys(ev("!", "Digit1", { ctrlKey: true, shiftKey: true }), "Ctrl+Shift+1")).toBe(true);
+  });
+
+  it("replace or remove a command's own shortcut", () => {
+    const off = registerCommands([
+      { id: "t.k", title: "K", keys: "Ctrl+K", run: () => {} },
+      { id: "t.j", title: "J", keys: "Ctrl+J", run: () => {} },
+    ]);
+    const keys = (id: string) => availableCommands().find((c) => c.id === id)?.keys;
+    setKeyOverrides({ "t.k": "Ctrl+Shift+K", "t.j": "" });
+    expect([keys("t.k"), keys("t.j")]).toEqual(["Ctrl+Shift+K", undefined]);
+    setKeyOverrides({});
+    expect([keys("t.k"), keys("t.j")]).toEqual(["Ctrl+K", "Ctrl+J"]);
+    off();
   });
 });

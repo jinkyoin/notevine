@@ -4,6 +4,7 @@ import { syntaxTree } from "@codemirror/language";
 import type { EditorState, Range } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import { splitFrontmatter } from "../lib/frontmatter";
+import { calloutHead, type CalloutHead } from "../lib/callout";
 
 /** End of the frontmatter block (0 when none); markdown styling starts after it. */
 export function frontmatterEnd(state: EditorState): number {
@@ -63,6 +64,25 @@ class BulletWidget extends WidgetType {
 }
 
 const bullet = Decoration.replace({ widget: new BulletWidget() });
+
+/** The callout's icon, plus its label when no title is written. */
+class CalloutLabel extends WidgetType {
+  constructor(readonly head: CalloutHead) {
+    super();
+  }
+  eq(other: CalloutLabel) {
+    return other.head.type === this.head.type && !other.head.title === !this.head.title;
+  }
+  toDOM() {
+    const el = document.createElement("span");
+    el.className = "cm-callout-label";
+    const icon = document.createElement("span");
+    icon.className = "callout-icon";
+    icon.textContent = this.head.type.icon;
+    el.append(icon, this.head.title ? "" : this.head.type.label);
+    return el;
+  }
+}
 
 class RuleWidget extends WidgetType {
   toDOM() {
@@ -127,7 +147,20 @@ export function buildDecorations(view: EditorView): DecorationSet {
           return false; // keep code text and fences untouched
         }
         if (name === "Blockquote") {
-          lineClass(node.from, node.to, "cm-md-quote");
+          // "> [!중요] 제목": a colored box; the [!중요] shows as its label off the cursor line.
+          const first = state.doc.lineAt(node.from);
+          const quote = /^\s*>\s?/.exec(first.text);
+          const head = quote && calloutHead(first.text.slice(quote[0].length));
+          if (!head) {
+            lineClass(node.from, node.to, "cm-md-quote");
+            return;
+          }
+          lineClass(node.from, node.to, `cm-md-quote cm-callout cm-callout-${head.type.kind}`);
+          out.push(Decoration.line({ class: "cm-callout-head" }).range(first.from));
+          if (!onActiveLine(first.from)) {
+            const at = first.from + quote[0].length;
+            out.push(Decoration.replace({ widget: new CalloutLabel(head) }).range(at, at + head.markLen));
+          }
           return;
         }
         if (name === "HorizontalRule") {

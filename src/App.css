@@ -1357,6 +1357,58 @@ button {
 .modal.md-help {
   width: 620px;
 }
+/* 사용자 매뉴얼: 왼쪽 목차, 오른쪽 읽기 모드 본문 */
+.modal.manual {
+  width: 1000px;
+  height: 86vh;
+  max-height: 86vh;
+}
+.manual-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 8px;
+}
+.manual-toc {
+  flex: none;
+  width: 200px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-right: 8px;
+  border-right: 1px solid var(--border);
+}
+.manual-toc button {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.manual-toc button:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.manual-toc button.on {
+  color: var(--accent);
+  font-weight: 600;
+}
+.note-view.manual-body {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 0 16px 40vh;
+}
+@media (max-width: 720px) {
+  .manual-toc {
+    display: none;
+  }
+}
 .md-help-body {
   overflow: auto;
   margin-bottom: 16px;
@@ -1761,6 +1813,25 @@ kbd {
   gap: 16px;
   padding: 10px 0;
   border-bottom: 1px solid var(--border);
+}
+.keys-tools {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0 6px;
+}
+.keys-tools input {
+  flex: 1;
+}
+.keys-row {
+  padding: 6px 0;
+}
+.keys-btn {
+  min-width: 120px;
+  justify-content: center;
+}
+.keys-btn.capturing {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .set-ctl {
   display: flex;
@@ -2373,6 +2444,100 @@ kbd {
   padding: 2px 14px;
   border-left: 3px solid var(--border);
   color: var(--muted);
+}
+/* 강조 상자 (> [!중요]): 읽기·편집 모드와 서식 막대 메뉴가 같은 색을 쓴다. */
+.callout-important,
+.cm-callout-important {
+  --co: #e03131;
+}
+.callout-warning,
+.cm-callout-warning {
+  --co: #e8590c;
+}
+.callout-note,
+.cm-callout-note {
+  --co: #1c7ed6;
+}
+.callout-tip,
+.cm-callout-tip {
+  --co: #2f9e44;
+}
+.callout-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--co);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  font-style: normal;
+  line-height: 1;
+  vertical-align: -2px;
+}
+.note-view .callout {
+  margin: 0.8em 0;
+  padding: 8px 14px;
+  border-left: 3px solid var(--co);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--co) 9%, transparent);
+}
+.note-view .callout-title {
+  font-weight: 700;
+  color: var(--co);
+}
+.note-view .callout-body {
+  margin-top: 4px;
+}
+.note-view .callout-body > :first-child {
+  margin-top: 0;
+}
+.note-view .callout-body > :last-child {
+  margin-bottom: 0;
+}
+.cm-editor .cm-line.cm-callout {
+  border-left-color: var(--co);
+  background: color-mix(in srgb, var(--co) 9%, transparent);
+  color: var(--text);
+}
+.cm-editor .cm-line.cm-callout-head {
+  font-weight: 700;
+  color: var(--co);
+}
+.cm-callout-label {
+  color: var(--co);
+}
+.fb-callouts {
+  position: absolute;
+  top: 32px;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  min-width: 96px;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.fb-callout {
+  display: flex;
+  align-items: center;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.fb-callout:hover {
+  background: var(--bg-hover);
 }
 .note-view ul,
 .note-view ol {

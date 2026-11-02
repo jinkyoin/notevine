@@ -135,6 +135,22 @@ export interface VaultConfig {
   folder_colors: Record<string, string>;
   /** Named searches shown in the search panel (FR-SRC-06). */
   saved_searches: SavedSearch[];
+  /** History older than this many days keeps one version per note per day; 0 = off (FR-HIS-08). */
+  history_thin_days: number;
+  /** History older than this many days is removed (each note's newest stays); 0 = off. */
+  history_delete_days: number;
+  /** Command id → shortcut ("" = none) replacing the built-in one (FR-UI-05). */
+  keybindings: Record<string, string>;
+  /** Apply `.app/custom.css` on top of the app's styles (FR-UI-05). */
+  custom_css: boolean;
+}
+
+export interface HistoryStats {
+  versions: number;
+  notes: number;
+  stored_bytes: number;
+  file_bytes: number;
+  oldest: number | null;
 }
 
 export interface SavedSearch {
@@ -228,6 +244,11 @@ export const api = {
   setWorkspace: (openPath: string | null, tabs: string[]) => invoke<void>("set_workspace", { openPath, tabs }),
   listVersions: (path: string) => invoke<VersionMeta[]>("list_versions", { path }),
   versionContent: (id: number) => invoke<string>("version_content", { id }),
+  historyStats: () => invoke<HistoryStats>("history_stats"),
+  /** Applies the history policy; `dryRun` only counts. Returns versions removed. */
+  pruneHistory: (dryRun: boolean) => invoke<number>("prune_history", { dryRun }),
+  /** [path, text] of `.app/custom.css`; `create` makes a missing one with a short guide. */
+  customCss: (create: boolean) => invoke<[string, string]>("custom_css", { create }),
   createNote: (dir: string, name?: string, content?: string) =>
     invoke<string>("create_note", { dir, name: name ?? null, content: content ?? null }),
   createFolder: (parent: string, name: string) => invoke<string>("create_folder", { parent, name }),

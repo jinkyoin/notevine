@@ -20,6 +20,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { findNode } from "../lib/tree";
 import { toggleLines, toggleWrap, webLink } from "../editor/format";
 import { colorSpans } from "../editor/colors";
+import { koDate } from "../editor/koDate";
 import { toggleTask } from "../lib/renderNote";
 import { FormatBar, ModeSwitch, type FormatAction } from "./FormatBar";
 import { NoteView } from "./NoteView";
@@ -267,7 +268,7 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
                 return covered ? { top: top.offsetHeight + 8 } : null;
               }),
               EditorView.contentAttributes.of({ spellcheck: "false", autocorrect: "off" }),
-              markdown({ base: markdownLanguage, codeLanguages: languages }),
+              markdown({ base: markdownLanguage, codeLanguages: languages, extensions: [koDate] }),
               syntaxHighlighting(noteHighlight),
               livePreview,
               livePreviewTheme,

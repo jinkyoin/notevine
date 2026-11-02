@@ -22,7 +22,7 @@ DOMPurify.addHook("uponSanitizeAttribute", (_node, data) => {
 });
 
 /** Sanitized HTML. Nothing in it may load from the network: `src` comes only from us. */
-function safeHtml(text: string): string {
+export function safeHtml(text: string): string {
   return DOMPurify.sanitize(noteToHtml(text), {
     FORBID_TAGS: ["style", "iframe", "object", "embed", "form"],
     FORBID_ATTR: ["src", "srcset", "action", "formaction", "background", "poster"],

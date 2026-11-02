@@ -1,8 +1,10 @@
 // SCR-02 메인 화면: 상단바 + 왼쪽 사이드바(파일·검색·아이디어) + 편집기 + 오른쪽 패널(속성·백링크·히스토리).
 import { useEffect, useRef, useState } from "react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { listen } from "@tauri-apps/api/event";
 import { useApp } from "../store";
-import { dispatchKey } from "../commands";
+import { dispatchKey, setKeyOverrides } from "../commands";
+import { api } from "../api";
 import { Explorer } from "./Explorer";
 import { Editor } from "./Editor";
 import { TabBar } from "./TabBar";
@@ -17,6 +19,7 @@ import { FolderView } from "./FolderView";
 import { SplitPane } from "./SplitPane";
 import { DeletedNotes } from "./DeletedNotes";
 import { MarkdownHelp } from "./MarkdownHelp";
+import { UserManual } from "./UserManual";
 import { IdeaBoard } from "./IdeaBoard";
 import { CommandPalette } from "./CommandPalette";
 import { QuickMemo } from "./QuickMemo";
@@ -25,6 +28,18 @@ import { Settings } from "./Settings";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AiPanel } from "./AiPanel";
 import { AiPreview, AiSendConfirm } from "./AiDialogs";
+
+/** The vault's `.app/custom.css`, last in the page so it wins over the app's own styles. */
+function applyUserCss(text: string) {
+  let el = document.getElementById("user-css");
+  if (!text) return void el?.remove();
+  if (!el) {
+    el = document.createElement("style");
+    el.id = "user-css";
+  }
+  document.head.appendChild(el);
+  if (el.textContent !== text) el.textContent = text;
+}
 
 /** The vault name in the top bar; opens a menu to switch to another vault (FR-VLT-02). */
 /** A window split into a side column, filled while that panel is open. */
@@ -96,6 +111,31 @@ export function MainLayout() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // The user's shortcuts and CSS (FR-UI-05). The CSS is read again whenever the window
+  // comes back to the front, so saving it in another editor shows at once.
+  const keybindings = useApp((s) => s.config.keybindings);
+  const customCss = useApp((s) => s.config.custom_css);
+  useEffect(() => setKeyOverrides(keybindings), [keybindings]);
+  useEffect(() => {
+    if (!customCss) return applyUserCss("");
+    const load = () => void api.customCss(false).then(([, text]) => applyUserCss(text)).catch(() => {});
+    load();
+    window.addEventListener("focus", load);
+    return () => {
+      window.removeEventListener("focus", load);
+      applyUserCss("");
+    };
+  }, [customCss, vault?.root]);
+
+  // Ctrl+Alt+N from any program (FR-PRS-08): the backend brings the window forward.
+  useEffect(() => {
+    const off = listen("quick-memo", () => {
+      const { modal, setModal } = useApp.getState();
+      if (modal === null || modal === "palette") setModal("quickMemo");
+    });
+    return () => void off.then((f) => f());
+  }, []);
+
   const crumbs = openPath ? openPath.split("/") : [];
 
   return (
@@ -136,7 +176,7 @@ export function MainLayout() {
             기본 구조 만들기
           </button>
         )}
-        <button className="btn ghost small" onClick={() => setModal("quickMemo")} title="Ctrl+Shift+N">
+        <button className="btn ghost small" onClick={() => setModal("quickMemo")} title="Ctrl+Shift+N · 다른 프로그램을 쓰는 중에는 Ctrl+Alt+N">
           빠른 메모
         </button>
         <button className="icon-btn" title="명령 팔레트 (Ctrl+P)" onClick={() => setModal("palette")}>
@@ -222,6 +262,7 @@ export function MainLayout() {
       <Settings />
       <DeletedNotes />
       <MarkdownHelp />
+      <UserManual />
       <VersionView />
       <ConfirmDialog />
       <AiSendConfirm />

@@ -57,6 +57,14 @@ pub struct VaultConfig {
     pub folder_colors: BTreeMap<String, String>,
     /// Named searches shown in the search panel (FR-SRC-06).
     pub saved_searches: Vec<SavedSearch>,
+    /// History versions older than this many days keep one per note per day; 0 = off (FR-HIS-08).
+    pub history_thin_days: u32,
+    /// History versions older than this many days are removed, each note's newest kept; 0 = off.
+    pub history_delete_days: u32,
+    /// Command id → shortcut ("" = none) replacing the built-in one (FR-UI-05).
+    pub keybindings: BTreeMap<String, String>,
+    /// Apply `.app/custom.css` on top of the app's styles (FR-UI-05).
+    pub custom_css: bool,
 }
 
 /// A search kept under a name: the search box text plus the conditions added below it.
@@ -103,6 +111,10 @@ impl Default for VaultConfig {
             language: "ko".into(),
             folder_colors: BTreeMap::new(),
             saved_searches: Vec::new(),
+            history_thin_days: 0,
+            history_delete_days: 0,
+            keybindings: BTreeMap::new(),
+            custom_css: false,
         }
     }
 }
@@ -591,6 +603,65 @@ pub fn set_config(state: State<AppState>, config: VaultConfig) -> AppResult<()> 
     with_vault(&state, |v| save_config(v, &config))
 }
 
+const CUSTOM_CSS: &str = "custom.css";
+const CUSTOM_CSS_START: &str = "/* Notevine 사용자 CSS (설정 > 일반 > 사용자 CSS)
+ * 이 노트 폴더에서만 적용됩니다. 저장하고 Notevine 창으로 돌아오면 바로 반영됩니다.
+ * 예:
+ *   :root { --accent: #7048e8; }             강조색
+ *   .cm-content, .note-view { font-size: 17px; }  본문 글자 크기
+ *   .note-view h1 { color: #1c7ed6; }        읽기 모드 제목 색
+ */
+";
+
+/// Path and text of the vault's user CSS (`.app/custom.css`). With `create`, a
+/// missing file is made with a short guide first; otherwise its text is "".
+pub fn custom_css_in(v: &Vault, create: bool) -> AppResult<(String, String)> {
+    let file = v.root().join(crate::paths::APP_DIR).join(CUSTOM_CSS);
+    if create && !file.exists() {
+        fs::write(&file, CUSTOM_CSS_START)?;
+    }
+    let text = match fs::read_to_string(&file) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+        Err(e) => return Err(e.into()),
+    };
+    Ok((file.display().to_string(), text))
+}
+
+#[tauri::command]
+pub fn custom_css(state: State<AppState>, create: bool) -> AppResult<(String, String)> {
+    with_vault(&state, |v| custom_css_in(v, create))
+}
+
+/// History usage for the settings (FR-HIS-08).
+#[tauri::command]
+pub fn history_stats(state: State<AppState>) -> AppResult<crate::history::HistoryStats> {
+    with_vault(&state, |v| {
+        let mut s = v.history().stats()?;
+        let db = v.root().join(crate::paths::APP_DIR).join("history.db");
+        s.file_bytes = ["", "-wal"]
+            .iter()
+            .filter_map(|ext| fs::metadata(format!("{}{ext}", db.display())).ok())
+            .map(|m| m.len() as i64)
+            .sum();
+        Ok(s)
+    })
+}
+
+/// Applies the vault's history policy; with `dry_run` only counts what would go.
+/// A real run also shrinks the file. Returns the number of versions removed.
+#[tauri::command]
+pub fn prune_history(state: State<AppState>, dry_run: bool) -> AppResult<u32> {
+    with_vault(&state, |v| {
+        let c = load_config(v)?;
+        let n = v.history().prune(c.history_thin_days, c.history_delete_days, crate::history::now_ms(), dry_run)?;
+        if !dry_run && n > 0 {
+            v.history().compact()?;
+        }
+        Ok(n)
+    })
+}
+
 #[tauri::command]
 pub fn apply_preset(state: State<AppState>) -> AppResult<PresetResult> {
     with_vault(&state, apply_preset_to)
@@ -710,6 +781,9 @@ mod tests {
                 date_field: "modified".into(),
                 range: "7d".into(),
             }],
+            history_thin_days: 30,
+            keybindings: BTreeMap::from([("note.quickMemo".into(), "Ctrl+M".into())]),
+            custom_css: true,
             ..c
         };
         save_config(&v, &changed).unwrap();
@@ -976,5 +1050,17 @@ mod tests {
         let first = &idea_list(&v).unwrap()[0];
         assert_eq!(first.title, "d");
         assert!(first.mtime > 0);
+    }
+
+    #[test]
+    fn custom_css_is_made_only_when_asked() {
+        let dir = tempfile::tempdir().unwrap();
+        let v = Vault::open(dir.path()).unwrap();
+        assert_eq!(custom_css_in(&v, false).unwrap().1, "");
+        assert!(!dir.path().join(".app/custom.css").exists());
+        let (path, text) = custom_css_in(&v, true).unwrap();
+        assert!(path.ends_with("custom.css") && text.contains("사용자 CSS"));
+        fs::write(&path, ".x { color: red; }").unwrap();
+        assert_eq!(custom_css_in(&v, true).unwrap().1, ".x { color: red; }", "an existing file is kept");
     }
 }

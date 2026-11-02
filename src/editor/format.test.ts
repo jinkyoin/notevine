@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { EditorSelection, EditorState, type TransactionSpec } from "@codemirror/state";
-import { codeBlock, insertBlock, toggleLines, toggleWrap, webLink, wikiLink } from "./format";
+import { callout, codeBlock, insertBlock, toggleLines, toggleWrap, webLink, wikiLink } from "./format";
+import { CALLOUTS } from "../lib/callout";
 
 /** Text with "|" as the cursor or "[" "]" around a selection, e.g. "a [bc] d". */
 function st(src: string) {
@@ -62,5 +63,18 @@ describe("format", () => {
 
   it("makes a web link with the url selected", () => {
     expect(run(st("[문서]"), webLink)).toMatchObject({ doc: "[문서](url)", sel: "url" });
+  });
+
+  it("puts lines in a callout box, changes its type, and takes it away", () => {
+    const [important, warning] = CALLOUTS;
+    const box = (s: EditorState) => callout(s, important);
+    expect(run(st("|"), box)).toMatchObject({ doc: "> [!중요]\n> ", head: 10 });
+    expect(run(st("계약 |금액"), box).doc).toBe("> [!중요]\n> 계약 금액");
+    expect(run(st("[가\n\n나]"), box).doc).toBe("> [!중요]\n> 가\n>\n> 나");
+    // "[!…]" would read as a selection in st(): the cursor goes at the start here.
+    const at = (doc: string) => EditorState.create({ doc });
+    expect(run(at("> [!중요]\n> 가"), (s) => callout(s, warning)).doc).toBe("> [!주의]\n> 가");
+    expect(run(at("> [!중요]\n> 가\n\n다"), box).doc).toBe("가\n\n다");
+    expect(run(at("> [!중요] 제목\n> 가"), box).doc).toBe("제목\n가");
   });
 });

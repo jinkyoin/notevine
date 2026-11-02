@@ -32,6 +32,7 @@ notify-debouncer-full = "0.7.0"
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 yaml-rust2 = "0.13.0"
 similar = "3.2.1"
+tauri-plugin-global-shortcut = "2"
 
 [dev-dependencies]
 tempfile = "3"

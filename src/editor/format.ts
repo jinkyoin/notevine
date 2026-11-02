@@ -1,6 +1,7 @@
 // SCR-04 서식 막대: 굵게·제목·목록 같은 자주 쓰는 마크다운을 버튼·단축키로 넣고 뺀다.
 // 모두 EditorState → TransactionSpec 순수 함수라 실행 취소(Ctrl+Z) 한 번으로 되돌아간다.
 import { EditorSelection, type EditorState, type TransactionSpec } from "@codemirror/state";
+import { calloutHead, calloutMark, type CalloutType } from "../lib/callout";
 
 const spec = (s: TransactionSpec): TransactionSpec => ({ ...s, userEvent: "input.format", scrollIntoView: true });
 
@@ -143,4 +144,44 @@ export function webLink(state: EditorState): TransactionSpec {
   return spec({ changes: { from: r.from, to: r.to, insert }, selection: EditorSelection.range(urlAt, urlAt + 3) });
 }
 
-export const TABLE = "| 항목 | 내용 |\n| --- | --- |\n|  |  |";
+/**
+ * Puts the selected lines (or the cursor's line) in a `> [!중요]` box. On a box's
+ * first line: another type changes the marker, the same type takes the box away.
+ * On an empty line: an empty box with the cursor inside.
+ */
+export function callout(state: EditorState, type: CalloutType): TransactionSpec {
+  const r = state.selection.main;
+  const first = state.doc.lineAt(r.from);
+  const last = state.doc.lineAt(r.to);
+  const mark = calloutMark(type);
+  const quote = /^\s*>\s?/.exec(first.text);
+  const head = quote && calloutHead(first.text.slice(quote[0].length));
+  if (head) {
+    const at = first.from + quote[0].length;
+    if (head.type.kind !== type.kind) return spec({ changes: { from: at, to: at + head.markLen, insert: mark } });
+    // Same type: unwrap. A title stays as the first line; without one the line goes.
+    const changes = [];
+    if (head.title) changes.push({ from: first.from, to: at + head.markLen + 1 });
+    else changes.push({ from: first.from, to: Math.min(first.to + 1, state.doc.length) });
+    for (let n = first.number + 1; n <= state.doc.lines; n++) {
+      const l = state.doc.line(n);
+      const q = /^\s*>\s?/.exec(l.text);
+      if (!q) break;
+      changes.push({ from: l.from, to: l.from + q[0].length });
+    }
+    return spec({ changes });
+  }
+  if (r.empty && !first.text.trim()) {
+    const insert = `> ${mark}\n> `;
+    return spec({ changes: { from: first.from, to: first.to, insert }, selection: EditorSelection.cursor(first.from + insert.length) });
+  }
+  const lines: string[] = [];
+  for (let n = first.number; n <= last.number; n++) {
+    const t = state.doc.line(n).text;
+    lines.push(t.trim() ? `> ${t.replace(/^>\s?/, "")}` : ">");
+  }
+  const insert = `> ${mark}\n${lines.join("\n")}`;
+  return spec({ changes: { from: first.from, to: last.to, insert }, selection: EditorSelection.cursor(first.from + insert.length) });
+}
+
+export const TABLE ="| 항목 | 내용 |\n| --- | --- |\n|  |  |";

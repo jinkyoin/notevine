@@ -112,3 +112,13 @@ describe("math and mermaid", () => {
     expect(noteToHtml("```js\nx\n```")).not.toContain("mermaid");
   });
 });
+
+describe("Korean dates", () => {
+  it("are not numbered lists", () => {
+    const html = noteToHtml("# 일정\n\n2026. 06. 22 ~ 2029. 06. 21\n     \n# 대금\n");
+    expect(html).not.toContain("<ol");
+    expect(html).toContain("<p>2026. 06. 22 ~ 2029. 06. 21</p>");
+    expect(noteToHtml("2026.6.22 **마감**")).toContain("<strong>마감</strong>");
+    expect(noteToHtml("1. 첫째\n2. 둘째")).toContain("<ol>");
+  });
+});
