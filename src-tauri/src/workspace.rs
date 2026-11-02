@@ -597,6 +597,16 @@ pub fn open_today_journal(state: State<AppState>) -> AppResult<String> {
     with_vault(&state, |v| open_journal_at(v, Local::now()))
 }
 
+/// Opens or creates the journal of a day given as YYYY-MM-DD, from the calendar view.
+#[tauri::command]
+pub fn open_journal_on(state: State<AppState>, date: String) -> AppResult<String> {
+    let day = chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d")
+        .map_err(|_| AppError::InvalidName(date.clone()))?;
+    let at = day.and_hms_opt(12, 0, 0).and_then(|t| t.and_local_timezone(Local).earliest());
+    let at = at.ok_or_else(|| AppError::InvalidName(date.clone()))?;
+    with_vault(&state, |v| open_journal_at(v, at))
+}
+
 #[tauri::command]
 pub fn create_project(state: State<AppState>, name: String) -> AppResult<String> {
     with_vault(&state, |v| create_project_at(v, &name, Local::now()))

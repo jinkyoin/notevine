@@ -4,6 +4,7 @@ import { useApp } from "./store";
 import { useAi } from "./aiStore";
 import { WRITE_LABEL, type WriteTask } from "./ai";
 import { findNode } from "./lib/tree";
+import type { FolderMode } from "./store";
 
 const st = () => useApp.getState();
 const hasVault = () => !!st().vault;
@@ -143,15 +144,36 @@ export function registerAppCommands(): () => void {
       when: () => hasVault() && !st().config.preset_enabled,
       run: () => st().applyPreset(),
     },
-    {
-      id: "view.folderTable",
-      title: "현재 폴더를 표로 보기",
-      keywords: "표 테이블 속성 목록 데이터베이스 table properties 폴더",
+    ...(
+      [
+        ["folderTable", "table", "표로", "표 테이블 속성 목록 데이터베이스 table properties"],
+        ["folderBoard", "board", "칸반으로", "칸반 보드 상태 status kanban board 진행"],
+        ["folderCalendar", "calendar", "캘린더로", "캘린더 달력 날짜 일정 calendar 업무일지"],
+        ["folderGraph", "graph", "그래프로", "그래프 링크 연결 관계 graph network"],
+      ] as [string, FolderMode, string, string][]
+    ).map(([id, mode, how, keywords]) => ({
+      id: `view.${id}`,
+      title: `현재 폴더를 ${how} 보기`,
+      keywords: `${keywords} 폴더 보기`,
       when: () => hasNote() && noModal(),
       run: () => {
         const p = st().openPath!;
-        st().setTableView(p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
+        st().setTableView(p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "", mode);
       },
+    })),
+    {
+      id: "view.graphAll",
+      title: "전체 노트 그래프",
+      keywords: "그래프 링크 연결 관계 graph network 전체 지도",
+      when: () => hasVault() && noModal(),
+      run: () => st().setTableView("", "graph"),
+    },
+    {
+      id: "view.calendarAll",
+      title: "전체 노트 캘린더",
+      keywords: "캘린더 달력 날짜 일정 calendar 업무일지 전체",
+      when: () => hasVault() && noModal(),
+      run: () => st().setTableView("", "calendar"),
     },
     {
       id: "para.newProject",

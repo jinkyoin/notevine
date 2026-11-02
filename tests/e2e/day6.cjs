@@ -69,7 +69,7 @@ const ymd = `${today.getFullYear()}-${p2(today.getMonth() + 1)}-${p2(today.getDa
   await page.keyboard.press("Control+n");
   await page.waitForSelector(".palette-list.templates li");
   console.log("template options:", await page.$$eval(".palette-list.templates li", (els) => els.map((e) => e.textContent.slice(0, 30))));
-  await page.click(".palette-list.templates li >> text=자료");
+  await page.click('.palette-list.templates li:has(div > div:first-child:text-is("자료"))');
   await page.waitForSelector(".palette-input");
   await page.fill(".palette-input", "도구 비교");
   await page.keyboard.press("Enter");

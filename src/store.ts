@@ -12,6 +12,7 @@ import {
   type VaultInfo,
 } from "./api";
 import { ancestors, findNode, remapPath } from "./lib/tree";
+import { setProperty, type Prop } from "./lib/frontmatter";
 import type { ParaFolder } from "./lib/para";
 import { insertTemplate } from "./editor/template";
 import { findHeadingLine } from "./lib/headings";
@@ -59,6 +60,8 @@ export interface EditorApi {
 
 export type Modal = "palette" | "quickMemo" | "template" | "settings" | "deleted" | "mdHelp" | "insertTemplate" | null;
 export type SidebarTab = "files" | "search" | "ideas";
+/** How a folder is shown in place of the editor: properties table, status board, calendar or link graph. */
+export type FolderMode = "table" | "board" | "calendar" | "graph";
 
 /** Defaults used until the vault's config is loaded (mirrors the backend defaults). */
 export const DEFAULT_CONFIG: VaultConfig = {
@@ -119,6 +122,7 @@ interface AppStore {
   versionView: { path: string; id: number | null } | null;
   /** Folder shown as a table of its notes' properties in place of the editor (FR-PRP-05), or null. */
   tableView: string | null;
+  folderMode: FolderMode;
   /** Note shown beside the current one, in the right pane of the split view (FR-EDT-07), or null. */
   splitPath: string | null;
   leftOpen: boolean;
@@ -179,7 +183,10 @@ interface AppStore {
   /** Asks in an in-app dialog; resolves true when the user agrees. */
   ask(title: string, message: string, okLabel: string): Promise<boolean>;
   setVersionView(v: { path: string; id: number | null } | null): void;
-  setTableView(folder: string | null): void;
+  /** Shows a folder in place of the editor, in `mode` or the mode used last. */
+  setTableView(folder: string | null, mode?: FolderMode): void;
+  /** Sets (or with undefined removes) a frontmatter property, through the editor when the note is open. */
+  setNoteProperty(path: string, key: string, value: Prop["value"] | undefined): Promise<void>;
   /** Opens a note in the right pane, beside the current note. */
   openSplit(path: string): void;
   closeSplit(): void;
@@ -195,6 +202,8 @@ interface AppStore {
   saveConfig(c: VaultConfig): Promise<void>;
   applyPreset(): Promise<void>;
   openTodayJournal(): Promise<void>;
+  /** Opens or creates the journal of a day (YYYY-MM-DD). */
+  openJournalOn(date: string): Promise<void>;
   /** Folder new notes go to: the open note's folder, else the vault root. */
   currentDir(): string;
   /** Creates a note (optionally from a template); without a name it starts renaming it in the tree. */
@@ -349,6 +358,7 @@ export const useApp = create<AppStore>((set, get) => {
     modal: null,
     versionView: null,
     tableView: null,
+    folderMode: "table",
     splitPath: null,
     leftOpen: true,
     rightOpen: true,
@@ -572,9 +582,28 @@ export const useApp = create<AppStore>((set, get) => {
       set({ splitPath: null });
     },
 
-    setTableView(tableView) {
+    setTableView(tableView, mode) {
       if (tableView !== null) void get().flushEditor();
-      set({ tableView });
+      set(mode ? { tableView, folderMode: mode } : { tableView });
+    },
+
+    async setNoteProperty(path, key, value) {
+      const failed = () => get().toast("속성 YAML에 오류가 있어 속성을 바꾸지 못했습니다", "error");
+      if (get().openPath === path && get().editorApi) {
+        if (!get().editText((t) => setProperty(t, key, value))) failed();
+        return;
+      }
+      try {
+        // The right pane may hold unsaved edits of this note.
+        await get().flushEditor();
+        const next = setProperty(await api.readNote(path), key, value);
+        if (next === null) return failed();
+        const out = await api.writeNote(path, next, true);
+        if (out.conflict) get().toast(`다른 프로그램이 동시에 고쳐서 "${out.conflict}"로 따로 저장했습니다`, "error");
+        get().noteSaved();
+      } catch (e) {
+        get().toast(`속성을 바꾸지 못했습니다: ${errorMessage(e)}`, "error");
+      }
     },
 
     setPanels(p) {
@@ -673,6 +702,17 @@ export const useApp = create<AppStore>((set, get) => {
         if (!get().config.preset_enabled) return;
       }
       const path = await attempt(() => api.openTodayJournal());
+      if (!path) return;
+      await get().refreshTree();
+      get().openNote(path);
+    },
+
+    async openJournalOn(date) {
+      if (!get().config.preset_enabled) {
+        await get().applyPreset();
+        if (!get().config.preset_enabled) return;
+      }
+      const path = await attempt(() => api.openJournalOn(date));
       if (!path) return;
       await get().refreshTree();
       get().openNote(path);

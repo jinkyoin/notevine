@@ -210,6 +210,12 @@ pub fn folder_table(state: State<AppState>, folder: String) -> AppResult<crate::
     with_vault(&state, |v| crate::search::folder_table(v.index(), &folder))
 }
 
+/// Notes of a folder and the links between them, for the graph view (FR-UI-05).
+#[tauri::command]
+pub fn link_graph(state: State<AppState>, folder: String) -> AppResult<crate::search::LinkGraph> {
+    with_vault(&state, |v| crate::search::link_graph(v.index(), &folder))
+}
+
 /// Most frequent values of a property (key compared case-insensitively), max 50.
 #[tauri::command]
 pub fn property_values(state: State<AppState>, key: String) -> AppResult<Vec<String>> {

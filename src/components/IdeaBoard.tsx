@@ -1,30 +1,12 @@
 // SCR-06 아이디어 보드 (프리셋): 상태별 묶음, 끌어 놓거나 우클릭으로 상태 변경, Inbox 미분류 (FR-PRS-05·06).
 import { useEffect, useState } from "react";
-import { api, errorMessage, type IdeaItem } from "../api";
+import { api, type IdeaItem } from "../api";
 import { useApp } from "../store";
-import { setProperty } from "../lib/frontmatter";
 import { noteTitle } from "../lib/tree";
 
 const DRAG = "application/x-notevine-idea";
 
-/** Sets `status` in a note's frontmatter, through the editor when the note is open. */
-async function changeStatus(path: string, status: string) {
-  const st = useApp.getState();
-  if (st.openPath === path) {
-    if (!st.editText((t) => setProperty(t, "status", status))) st.toast("속성 YAML에 오류가 있어 상태를 바꾸지 못했습니다", "error");
-    return;
-  }
-  try {
-    const text = await api.readNote(path);
-    const next = setProperty(text, "status", status);
-    if (next === null) return st.toast("속성 YAML에 오류가 있어 상태를 바꾸지 못했습니다", "error");
-    const out = await api.writeNote(path, next, true);
-    if (out.conflict) st.toast(`다른 프로그램이 동시에 고쳐서 "${out.conflict}"로 따로 저장했습니다`, "error");
-    st.noteSaved();
-  } catch (e) {
-    st.toast(`상태를 바꾸지 못했습니다: ${errorMessage(e)}`, "error");
-  }
-}
+const changeStatus = (path: string, status: string) => useApp.getState().setNoteProperty(path, "status", status);
 
 export function IdeaBoard() {
   const config = useApp((s) => s.config);

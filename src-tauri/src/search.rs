@@ -506,6 +506,71 @@ pub fn folder_table(ix: &Index, folder: &str) -> AppResult<FolderTable> {
     Ok(FolderTable { columns, rows })
 }
 
+/// A note in the link graph (FR-UI-05).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GraphNode {
+    pub path: String,
+    pub title: String,
+}
+
+/// Notes under a folder and the links between them; edges are index pairs into
+/// `nodes`, one per linked pair whichever way it points.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct LinkGraph {
+    pub nodes: Vec<GraphNode>,
+    pub edges: Vec<(usize, usize)>,
+}
+
+/// The link graph of the notes under `folder` ("" = the whole vault). Links are
+/// resolved like a click would (FR-LNK-06); links to notes outside the folder,
+/// to missing notes and to attachments are left out.
+pub fn link_graph(ix: &Index, folder: &str) -> AppResult<LinkGraph> {
+    let folder = folder.trim_matches('/');
+    let conn = ix.conn();
+    // Every note, for resolving names: the shallowest, then shortest path wins.
+    let mut by_name: HashMap<String, (usize, usize, String)> = HashMap::new();
+    let mut by_path: HashMap<String, String> = HashMap::new();
+    let mut nodes = Vec::new();
+    let mut ids: HashMap<i64, usize> = HashMap::new();
+    let mut pos: HashMap<String, usize> = HashMap::new();
+    let mut st = conn.prepare("SELECT id, path, title, name_key, path_key FROM notes ORDER BY path")?;
+    let mut q = st.query([])?;
+    while let Some(r) = q.next()? {
+        let (id, path, title, name, key): (i64, String, String, String, String) =
+            (r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?);
+        let rank = (path.matches('/').count(), path.len(), path.clone());
+        if by_name.get(&name).is_none_or(|old| rank < *old) {
+            by_name.insert(name, rank);
+        }
+        by_path.insert(key, path.clone());
+        if folder.is_empty() || path.starts_with(&format!("{folder}/")) {
+            ids.insert(id, nodes.len());
+            pos.insert(path.clone(), nodes.len());
+            nodes.push(GraphNode { path, title });
+        }
+    }
+    let mut st = conn.prepare("SELECT src_id, target_key, kind FROM links")?;
+    let mut q = st.query([])?;
+    let mut edges = HashSet::new();
+    while let Some(r) = q.next()? {
+        let (src, key, kind): (i64, String, String) = (r.get(0)?, r.get(1)?, r.get(2)?);
+        let Some(&a) = ids.get(&src) else { continue };
+        let target = if kind == "markdown" || key.contains('/') {
+            by_path.get(&key).cloned()
+        } else {
+            by_name.get(&key).map(|(_, _, p)| p.clone())
+        };
+        if let Some(&b) = target.and_then(|t| pos.get(&t)) {
+            if a != b {
+                edges.insert((a.min(b), a.max(b)));
+            }
+        }
+    }
+    let mut edges: Vec<_> = edges.into_iter().collect();
+    edges.sort();
+    Ok(LinkGraph { nodes, edges })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -888,5 +953,22 @@ mod tests {
         let all = folder_table(&ix, "").unwrap();
         assert_eq!(all.rows.len(), 5);
         assert_eq!(all.columns[0], "status");
+    }
+    #[test]
+    fn link_graph_resolves_links_inside_the_folder() {
+        let (_dir, ix) = setup();
+        ix.upsert("p/a.md", "[[b]] [[c]] [[b]] [[없음]] [[밖]] ![[그림.png]]", 0, 1, 0).unwrap();
+        ix.upsert("p/sub/b.md", "[[a]] [링크](../c.md)", 0, 1, 0).unwrap();
+        ix.upsert("p/c.md", "[[p/a]]", 0, 1, 0).unwrap();
+        ix.upsert("밖.md", "[[a]]", 0, 1, 0).unwrap();
+
+        let g = link_graph(&ix, "p").unwrap();
+        let names: Vec<_> = g.nodes.iter().map(|n| n.path.as_str()).collect();
+        assert_eq!(names, ["p/a.md", "p/c.md", "p/sub/b.md"]);
+        assert_eq!(g.edges, [(0, 1), (0, 2), (1, 2)]);
+
+        let all = link_graph(&ix, "").unwrap();
+        assert_eq!(all.nodes.len(), 4);
+        assert_eq!(all.edges.len(), 4);
     }
 }

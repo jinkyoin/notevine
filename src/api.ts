@@ -52,6 +52,12 @@ export interface FolderTable {
   rows: { path: string; title: string; mtime: number; props: Record<string, string> }[];
 }
 
+/** Notes of a folder and the links between them; edges index into `nodes`. */
+export interface LinkGraph {
+  nodes: { path: string; title: string }[];
+  edges: [number, number][];
+}
+
 export interface NoteRef {
   path: string;
   title: string;
@@ -226,6 +232,7 @@ export const api = {
   search: (query: SearchQuery) => invoke<SearchResult>("search", { query }),
   propertyKeys: () => invoke<string[]>("property_keys"),
   folderTable: (folder: string) => invoke<FolderTable>("folder_table", { folder }),
+  linkGraph: (folder: string) => invoke<LinkGraph>("link_graph", { folder }),
   propertyValues: (key: string) => invoke<string[]>("property_values", { key }),
   allTags: () => invoke<{ tag: string; count: number }[]>("all_tags"),
   getConfig: () => invoke<VaultConfig>("get_config"),
@@ -237,6 +244,8 @@ export const api = {
   /** A template's text with its variables filled in for a note named `title`. */
   renderTemplate: (template: string, title: string) => invoke<string>("render_template_text", { template, title }),
   openTodayJournal: () => invoke<string>("open_today_journal"),
+  /** The journal of a day (YYYY-MM-DD), created from the template when missing. */
+  openJournalOn: (date: string) => invoke<string>("open_journal_on", { date }),
   quickMemo: (text: string, title: string | null) => invoke<string>("quick_memo", { text, title }),
   /** PARA project folder + overview note; returns the note's path. */
   createProject: (name: string) => invoke<string>("create_project", { name }),

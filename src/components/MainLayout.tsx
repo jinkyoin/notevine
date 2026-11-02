@@ -13,7 +13,7 @@ import { QuickOpen } from "./QuickOpen";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { HistoryPanel } from "./HistoryPanel";
 import { VersionView } from "./VersionView";
-import { FolderTable } from "./FolderTable";
+import { FolderView } from "./FolderView";
 import { SplitPane } from "./SplitPane";
 import { DeletedNotes } from "./DeletedNotes";
 import { MarkdownHelp } from "./MarkdownHelp";
@@ -178,7 +178,7 @@ export function MainLayout() {
           <div className="pane">
             <TabBar />
             {tableView !== null ? (
-              <FolderTable key={tableView} folder={tableView} />
+              <FolderView key={tableView} folder={tableView} />
             ) : openPath ? (
               <Editor key={openPath} path={openPath} />
             ) : (

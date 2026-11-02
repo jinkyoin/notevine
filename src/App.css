@@ -619,6 +619,249 @@ button {
   background: var(--bg-hover);
 }
 
+.folder-table-head .fb-mode {
+  align-self: center;
+}
+
+/* 폴더 보기: 칸반·캘린더·그래프 */
+.board,
+.calendar,
+.graph {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.board-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 24px 10px;
+  flex-wrap: wrap;
+}
+.board-bar select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+.board-cols {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+  overflow: auto;
+  padding: 0 24px 24px;
+  align-items: flex-start;
+}
+.board-col {
+  flex: 0 0 240px;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.board-col.drop {
+  outline: 2px dashed var(--accent);
+  background: var(--bg-active);
+}
+.board-col h4 {
+  margin: 0;
+  padding: 10px 12px 6px;
+  font-size: 13px;
+}
+.board-col .count {
+  color: var(--muted);
+  font-weight: 400;
+}
+.board-col ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 8px 8px;
+  overflow: auto;
+  min-height: 40px;
+}
+.board-col .card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  margin: 6px 0 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: grab;
+  font-size: 13.5px;
+}
+.board-col .card:hover {
+  border-color: var(--muted);
+}
+.board-col .card.active {
+  border-color: var(--accent);
+}
+.card-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.cal-month {
+  min-width: 100px;
+  text-align: center;
+}
+.cal-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  /* Rows share the height, and grow past it on busy weeks (the grid then scrolls). */
+  grid-template-rows: auto repeat(6, minmax(max-content, 1fr));
+  overflow: auto;
+  margin: 0 24px 24px;
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+}
+.cal-week,
+.cal-day {
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.cal-week {
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+.cal-week.sun,
+.cal-day.sun .cal-num {
+  color: var(--danger);
+}
+.cal-week.sat,
+.cal-day.sat .cal-num {
+  color: #1c7ed6;
+}
+.cal-day {
+  min-width: 0;
+  min-height: 84px;
+  padding: 4px 6px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cal-day.other {
+  background: var(--bg-sidebar);
+}
+.cal-day.other .cal-num {
+  opacity: 0.5;
+}
+.cal-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.cal-num {
+  font-size: 12.5px;
+  font-weight: 600;
+  min-width: 22px;
+  height: 22px;
+  line-height: 22px;
+  text-align: center;
+  border-radius: 11px;
+}
+.cal-day.today .cal-num {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.cal-add {
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 4px;
+  border-radius: 4px;
+  opacity: 0;
+}
+.cal-day:hover .cal-add,
+.cal-add:focus-visible {
+  opacity: 1;
+}
+.cal-add:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+.cal-day ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.cal-day li {
+  font-size: 12px;
+  padding: 2px 6px;
+  margin-top: 2px;
+  border-radius: 4px;
+  background: var(--bg-active);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.cal-day li:hover {
+  background: var(--bg-hover);
+}
+.cal-day li.active {
+  outline: 1px solid var(--accent);
+}
+.graph-canvas {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  border-top: 1px solid var(--border);
+}
+.graph-canvas:active {
+  cursor: grabbing;
+}
+.graph-edges line {
+  stroke: var(--border);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+.graph-edges line.on {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.graph-node circle {
+  fill: var(--muted);
+  stroke: var(--bg);
+  stroke-width: 1.5;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.graph-node.lit circle {
+  fill: var(--accent);
+}
+.graph-node.current circle {
+  fill: var(--accent);
+  stroke: var(--text);
+}
+.graph-node.dim {
+  opacity: 0.25;
+}
+.graph-node text {
+  fill: var(--text);
+  text-anchor: middle;
+  pointer-events: none;
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+}
+
 /* SCR-04 편집기 */
 .editor {
   flex: 1;

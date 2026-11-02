@@ -7,6 +7,7 @@ import { useApp } from "../store";
 import { baseName, countNotes, findNode, noteTitle, parentPath } from "../lib/tree";
 import { paraActions } from "../lib/para";
 import { openProps } from "./TabBar";
+import { MODE_LABEL } from "./FolderView";
 import { TEXT_COLORS } from "../editor/colors";
 
 interface Menu {
@@ -249,7 +250,12 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
             ["오른쪽에 나란히 열기", () => useApp.getState().openSplit(node.path)],
           ] as [string, () => void][])
         : []),
-      ...(node.kind === "folder" ? ([["표로 보기", () => useApp.getState().setTableView(node.path)]] as [string, () => void][]) : []),
+      ...(node.kind === "folder"
+        ? (["table", "board", "calendar", "graph"] as const).map((m): [string, () => void] => [
+            `${MODE_LABEL[m]}${m === "table" ? "로" : "으로"} 보기`,
+            () => useApp.getState().setTableView(node.path, m),
+          ])
+        : []),
       ...para.map(
         (a): [string, () => void] => [
           a.label,

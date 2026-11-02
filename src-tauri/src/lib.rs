@@ -61,6 +61,7 @@ pub fn run() {
             workspace::create_from_template,
             workspace::render_template_text,
             workspace::open_today_journal,
+            workspace::open_journal_on,
             workspace::quick_memo,
             workspace::create_project,
             workspace::ideas,
@@ -84,6 +85,7 @@ pub fn run() {
             commands::search,
             commands::property_keys,
             commands::folder_table,
+            commands::link_graph,
             commands::property_values,
             commands::all_tags,
         ])
