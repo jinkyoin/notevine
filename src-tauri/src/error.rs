@@ -24,6 +24,9 @@ pub enum AppError {
     Json(#[from] serde_json::Error),
     #[error("히스토리 저장소 오류: {0}")]
     Db(#[from] rusqlite::Error),
+    /// The OS or a library refused (tray, start-up entry, network...).
+    #[error("{0}")]
+    System(String),
 }
 
 impl AppError {
@@ -39,6 +42,7 @@ impl AppError {
             AppError::Trash(_) => "trash",
             AppError::Json(_) => "json",
             AppError::Db(_) => "db",
+            AppError::System(_) => "system",
         }
     }
 }

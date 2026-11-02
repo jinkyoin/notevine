@@ -118,7 +118,11 @@ function Row({ node, depth, onMenu, color }: { node: TreeNode; depth: number; on
         }}
         {...(isFolder
           ? { onClick: () => toggleFolder(node.path) }
-          : openProps((o) => node.kind === "note" && openNote(node.path, undefined, undefined, o)))}
+          : openProps((o) =>
+              node.kind === "note"
+                ? openNote(node.path, undefined, undefined, o)
+                : /\.pdf$/i.test(node.path) && useApp.getState().openPdf(node.path),
+            ))}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();

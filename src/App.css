@@ -1357,6 +1357,151 @@ button {
 .modal.md-help {
   width: 620px;
 }
+/* PDF 보기·주석 (FR-ATT-03) */
+.pdf-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  outline: none;
+}
+.pdf-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.pdf-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pdf-pages,
+.pdf-zoom,
+.pdf-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pdf-page-input {
+  width: 42px;
+  text-align: center;
+  font: inherit;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+}
+.pdf-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.pdf-scroll {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 12px 24px 40px;
+  background: var(--bg-sidebar);
+}
+.pdf-page {
+  position: relative;
+  margin: 0 auto 12px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+.pdf-page canvas {
+  display: block;
+}
+.pdf-page .textLayer .pdf-hl {
+  background: rgba(255, 212, 59, 0.45);
+  border-radius: 2px;
+}
+.pdf-pick {
+  position: absolute;
+  z-index: 5;
+  transform: translateX(-100%);
+}
+.pdf-side {
+  flex: none;
+  width: 260px;
+  overflow: auto;
+  padding: 10px 12px;
+  border-left: 1px solid var(--border);
+}
+.pdf-form blockquote {
+  margin: 6px 0;
+  padding: 4px 10px;
+  border-left: 3px solid #1c7ed6;
+  color: var(--muted);
+  font-size: 13px;
+}
+.pdf-form textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  resize: vertical;
+}
+.pdf-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+.pdf-note {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.pdf-note:hover {
+  background: var(--bg-hover);
+}
+.pdf-note-page {
+  color: var(--accent);
+  font-weight: 600;
+}
+.pdf-note-quote {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pdf-note-memo {
+  color: var(--muted);
+}
+.modal.web-clip {
+  width: 560px;
+}
+.clip-url {
+  width: 100%;
+  margin: 8px 0 4px;
+  font: inherit;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
 /* 사용자 매뉴얼: 왼쪽 목차, 오른쪽 읽기 모드 본문 */
 .modal.manual {
   width: 1000px;
@@ -1813,6 +1958,19 @@ kbd {
   gap: 16px;
   padding: 10px 0;
   border-bottom: 1px solid var(--border);
+}
+.set-row > div:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.set-ctl .api-input {
+  width: 180px;
+}
+.set-sub {
+  margin: 18px 0 4px;
+  font-size: 13px;
+  color: var(--muted);
 }
 .keys-tools {
   display: flex;

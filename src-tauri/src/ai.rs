@@ -13,6 +13,8 @@
 //! - Note content goes over stdin, never on the command line.
 //! - Nothing is sent unless [`ai_run`] is called; the frontend calls it only
 //!   after the user confirmed which notes to send.
+//!
+//! API keys (Anthropic, OpenAI) and Ollama go through `ai_api.rs` instead of a CLI.
 
 use std::collections::HashMap;
 use std::ffi::OsString;
@@ -210,11 +212,18 @@ fn other_err(msg: impl Into<String>) -> AppError {
 /// Installed CLIs and their state. Probing runs off the main thread and is
 /// cached for a minute; `refresh` probes again now.
 #[tauri::command]
-pub async fn ai_providers(refresh: Option<bool>) -> AppResult<Vec<AiProvider>> {
+pub async fn ai_providers(state: State<'_, AppState>, refresh: Option<bool>) -> AppResult<Vec<AiProvider>> {
     if refresh == Some(true) {
         clear_provider_cache();
     }
-    tauri::async_runtime::spawn_blocking(providers_cached).await.map_err(|e| other_err(e.to_string()))
+    let ollama = state.settings.load().ollama_url;
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut all = providers_cached();
+        all.extend(crate::ai_api::providers(&ollama));
+        all
+    })
+    .await
+    .map_err(|e| other_err(e.to_string()))
 }
 
 /// Opens the CLI's own login in a console window (it opens the browser) and
@@ -276,7 +285,9 @@ pub fn ai_run(
     web: Option<bool>,
     on_event: Channel<AiEvent>,
 ) -> AppResult<()> {
-    let p = Provider::parse(&provider).ok_or_else(|| other_err(format!("알 수 없는 AI 제공자입니다: {provider}")))?;
+    let api = crate::ai_api::Api::parse(&provider);
+    let p = Provider::parse(&provider).or(api.map(|_| Provider::Claude));
+    let p = p.ok_or_else(|| other_err(format!("알 수 없는 AI 제공자입니다: {provider}")))?;
     let docs = if notes.is_empty() {
         Vec::new()
     } else {
@@ -287,8 +298,27 @@ pub fn ai_run(
         return Err(other_err(format!("#{PRIVATE_TAG} 태그가 있는 노트는 AI로 보낼 수 없습니다: {}", d.title)));
     }
     let (block, notice) = notes_block(&docs);
-    let input = build_input(p, &system, &block, &prompt);
     let cancel = register_run(&request_id)?;
+    if let Some(api) = api {
+        let ollama = state.settings.load().ollama_url;
+        let input = format!("{block}{prompt}");
+        std::thread::spawn(move || {
+            let sink = |ev: AiEvent| {
+                let _ = on_event.send(ev);
+            };
+            if let Some(message) = notice {
+                sink(AiEvent::Notice { message });
+            }
+            if web == Some(true) {
+                sink(AiEvent::Notice { message: "API 키·Ollama 연결에서는 웹 검색 없이 노트로만 답합니다".into() });
+            }
+            let model = model.map(|m| m.trim().to_string()).filter(|m| !m.is_empty());
+            crate::ai_api::run(api, &system, &input, model.as_deref(), &ollama, &cancel, &sink);
+            unregister_run(&request_id);
+        });
+        return Ok(());
+    }
+    let input = build_input(p, &system, &block, &prompt);
     std::thread::spawn(move || {
         let sink = |ev: AiEvent| {
             let _ = on_event.send(ev);
@@ -1324,7 +1354,7 @@ fn providers_cached() -> Vec<AiProvider> {
     list
 }
 
-fn clear_provider_cache() {
+pub(crate) fn clear_provider_cache() {
     *PROVIDER_CACHE.lock().expect("provider cache lock poisoned") = None;
 }
 

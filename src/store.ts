@@ -4,6 +4,7 @@ import { openPath as openWithOs, revealItemInDir } from "@tauri-apps/plugin-open
 import {
   api,
   errorMessage,
+  type AppError,
   type LinkChange,
   type NoteRef,
   type TreeNode,
@@ -15,6 +16,8 @@ import { ancestors, findNode, remapPath } from "./lib/tree";
 import { setProperty, type Prop } from "./lib/frontmatter";
 import { buildReview, period, reviewFolder, reviewName, type ReviewKind } from "./lib/review";
 import { day } from "./lib/folderTable";
+import { clipFileName, clipNote, clipPage } from "./lib/clip";
+import { annotationEntry, annotationNote, annotationPath } from "./lib/pdfNotes";
 import type { ParaFolder } from "./lib/para";
 import { insertTemplate } from "./editor/template";
 import { findBlockLine, findHeadingLine } from "./lib/headings";
@@ -60,7 +63,7 @@ export interface EditorApi {
   rewrite(fn: (text: string, cursor: number) => { text: string; cursor: number }): void;
 }
 
-export type Modal = "palette" | "quickMemo" | "template" | "settings" | "deleted" | "mdHelp" | "manual" | "insertTemplate" | null;
+export type Modal = "palette" | "quickMemo" | "template" | "settings" | "deleted" | "mdHelp" | "manual" | "clip" | "insertTemplate" | null;
 export type SidebarTab = "files" | "search" | "ideas";
 /** How a folder is shown in place of the editor: properties table, status board, calendar or link graph. */
 export type FolderMode = "table" | "board" | "calendar" | "graph";
@@ -129,6 +132,8 @@ interface AppStore {
   versionView: { path: string; id: number | null } | null;
   /** Folder shown as a table of its notes' properties in place of the editor (FR-PRP-05), or null. */
   tableView: string | null;
+  /** PDF shown in place of the editor (FR-ATT-03): its path and the page to go to. `seq` repeats a jump. */
+  pdfView: { path: string; page: number; seq: number } | null;
   folderMode: FolderMode;
   /** Note shown beside the current one, in the right pane of the split view (FR-EDT-07), or null. */
   splitPath: string | null;
@@ -179,7 +184,12 @@ interface AppStore {
    */
   followLink(target: string, heading?: string | null, opts?: OpenOpts): Promise<void>;
   /** Opens a non-note file with its default program (FR-ATT-05). */
-  openAttachment(target: string): Promise<void>;
+  openAttachment(target: string, page?: number): Promise<void>;
+  /** Shows a PDF in the app at `page` (1-based). */
+  openPdf(path: string, page?: number): void;
+  closePdf(): void;
+  /** Adds an annotation of a PDF to its "<name> 주석.md" note, making the note if needed. */
+  annotatePdf(pdfPath: string, page: number, quote: string, memo: string): Promise<boolean>;
   confirmRelocate(updateLinks: boolean | null): Promise<void>;
   noteSaved(): void;
   setSidebarTab(tab: SidebarTab): void;
@@ -218,6 +228,8 @@ interface AppStore {
   openJournalOn(date: string): Promise<void>;
   /** Collects the week or month around `date` into a review note and opens it (an existing one is just opened). */
   createReview(kind: ReviewKind, date?: Date): Promise<void>;
+  /** Saves a web page's article as a note in the Inbox and opens it (FR-ATT-03); false if it failed. */
+  clipWebPage(url: string): Promise<boolean>;
   /** Folder new notes go to: the open note's folder, else the vault root. */
   currentDir(): string;
   /** Creates a note (optionally from a template); without a name it starts renaming it in the tree. */
@@ -324,8 +336,10 @@ export const useApp = create<AppStore>((set, get) => {
   function applyTabs(next: Tabs, extra: Partial<AppStore> = {}) {
     const cur = next.tabs.find((t) => t.path === next.active);
     // Showing another note closes the table view.
-    const tableView = next.active !== get().openPath ? null : get().tableView;
-    set({ tabs: next.tabs, openPath: next.active, back: cur?.back ?? [], forward: cur?.forward ?? [], tableView, ...extra });
+    const other = next.active !== get().openPath;
+    const tableView = other ? null : get().tableView;
+    const pdfView = other ? null : get().pdfView;
+    set({ tabs: next.tabs, openPath: next.active, back: cur?.back ?? [], forward: cur?.forward ?? [], tableView, pdfView, ...extra });
     if (next.active) expandTo(next.active);
     if (get().vault) void api.setWorkspace(next.active, next.tabs.map((t) => t.path)).catch(() => {});
   }
@@ -372,6 +386,7 @@ export const useApp = create<AppStore>((set, get) => {
     modal: null,
     versionView: null,
     tableView: null,
+    pdfView: null,
     folderMode: "table",
     splitPath: null,
     leftOpen: true,
@@ -417,7 +432,7 @@ export const useApp = create<AppStore>((set, get) => {
 
       const info = await attempt(() => api.openVault(path));
       if (!info) return;
-      set({ vault: info, tree: [], expanded: new Set(), openPath: null, editing: null, back: [], forward: [], tabs: [], closedTabs: [], tableView: null, splitPath: null });
+      set({ vault: info, tree: [], expanded: new Set(), openPath: null, editing: null, back: [], forward: [], tabs: [], closedTabs: [], tableView: null, pdfView: null, splitPath: null });
       const config = await api.getConfig().catch(() => DEFAULT_CONFIG);
       set({ config, sidebarTab: get().sidebarTab === "ideas" && !config.preset_enabled ? "files" : get().sidebarTab });
       applyTheme(config.theme);
@@ -463,6 +478,7 @@ export const useApp = create<AppStore>((set, get) => {
       void get().flushEditor();
       applyTabs(openTab(tabState(), path, !!opts?.newTab), {
         tableView: null,
+        pdfView: null,
         jumpLine: line ?? null,
         jumpHeading: heading ?? null,
         jumpSeq: line ? get().jumpSeq + 1 : get().jumpSeq,
@@ -512,7 +528,32 @@ export const useApp = create<AppStore>((set, get) => {
       await get().move(path, get().config[to]);
     },
 
-    async openAttachment(target) {
+    openPdf(path, page = 1) {
+      void get().flushEditor();
+      set({ pdfView: { path, page, seq: (get().pdfView?.seq ?? 0) + 1 }, tableView: null });
+    },
+
+    closePdf() {
+      set({ pdfView: null });
+    },
+
+    async annotatePdf(pdfPath, page, quote, memo) {
+      const path = annotationPath(pdfPath);
+      const entry = annotationEntry(pdfPath, page, quote, memo);
+      if (findNode(get().tree, path)) {
+        return get().editNote(path, (t) => t.replace(/\s*$/, "\n") + entry, "주석을 넣지 못했습니다");
+      }
+      const slash = path.lastIndexOf("/");
+      const created = await attempt(() =>
+        api.createNote(slash < 0 ? "" : path.slice(0, slash), path.slice(slash + 1), annotationNote(pdfPath, day(Date.now())) + entry),
+      );
+      if (!created) return false;
+      await get().refreshTree();
+      get().noteSaved();
+      return true;
+    },
+
+    async openAttachment(target, page) {
       const rel = await api.resolveAttachment(target, get().openPath ?? "").catch(() => null);
       const folder = get().config.attachment_folder;
       if (!rel) {
@@ -525,6 +566,7 @@ export const useApp = create<AppStore>((set, get) => {
         });
         return;
       }
+      if (/\.pdf$/i.test(rel)) return get().openPdf(rel, page);
       try {
         await openWithOs(await api.attachmentPath(rel));
       } catch (e) {
@@ -534,7 +576,11 @@ export const useApp = create<AppStore>((set, get) => {
 
     async followLink(target, heading, opts) {
       // [[견적서.xlsx]] and other non-note files open in their own program.
-      if (/\.[a-z0-9]{1,8}$/i.test(target) && !/\.md$/i.test(target)) return get().openAttachment(target);
+      // [[문서.pdf#page=3]] opens the PDF at that page.
+      if (/\.[a-z0-9]{1,8}$/i.test(target) && !/\.md$/i.test(target)) {
+        const page = /^page=(\d+)$/i.exec(heading ?? "");
+        return get().openAttachment(target, page ? Number(page[1]) : undefined);
+      }
       const found = target ? await attempt(() => api.resolveLink(target)) : get().openPath;
       if (found === undefined) return;
       if (found && heading) {
@@ -612,7 +658,7 @@ export const useApp = create<AppStore>((set, get) => {
 
     setTableView(tableView, mode) {
       if (tableView !== null) void get().flushEditor();
-      set(mode ? { tableView, folderMode: mode } : { tableView });
+      set(mode ? { tableView, folderMode: mode, pdfView: null } : { tableView, pdfView: null });
     },
 
     async setNoteProperty(path, key, value) {
@@ -762,6 +808,42 @@ export const useApp = create<AppStore>((set, get) => {
       if (!created) return;
       await get().refreshTree();
       get().openNote(created);
+    },
+
+    async clipWebPage(url) {
+      const config = get().config;
+      let page: { url: string; html: string };
+      try {
+        page = await api.fetchPage(url);
+      } catch (e) {
+        get().toast(errorMessage(e), "error");
+        return false;
+      }
+      const clip = clipPage(page.html, page.url);
+      if (!clip) {
+        get().toast("이 페이지에서 본문을 찾지 못했습니다", "error");
+        return false;
+      }
+      const folder = config.preset_enabled ? config.inbox_folder : "";
+      const content = clipNote(clip, page.url, day(Date.now()));
+      const base = clipFileName(clip.title);
+      // Same title clipped again: "제목 2", "제목 3"…
+      for (let n = 1; n <= 50; n++) {
+        try {
+          const created = await api.createNote(folder, n === 1 ? base : `${base} ${n}`, content);
+          await get().refreshTree();
+          get().openNote(created);
+          get().toast(`웹 페이지를 노트로 저장했습니다 · ${created}`);
+          return true;
+        } catch (e) {
+          if ((e as AppError)?.code !== "already_exists") {
+            get().toast(errorMessage(e), "error");
+            return false;
+          }
+        }
+      }
+      get().toast("같은 이름의 노트가 너무 많습니다", "error");
+      return false;
     },
 
     async openJournalOn(date) {

@@ -282,6 +282,7 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
                   const st = useApp.getState();
                   const node = findNode(st.tree, p);
                   if (node?.kind === "note") st.openNote(p);
+                  else if (node && /\.pdf$/i.test(p)) st.openPdf(p);
                   else if (node) void api.attachmentPath(p).then(openWithOs).catch((e) => st.toast(errorMessage(e), "error"));
                   else st.toast(`첨부 파일을 찾을 수 없음: ${p}`, "error");
                 },

@@ -3,10 +3,10 @@ import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { allCommands, keysFromEvent, keysOf, onCommandsChanged, type Command } from "../commands";
-import { api, errorMessage, type HistoryStats, type VaultConfig } from "../api";
+import { api, errorMessage, type AppSettings, type HistoryStats, type VaultConfig } from "../api";
 import { useApp } from "../store";
 import { useAi } from "../aiStore";
-import { ProviderFix } from "./AiPanel";
+import { forgetApiModels, ProviderFix } from "./AiPanel";
 
 type Tab = "general" | "editor" | "keys" | "files" | "preset" | "ai" | "history" | "about";
 const TABS: [Tab, string][] = [
@@ -75,6 +75,7 @@ function SettingsDialog({ close }: { close: () => void }) {
                 <Row label="시작할 때" hint="앱을 켜면 마지막 노트 폴더와 노트를 다시 엽니다">
                   <span className="muted small">마지막 노트 폴더 열기 (항상)</span>
                 </Row>
+                <TraySettings />
                 <Row
                   label="사용자 CSS"
                   hint="이 노트 폴더의 .app/custom.css로 색·글꼴·크기를 바꿉니다. 파일을 저장하고 Notevine 창으로 돌아오면 바로 반영됩니다"
@@ -321,6 +322,41 @@ function HistoryUsage() {
   );
 }
 
+/** Tray and start with Windows (FR-PRS-08). App-wide, unlike the rest of the settings. */
+function TraySettings() {
+  const { toast } = useApp.getState();
+  const [s, setS] = useState<AppSettings | null>(null);
+  const load = () => void api.appSettings().then(setS).catch(() => setS(null));
+  useEffect(load, []);
+  const change = async (f: () => Promise<void>) => {
+    try {
+      await f();
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    }
+    load();
+  };
+  if (!s) return null;
+  return (
+    <>
+      <Row
+        label="닫으면 트레이로"
+        hint="창을 닫아도 작업 표시줄 오른쪽 아이콘으로 계속 실행되어, Ctrl+Alt+N 빠른 메모를 쓸 수 있습니다. 끝내려면 아이콘 메뉴의 [종료]"
+      >
+        <input type="checkbox" checked={s.tray} onChange={(e) => void change(() => api.setTray(e.target.checked))} />
+      </Row>
+      <Row label="Windows 시작 시 실행" hint="로그인하면 Notevine을 트레이에 띄워 둡니다 (닫으면 트레이로를 켰을 때만)">
+        <input
+          type="checkbox"
+          disabled={!s.tray}
+          checked={s.autostart}
+          onChange={(e) => void change(() => api.setAutostart(e.target.checked))}
+        />
+      </Row>
+    </>
+  );
+}
+
 /** Shortcuts of the app's commands, changed per vault (FR-UI-05). */
 function ShortcutSettings() {
   const config = useApp((s) => s.config);
@@ -484,7 +520,101 @@ function AiSettings() {
         Claude Code는 Claude Pro/Max 구독, Codex는 ChatGPT 구독으로 동작합니다. 로그인 버튼을 누르면 각 AI의 공식 로그인
         창이 열리고, 브라우저에서 로그인을 마치면 자동으로 연결됩니다. 선택: {providerId || "자동"}
       </p>
+      <ApiConnections />
     </>
+  );
+}
+
+/** API keys (Anthropic, OpenAI) and the Ollama address (FR-AI-07). */
+function ApiConnections() {
+  const providers = useAi((s) => s.providers);
+  const { detect } = useAi.getState();
+  const { toast } = useApp.getState();
+  const [ollama, setOllama] = useState("");
+  useEffect(() => void api.appSettings().then((s) => setOllama(s.ollama_url)).catch(() => {}), []);
+  const has = (id: string) => !!providers?.find((p) => p.id === id)?.available;
+  const after = async (id: string, done: string) => {
+    forgetApiModels(id);
+    await detect(true);
+    toast(done);
+  };
+  const saveKey = async (id: string, key: string) => {
+    try {
+      await api.aiSetKey(id, key);
+      await after(id, key ? "API 키를 저장했습니다" : "API 키를 지웠습니다");
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    }
+  };
+  return (
+    <>
+      <h3 className="set-sub">API 키 · 내 PC 모델</h3>
+      <p className="muted small">
+        구독 대신 각 회사의 API 키로 쓰거나, 내 PC에서 돌리는 Ollama 모델로 씁니다. 키는 Windows 자격 증명 관리자에 저장되고
+        화면에 다시 보이지 않습니다. API 사용료는 그 회사 계정으로 청구됩니다. 웹 검색은 CLI 연결에서만 됩니다.
+      </p>
+      <KeyRow label="Claude API 키" id="anthropic" set={has("anthropic")} placeholder="sk-ant-…" onSave={saveKey} />
+      <KeyRow label="OpenAI API 키" id="openai" set={has("openai")} placeholder="sk-…" onSave={saveKey} />
+      <Row label="Ollama 주소" hint={has("ollama") ? "연결됨" : "Ollama를 설치·실행하면 쓸 수 있습니다 (이 PC 주소만)"}>
+        <input className="api-input" value={ollama} placeholder="http://localhost:11434" onChange={(e) => setOllama(e.target.value)} />
+        <button
+          className="btn small"
+          onClick={async () => {
+            try {
+              await api.setOllamaUrl(ollama);
+              await after("ollama", "Ollama 주소를 저장했습니다");
+            } catch (e) {
+              toast(errorMessage(e), "error");
+            }
+          }}
+        >
+          저장·확인
+        </button>
+      </Row>
+    </>
+  );
+}
+
+function KeyRow({
+  label,
+  id,
+  set,
+  placeholder,
+  onSave,
+}: {
+  label: string;
+  id: string;
+  set: boolean;
+  placeholder: string;
+  onSave: (id: string, key: string) => Promise<void>;
+}) {
+  const [key, setKey] = useState("");
+  return (
+    <Row label={label} hint={set ? "저장됨 · 바꾸려면 새 키를 넣으세요" : "없음"}>
+      <input
+        className="api-input"
+        type="password"
+        autoComplete="off"
+        value={key}
+        placeholder={set ? "••••••••" : placeholder}
+        onChange={(e) => setKey(e.target.value)}
+      />
+      <button
+        className="btn small"
+        disabled={!key.trim()}
+        onClick={async () => {
+          await onSave(id, key.trim());
+          setKey("");
+        }}
+      >
+        저장
+      </button>
+      {set && (
+        <button className="btn ghost small" onClick={() => void onSave(id, "")}>
+          지우기
+        </button>
+      )}
+    </Row>
   );
 }
 

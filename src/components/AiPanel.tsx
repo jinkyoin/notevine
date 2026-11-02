@@ -2,8 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useAi } from "../aiStore";
-import { INSTALL_COMMAND, isLoginError, MODEL_OPTIONS, needsLogin } from "../ai";
-import type { AiProvider } from "../api";
+import { API_DEFAULT_LABEL, API_PROVIDERS, INSTALL_COMMAND, isLoginError, MODEL_OPTIONS, needsLogin } from "../ai";
+import { api, type AiProvider } from "../api";
 import { useApp } from "../store";
 
 /** Answer text: [[links]] are clickable, **bold** and "# heading" lines are styled; the rest stays plain. */
@@ -73,6 +73,29 @@ export function ProviderFix({ p }: { p: AiProvider }) {
   return null;
 }
 
+const apiModels = new Map<string, Promise<string[]>>();
+
+/** Asks the service for its models again next time (after a key or address changed). */
+export function forgetApiModels(provider: string) {
+  apiModels.delete(provider);
+}
+
+/** For an API provider or Ollama, the models it offers (asked once per app run); null otherwise. */
+function useApiModels(provider: string): string[] | null {
+  const [list, setList] = useState<string[] | null>(null);
+  useEffect(() => {
+    setList(null);
+    if (!API_PROVIDERS.includes(provider)) return;
+    let live = true;
+    if (!apiModels.has(provider)) apiModels.set(provider, api.aiModels(provider).catch(() => (apiModels.delete(provider), [])));
+    void apiModels.get(provider)!.then((l) => live && setList(l));
+    return () => {
+      live = false;
+    };
+  }, [provider]);
+  return list;
+}
+
 /** Model choice for the current AI: presets, or any name typed in. */
 function ModelPicker({
   provider,
@@ -87,7 +110,10 @@ function ModelPicker({
   setCustom: (v: boolean) => void;
   onChange: (m: string) => void;
 }) {
-  const options = MODEL_OPTIONS[provider] ?? [{ value: "", label: "기본" }];
+  const listed = useApiModels(provider);
+  const options = listed
+    ? [{ value: "", label: API_DEFAULT_LABEL[provider] ?? "기본" }, ...listed.map((m) => ({ value: m, label: m }))]
+    : (MODEL_OPTIONS[provider] ?? [{ value: "", label: "기본" }]);
   const known = options.some((o) => o.value === value);
   if (custom || !known) {
     return (

@@ -39,7 +39,23 @@ export function pickProvider(list: AiProvider[], preferred: string): AiProvider 
   return ok.find((p) => p.id === preferred) ?? ok[0];
 }
 
-export const PROVIDER_COMPANY: Record<string, string> = { claude: "Anthropic", codex: "OpenAI" };
+export const PROVIDER_COMPANY: Record<string, string> = {
+  claude: "Anthropic",
+  codex: "OpenAI",
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  ollama: "내 PC의 Ollama",
+};
+
+/** Connected with an API key or Ollama (FR-AI-07): their models come from the service. */
+export const API_PROVIDERS = ["anthropic", "openai", "ollama"];
+
+/** What "기본" means for an API provider. */
+export const API_DEFAULT_LABEL: Record<string, string> = {
+  anthropic: "기본 (claude-opus-5-5)",
+  openai: "기본 (가장 최근 모델)",
+  ollama: "기본 (설치된 첫 모델)",
+};
 
 /** Official install commands (PowerShell), shown when a CLI is missing. */
 export const INSTALL_COMMAND: Record<string, string> = {

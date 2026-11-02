@@ -64,6 +64,13 @@ export function registerAppCommands(): () => void {
       run: () => st().setModal("mdHelp"),
     },
     {
+      id: "note.webClip",
+      title: "웹 페이지 클립 (주소로 노트 만들기)",
+      keywords: "웹 클립 스크랩 저장 url 주소 인터넷 기사 블로그 clip",
+      when: () => !!st().vault && st().modal === null,
+      run: () => st().setModal("clip"),
+    },
+    {
       id: "help.manual",
       title: "사용자 매뉴얼",
       keywords: "도움말 사용법 설명서 안내 help manual",

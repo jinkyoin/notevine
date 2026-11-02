@@ -145,6 +145,16 @@ export interface VaultConfig {
   custom_css: boolean;
 }
 
+/** App-wide settings (not per vault). */
+export interface AppSettings {
+  /** Closing the window keeps Notevine in the tray. */
+  tray: boolean;
+  /** Ollama's address on this PC; "" = http://localhost:11434. */
+  ollama_url: string;
+  /** Windows starts Notevine (into the tray) at sign-in. */
+  autostart: boolean;
+}
+
 export interface HistoryStats {
   versions: number;
   notes: number;
@@ -248,6 +258,11 @@ export const api = {
   /** Applies the history policy; `dryRun` only counts. Returns versions removed. */
   pruneHistory: (dryRun: boolean) => invoke<number>("prune_history", { dryRun }),
   /** [path, text] of `.app/custom.css`; `create` makes a missing one with a short guide. */
+  appSettings: () => invoke<AppSettings>("app_settings"),
+  /** Downloads a web page (http/https only) for clipping; `url` is where it ended up. */
+  fetchPage: (url: string) => invoke<{ url: string; html: string }>("fetch_page", { url }),
+  setTray: (on: boolean) => invoke<void>("set_tray", { on }),
+  setAutostart: (on: boolean) => invoke<void>("set_autostart", { on }),
   customCss: (create: boolean) => invoke<[string, string]>("custom_css", { create }),
   createNote: (dir: string, name?: string, content?: string) =>
     invoke<string>("create_note", { dir, name: name ?? null, content: content ?? null }),
@@ -297,6 +312,11 @@ export const api = {
   aiProviders: (refresh = false) => invoke<AiProvider[]>("ai_providers", { refresh }),
   /** Opens the CLI's own login window; resolves with the provider's state once it closes. */
   aiLogin: (provider: string) => invoke<AiProvider>("ai_login", { provider }),
+  /** Saves an API key in the Windows Credential Manager; "" removes it (FR-AI-07). */
+  aiSetKey: (provider: string, key: string) => invoke<void>("ai_set_key", { provider, key }),
+  /** Models an API provider or Ollama offers. */
+  aiModels: (provider: string) => invoke<string[]>("ai_models", { provider }),
+  setOllamaUrl: (url: string) => invoke<void>("set_ollama_url", { url }),
   aiContext: (question: string, limit = 8) =>
     invoke<{ notes: ContextNote[]; private_excluded: string[] }>("ai_context", { question, limit }),
   /** The given notes that carry #비공개 (never sent to AI). */

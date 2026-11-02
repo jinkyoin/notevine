@@ -20,6 +20,8 @@ import { SplitPane } from "./SplitPane";
 import { DeletedNotes } from "./DeletedNotes";
 import { MarkdownHelp } from "./MarkdownHelp";
 import { UserManual } from "./UserManual";
+import { WebClip } from "./WebClip";
+import { PdfView } from "./PdfView";
 import { IdeaBoard } from "./IdeaBoard";
 import { CommandPalette } from "./CommandPalette";
 import { QuickMemo } from "./QuickMemo";
@@ -95,6 +97,7 @@ export function MainLayout() {
   const vault = useApp((s) => s.vault);
   const openPath = useApp((s) => s.openPath);
   const tableView = useApp((s) => s.tableView);
+  const pdfView = useApp((s) => s.pdfView);
   const splitPath = useApp((s) => s.splitPath);
   const sidebarTab = useApp((s) => s.sidebarTab);
   const preset = useApp((s) => s.config.preset_enabled);
@@ -217,7 +220,9 @@ export function MainLayout() {
         <main className="center">
           <div className="pane">
             <TabBar />
-            {tableView !== null ? (
+            {pdfView ? (
+              <PdfView key={pdfView.path} path={pdfView.path} page={pdfView.page} seq={pdfView.seq} />
+            ) : tableView !== null ? (
               <FolderView key={tableView} folder={tableView} />
             ) : openPath ? (
               <Editor key={openPath} path={openPath} />
@@ -263,6 +268,7 @@ export function MainLayout() {
       <DeletedNotes />
       <MarkdownHelp />
       <UserManual />
+      <WebClip />
       <VersionView />
       <ConfirmDialog />
       <AiSendConfirm />
