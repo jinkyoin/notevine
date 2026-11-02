@@ -1,11 +1,14 @@
-// 위키링크: 표시(있는 노트=밑줄, 없는 노트=점선), Ctrl+클릭 이동, `[[` 자동완성.
-// FR-LNK-01·02·04, SCR-04.
-import { autocompletion, type Completion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
+// 위키링크: 표시(있는 노트=밑줄, 없는 노트=점선), Ctrl+클릭 이동, `[[` 자동완성, `[[노트#` 제목·`[[노트#^` 블록 자동완성.
+// 같은 자동완성 창에서 `#태그`도 제안한다(CodeMirror는 자동완성 설정을 하나만 둔다).
+// FR-LNK-01·02·04·07, SCR-04.
+import { autocompletion, startCompletion, type Completion, type CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
 import { syntaxTree } from "@codemirror/language";
 import { type EditorState, type Extension, type Range, StateEffect } from "@codemirror/state";
-import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
+import { Decoration, type DecorationSet, EditorView, MatchDecorator, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type { NoteRef } from "../api";
 import { composingStep, frontmatterEnd } from "./livePreview";
+import { blockCandidates, newBlockId, noteHeadings, withBlockId } from "../lib/headings";
+import { rankTags, tagBefore } from "../lib/tags";
 
 export interface LinkEnv {
   /** Path of the note being edited. */
@@ -18,6 +21,12 @@ export interface LinkEnv {
   openUrl(url: string): void;
   /** "click" follows links on a plain click (lines without the cursor); "ctrl" needs Ctrl. */
   clickMode(): "ctrl" | "click";
+  /** The note a wiki target names and its saved text, or null when there is none. */
+  readTarget(target: string): Promise<{ path: string; text: string } | null>;
+  /** Changes another note's text (to add a block id to it). */
+  editTarget(path: string, fn: (text: string) => string | null): Promise<boolean>;
+  /** Tags used in the vault, with how many notes have each. */
+  tags(): Promise<{ tag: string; count: number }[]>;
 }
 
 const FILE_EXT = /\.[a-z0-9]{1,8}$/i;
@@ -206,6 +215,113 @@ function completeNotes(env: LinkEnv) {
   };
 }
 
+/** A heading as a link writes it: markdown marks dropped. */
+const headingText = (s: string) => s.replace(/[*_`~=]/g, "").replace(/\s+/g, " ").trim();
+const ANCHOR = /\[\[([^[\]|#\n]*)#(\^?)([^[\]|#\n]*)$/;
+
+/** After `[[노트#`: the note's headings; after `[[노트#^`: its paragraphs and list items. */
+function completeAnchors(env: LinkEnv) {
+  return async (ctx: CompletionContext): Promise<CompletionResult | null> => {
+    const m = ctx.matchBefore(ANCHOR);
+    if (!m) return null;
+    const [, rawTarget, caret, query] = ANCHOR.exec(m.text)!;
+    const target = rawTarget.trim();
+    // [[#제목]] is this note; its text is the editor's, saved or not.
+    const self = !target;
+    const found = self ? { path: env.path(), text: ctx.state.doc.toString() } : await env.readTarget(target);
+    if (!found || ctx.aborted) return null;
+    const from = m.to - query.length;
+    const q = query.normalize("NFC").toLowerCase().trim();
+    const closeAfter = (view: EditorView, pos: number) => (view.state.sliceDoc(pos, pos + 2) === "]]" ? "" : "]]");
+    const finish = (view: EditorView, at: number, to: number, insert: string, extra: { from: number; insert: string }[] = []) => {
+      const text = insert + closeAfter(view, to);
+      // The end of the link, after any edit made earlier in the document.
+      const shift = extra.filter((e) => e.from <= at).reduce((n, e) => n + e.insert.length, 0);
+      view.dispatch({ changes: [{ from: at, to, insert: text }, ...extra], selection: { anchor: at + shift + text.length } });
+    };
+
+    if (!caret) {
+      const options: Completion[] = noteHeadings(found.text)
+        .map((h) => ({ ...h, text: headingText(h.text) }))
+        .filter((h) => h.text && (!q || h.text.toLowerCase().includes(q)))
+        .slice(0, 50)
+        .map((h) => ({
+          label: h.text,
+          detail: "H" + h.level,
+          apply: (view: EditorView, _c: Completion, a: number, b: number) => finish(view, a, b, h.text),
+        }));
+      // Typing ^ switches to blocks; offer it for those who don't know the syntax.
+      options.push({
+        label: "^ 문단·목록 항목에 연결…",
+        detail: "블록 링크",
+        apply: (view, _c, a, b) => {
+          view.dispatch({ changes: { from: a, to: b, insert: "^" }, selection: { anchor: a + 1 } });
+          startCompletion(view);
+        },
+      });
+      return { from, options, filter: false };
+    }
+
+    const here = ctx.state.doc.lineAt(ctx.pos).number - 1;
+    const blocks = blockCandidates(found.text)
+      .filter((b) => !(self && b.line === here))
+      .filter((b) => !q || b.text.toLowerCase().includes(q) || b.id?.toLowerCase().startsWith(q))
+      .slice(0, 50);
+    const options: Completion[] = blocks.map((b) => ({
+      label: b.text.length > 60 ? b.text.slice(0, 59) + "…" : b.text,
+      detail: b.id ? "^" + b.id : "새 블록 ID",
+      apply: (view: EditorView, _c: Completion, a: number, to: number) => {
+        if (b.id) return finish(view, a, to, b.id);
+        const id = newBlockId(self ? view.state.doc.toString() : found.text);
+        if (self) {
+          // Same note: mark the line in the same edit, so one undo takes both back.
+          const line = view.state.doc.line(b.line + 1);
+          const end = line.from + line.text.trimEnd().length;
+          return finish(view, a, to, id, [{ from: end, insert: ` ^${id}` }]);
+        }
+        finish(view, a, to, id);
+        void env.editTarget(found.path, (t) => withBlockId(t, b.line, id));
+      },
+    }));
+    return { from, options, filter: false };
+  };
+}
+
+/** After `#` in the body: the vault's tags, most used first. */
+function completeTags(env: LinkEnv) {
+  return async (ctx: CompletionContext): Promise<CompletionResult | null> => {
+    const line = ctx.state.doc.lineAt(ctx.pos);
+    const query = tagBefore(line.text.slice(0, ctx.pos - line.from));
+    if (query === null) return null;
+    // "#" alone at the start of a line is likely a heading on its way ("# 제목").
+    if (!query && ctx.pos - 1 === line.from && !ctx.explicit) return null;
+    // The character just typed decides: after the cursor may be the end of the note.
+    if (ctx.pos <= frontmatterEnd(ctx.state) || inCode(ctx.state, ctx.pos - 1)) return null;
+    const tags = rankTags(await env.tags(), query).slice(0, 50);
+    if (ctx.aborted || !tags.length) return null;
+    return {
+      from: ctx.pos - query.length,
+      options: tags.map((t) => ({ label: t.tag, detail: `${t.count}개 노트`, type: "tag" })),
+      filter: false,
+    };
+  };
+}
+
+/** ` ^id` ending a line: shown faint, since it is only a link target. */
+const blockIds = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    matcher = new MatchDecorator({ regexp: /[ \t]\^[A-Za-z0-9-]+[ \t]*$/g, decoration: Decoration.mark({ class: "cm-block-id" }) });
+    constructor(view: EditorView) {
+      this.decorations = this.matcher.createDeco(view);
+    }
+    update(u: ViewUpdate) {
+      this.decorations = this.matcher.updateDeco(u, this.decorations);
+    }
+  },
+  { decorations: (v) => v.decorations },
+);
+
 export function wikiLinks(env: LinkEnv): Extension {
   const plugin = ViewPlugin.fromClass(
     class {
@@ -259,7 +375,8 @@ export function wikiLinks(env: LinkEnv): Extension {
   return [
     plugin,
     click,
-    autocompletion({ override: [completeNotes(env)], icons: false }),
+    blockIds,
+    autocompletion({ override: [completeNotes(env), completeAnchors(env), completeTags(env)], icons: false }),
     EditorView.baseTheme({
       ".cm-wikilink": { color: "var(--accent)", textDecoration: "underline", textUnderlineOffset: "3px", cursor: "pointer" },
       ".cm-wikilink-missing": { textDecorationStyle: "dashed", opacity: "0.8" },
@@ -267,7 +384,11 @@ export function wikiLinks(env: LinkEnv): Extension {
       ".cm-wikilink-file::before": { content: '"📎 "' },
       ".cm-tooltip-autocomplete": { fontFamily: "var(--font)", border: "1px solid var(--border)", borderRadius: "6px" },
       ".cm-tooltip-autocomplete ul li": { padding: "4px 10px !important" },
-      ".cm-completionDetail": { marginLeft: "12px", color: "var(--muted)", fontStyle: "normal", fontSize: "12px" },
+      // `&` raises specificity over CodeMirror's own italic style.
+      "& .cm-tooltip-autocomplete .cm-completionDetail": { marginLeft: "12px", color: "var(--muted)", fontStyle: "normal", fontSize: "12px" },
+      // On the highlighted row, take the row's own (light) text color.
+      "& .cm-tooltip-autocomplete li[aria-selected] .cm-completionDetail": { color: "inherit", opacity: "0.85" },
+      ".cm-block-id": { color: "var(--muted)", opacity: "0.6", fontSize: "0.85em" },
     }),
   ];
 }

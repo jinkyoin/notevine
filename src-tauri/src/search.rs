@@ -447,6 +447,15 @@ pub fn all_tags(ix: &Index) -> AppResult<Vec<TagCount>> {
     Ok(rows.collect::<Result<_, _>>()?)
 }
 
+/// Tags of one note (body `#태그` and the `tags` property), in the order they first appear.
+pub fn note_tags(ix: &Index, path: &str) -> AppResult<Vec<String>> {
+    let mut st = ix.conn().prepare(
+        "SELECT t.tag FROM tags t JOIN notes n ON n.id = t.note_id WHERE n.path = ?1 ORDER BY t.rowid",
+    )?;
+    let rows = st.query_map(params![path], |r| r.get(0))?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
 /// One note of a folder table (FR-PRP-05).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TableRow {
@@ -954,6 +963,14 @@ mod tests {
         assert_eq!(all.rows.len(), 5);
         assert_eq!(all.columns[0], "status");
     }
+    #[test]
+    fn note_tags_lists_body_and_property_tags_once() {
+        let (_dir, ix) = setup();
+        ix.upsert("a.md", "---\ntags: [회의, 예산]\n---\n본문 #업무 #회의 `#코드`\n", 0, 1, 0).unwrap();
+        assert_eq!(note_tags(&ix, "a.md").unwrap(), ["회의", "예산", "업무"]);
+        assert!(note_tags(&ix, "없음.md").unwrap().is_empty());
+    }
+
     #[test]
     fn link_graph_resolves_links_inside_the_folder() {
         let (_dir, ix) = setup();

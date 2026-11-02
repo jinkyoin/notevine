@@ -131,10 +131,26 @@ const mathInline: TokenizerAndRendererExtension = {
   },
 };
 
+/** ` ^id` ending a line marks a block ([[노트#^id]]): hidden, kept as a jump target. */
+const blockId: TokenizerAndRendererExtension = {
+  name: "blockId",
+  level: "inline",
+  start(src) {
+    return /[ \t]\^[A-Za-z0-9-]+[ \t]*(?:\n|$)/.exec(src)?.index;
+  },
+  tokenizer(src) {
+    const m = /^[ \t]\^([A-Za-z0-9-]+)[ \t]*(?=\n|$)/.exec(src);
+    return m ? { type: "blockId", raw: m[0], id: m[1].toLowerCase() } : undefined;
+  },
+  renderer(t) {
+    return `<span class="block-id" data-block="${esc((t as unknown as { id: string }).id)}"></span>`;
+  },
+};
+
 function makeMarked() {
   const m = new Marked({ gfm: true, breaks: true });
   m.use({
-    extensions: [mathBlock, wiki, highlight, tag, mathInline],
+    extensions: [mathBlock, wiki, highlight, tag, mathInline, blockId],
     renderer: {
       // Clickable task boxes: data-task is the n-th task in the note (see toggleTask).
       // ```mermaid blocks show as code until drawn. The source stays in the <code> text, not an

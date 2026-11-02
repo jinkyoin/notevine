@@ -147,7 +147,7 @@ export function registerAppCommands(): () => void {
     ...(
       [
         ["folderTable", "table", "표로", "표 테이블 속성 목록 데이터베이스 table properties"],
-        ["folderBoard", "board", "칸반으로", "칸반 보드 상태 status kanban board 진행"],
+        ["folderBoard", "board", "보드로", "보드 칸반 카드 상태 status kanban board 진행"],
         ["folderCalendar", "calendar", "캘린더로", "캘린더 달력 날짜 일정 calendar 업무일지"],
         ["folderGraph", "graph", "그래프로", "그래프 링크 연결 관계 graph network"],
       ] as [string, FolderMode, string, string][]
@@ -182,6 +182,25 @@ export function registerAppCommands(): () => void {
       when: () => noModal() && !!findNode(st().tree, st().config.project_folder),
       run: () => st().startNewProject(),
     },
+    ...(
+      [
+        ["week", 0, "이번 주"],
+        ["week", -7, "지난주"],
+        ["month", 0, "이번 달"],
+        ["month", -1, "지난달"],
+      ] as const
+    ).map(([kind, back, when]) => ({
+      id: `review.${kind}${back ? ".last" : ""}`,
+      title: `${kind === "week" ? "주간" : "월간"} 회고 묶음 만들기 (${when})`,
+      keywords: "회고 리뷰 정리 묶음 요약 업무일지 회의록 review 주간 월간",
+      when: () => hasVault() && noModal(),
+      run: () => {
+        const d = new Date();
+        if (kind === "week") d.setDate(d.getDate() + back);
+        else d.setMonth(d.getMonth() + back, 1);
+        return st().createReview(kind, d);
+      },
+    })),
     {
       id: "ideas.board",
       title: "아이디어 보드",

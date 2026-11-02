@@ -349,7 +349,10 @@ impl Line<'_> {
                 continue;
             }
             let rest = &self.text[i..end];
-            let next = if rest.starts_with("![[") || rest.starts_with("[[") {
+            let next = if let Some(len) = html_tag_len(rest) {
+                // `<span style="color: #1c7ed6">`: a color, not a tag.
+                Some(i + len)
+            } else if rest.starts_with("![[") || rest.starts_with("[[") {
                 self.wiki(i, end, links)
             } else if rest.starts_with("![") || rest.starts_with('[') {
                 self.markdown(i, end, links, tags)
@@ -444,6 +447,25 @@ impl Line<'_> {
         tags.add(tag);
         Some(body_start + len)
     }
+}
+
+/// Length of an HTML tag (`<span ...>`, `</span>`, `<!-- -->`) at the start of
+/// `s`, up to its `>` on the same line. A `<` not followed by a tag name (as in
+/// "a < b") is not a tag.
+fn html_tag_len(s: &str) -> Option<usize> {
+    let b = s.as_bytes();
+    if b.first() != Some(&b'<') {
+        return None;
+    }
+    let name = match b.get(1) {
+        Some(b'/') => 2,
+        Some(b'!') => return s.find('>').map(|e| e + 1),
+        _ => 1,
+    };
+    if !b.get(name).is_some_and(u8::is_ascii_alphabetic) {
+        return None;
+    }
+    s.find('>').map(|e| e + 1)
 }
 
 /// Index of the closing bracket matching an already-consumed opener, within
@@ -732,5 +754,11 @@ meta:\n  a: 1\n  b: [x, y]\n\
         }
         assert!(parse("---\n- a\n---\n").frontmatter_error.is_some());
         assert_eq!(parse("[a](%E2%82%AC.md)").links[0].target, "€.md");
+    }
+
+    #[test]
+    fn colors_in_html_are_not_tags() {
+        let p = parse("<span style=\"color: #1c7ed6\">2026. 11. 30</span> #진짜 <mark style='background:#fff3bf'>x</mark> a < #b <!-- #주석 -->");
+        assert_eq!(p.tags, ["진짜", "b"]);
     }
 }

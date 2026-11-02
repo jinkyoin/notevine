@@ -252,7 +252,7 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
         : []),
       ...(node.kind === "folder"
         ? (["table", "board", "calendar", "graph"] as const).map((m): [string, () => void] => [
-            `${MODE_LABEL[m]}${m === "table" ? "로" : "으로"} 보기`,
+            `${MODE_LABEL[m]}로 보기`,
             () => useApp.getState().setTableView(node.path, m),
           ])
         : []),

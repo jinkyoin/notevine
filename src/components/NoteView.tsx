@@ -9,7 +9,7 @@ import type { NoteRef } from "../api";
 import { noteToHtml } from "../lib/renderNote";
 import { noteExists, resolveDest } from "../editor/wikilinks";
 import { safeStyle } from "../editor/colors";
-import { headingKey, noteSection } from "../lib/headings";
+import { headingKey, noteBlock, noteSection } from "../lib/headings";
 import { drawRichBlocks } from "../lib/richBlocks";
 
 // Text/background colors (SCR-04) are the only styles kept; anything else, urls
@@ -84,9 +84,10 @@ async function fillEmbeds(
       }
       const text = found === ctx.openPath ? ctx.openText : await api.readNote(found).catch(() => null);
       if (!ctx.live() || text === null) return;
-      const part = heading ? noteSection(text, heading) : text;
+      const block = !!heading?.startsWith("^");
+      const part = heading ? (block ? noteBlock(text, heading) : noteSection(text, heading)) : text;
       if (part === null) {
-        span.append(embedNote(`'${heading}' 제목을 찾지 못했습니다`));
+        span.append(embedNote(`'${heading}' ${block ? "블록" : "제목"}을 찾지 못했습니다`));
         return;
       }
       const body = document.createElement("div");
@@ -149,6 +150,15 @@ export function NoteView({ path, text, onToggleTask }: { path: string; text: str
     const { jumpHeading, openPath } = useApp.getState();
     if (jumpSeq === scrolledSeq || !jumpHeading || openPath !== path || !box.current) return;
     scrolledSeq = jumpSeq;
+    if (jumpHeading.startsWith("^")) {
+      // A block: the paragraph or list item holding its marker.
+      const id = jumpHeading.slice(1).toLowerCase();
+      const mark = [...box.current.querySelectorAll<HTMLElement>("[data-block]")].find((e) => !e.closest(".note-embed-body") && e.dataset.block === id);
+      const target = mark?.closest<HTMLElement>("li, p, blockquote, td, h1, h2, h3, h4, h5, h6") ?? mark;
+      target?.scrollIntoView({ block: "center" });
+      target?.classList.add("block-flash");
+      return;
+    }
     const want = headingKey(jumpHeading);
     const h = [...box.current.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")].find(
       (e) => !e.closest(".note-embed-body") && headingKey(e.textContent ?? "") === want,

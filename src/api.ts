@@ -133,6 +133,18 @@ export interface VaultConfig {
   language: "ko" | "en";
   /** Folder path → color of its name in the file tree; what is inside takes it too. */
   folder_colors: Record<string, string>;
+  /** Named searches shown in the search panel (FR-SRC-06). */
+  saved_searches: SavedSearch[];
+}
+
+export interface SavedSearch {
+  name: string;
+  /** Search box text, in its syntax (#태그 status:검토 ...). */
+  text: string;
+  /** Conditions added with ＋ 조건. */
+  filters: PropFilter[];
+  date_field: DateFilter["field"];
+  range: "all" | "today" | "7d" | "30d";
 }
 
 export interface PresetResult {
@@ -235,6 +247,7 @@ export const api = {
   linkGraph: (folder: string) => invoke<LinkGraph>("link_graph", { folder }),
   propertyValues: (key: string) => invoke<string[]>("property_values", { key }),
   allTags: () => invoke<{ tag: string; count: number }[]>("all_tags"),
+  noteTags: (path: string) => invoke<string[]>("note_tags", { path }),
   getConfig: () => invoke<VaultConfig>("get_config"),
   setConfig: (config: VaultConfig) => invoke<void>("set_config", { config }),
   applyPreset: () => invoke<PresetResult>("apply_preset"),

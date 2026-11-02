@@ -1,4 +1,4 @@
-// 칸반 보기 (FR-PRS-08): 폴더 안 노트를 속성 값(기본 status)별 칸으로 나눈다. 카드를 끌어 놓으면 속성이 바뀐다.
+// 보드 보기 (FR-PRS-08, 칸반 방식): 폴더 안 노트를 속성 값(기본 status)별 칸으로 나눈다. 카드를 끌어 놓으면 속성이 바뀐다.
 import { useState } from "react";
 import type { FolderTable as Table } from "../api";
 import { useApp } from "../store";

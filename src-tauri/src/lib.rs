@@ -86,6 +86,7 @@ pub fn run() {
             commands::property_keys,
             commands::folder_table,
             commands::link_graph,
+            commands::note_tags,
             commands::property_values,
             commands::all_tags,
         ])

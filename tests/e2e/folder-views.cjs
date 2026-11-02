@@ -1,4 +1,4 @@
-// 폴더 보기 (FR-PRS-08·FR-UI-05): 칸반 끌어 놓기로 status 바꾸기, 캘린더 날짜 배치·업무일지 열기, 그래프 노드·링크·클릭. AI 호출 없음.
+// 폴더 보기 (FR-PRS-08·FR-UI-05): 보드 끌어 놓기로 status 바꾸기, 캘린더 날짜 배치·업무일지 열기, 그래프 노드·링크·클릭. AI 호출 없음.
 const { chromium } = require("playwright-core");
 const path = require("path");
 const fs = require("fs");
@@ -29,7 +29,7 @@ const read = (n) => fs.readFileSync(path.join(P, n), "utf8");
 
   // 1) Board from the folder menu.
   await page.click(row("10.프로젝트"), { button: "right" });
-  await page.click('.menu > li:text-is("칸반으로 보기")');
+  await page.click('.menu > li:text-is("보드로 보기")');
   await page.waitForSelector(".board-col");
   const cols = await page.$$eval(".board-col h4", (hs) => hs.map((h) => h.textContent.trim()));
   console.log("1 columns:", JSON.stringify(cols));

@@ -1,9 +1,10 @@
-// SCR-05 검색·필터: 검색창 문법 + 조건(속성·날짜) + 강조된 결과.
+// SCR-05 검색·필터: 검색창 문법 + 조건(속성·날짜) + 강조된 결과 + 저장된 검색(FR-SRC-06).
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, errorMessage, type DateFilter, type PropFilter, type SearchResult } from "../api";
+import { api, errorMessage, type DateFilter, type PropFilter, type SavedSearch, type SearchResult } from "../api";
 import { useApp } from "../store";
 import { openProps } from "./TabBar";
 import { parseQuery } from "../lib/query";
+import { sameSearch, searchLabel, upsertSearch } from "../lib/savedSearch";
 
 const DEBOUNCE_MS = 200;
 const DAY = 24 * 60 * 60 * 1000;
@@ -33,7 +34,29 @@ export function SearchPanel() {
   const [result, setResult] = useState<SearchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [naming, setNaming] = useState<string | null>(null); // name being typed for ☆ 저장
+  const saved = useApp((s) => s.config.saved_searches ?? []);
   const input = useRef<HTMLInputElement>(null);
+
+  const current: SavedSearch = { name: "", text: text.trim(), filters: extra, date_field: dateField, range };
+  const empty = !current.text && !extra.length && range === "all";
+  const active = saved.find((s) => sameSearch(s, current));
+  const apply = (s: SavedSearch) => {
+    setText(s.text);
+    setExtra(s.filters);
+    setDateField(s.date_field);
+    setRange(s.range);
+    setNaming(null);
+  };
+  const store = (list: SavedSearch[]) => {
+    const st = useApp.getState();
+    void st.saveConfig({ ...st.config, saved_searches: list });
+  };
+  const saveAs = (name: string) => {
+    if (!name.trim()) return;
+    store(upsertSearch(saved, { ...current, name: name.trim() }));
+    setNaming(null);
+  };
 
   useEffect(() => {
     // A clicked #태그 fills the box once; a plain Ctrl+Shift+F keeps what was typed.
@@ -85,7 +108,50 @@ export function SearchPanel() {
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Escape" && setText("")}
         />
+        {!empty && (
+          <button
+            className={`icon-btn save-search${active ? " on" : ""}`}
+            title={active ? `저장된 검색 "${active.name}"` : "이 검색 저장"}
+            aria-label="이 검색 저장"
+            onClick={() => setNaming(naming === null ? (active?.name ?? searchLabel(current)) : null)}
+          >
+            {active ? "★" : "☆"}
+          </button>
+        )}
       </div>
+      {naming !== null && (
+        <form
+          className="condition-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            saveAs(naming);
+          }}
+        >
+          <input value={naming} onChange={(e) => setNaming(e.target.value)} placeholder="검색 이름" aria-label="검색 이름" autoFocus onKeyDown={(e) => e.key === "Escape" && setNaming(null)} />
+          <button className="btn small primary" type="submit">
+            저장
+          </button>
+        </form>
+      )}
+      {saved.length > 0 && (
+        <div className="saved-searches" aria-label="저장된 검색">
+          {saved.map((s) => (
+            <span key={s.name} className={`saved-chip${active?.name === s.name ? " on" : ""}`} title={searchLabel(s)}>
+              <button className="saved-run" onClick={() => apply(s)}>
+                {s.name}
+              </button>
+              <button
+                className="saved-del"
+                title="저장된 검색 지우기"
+                aria-label={`${s.name} 지우기`}
+                onClick={() => store(saved.filter((x) => x.name !== s.name))}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       <div className="filters">
         <div className="filter-row">

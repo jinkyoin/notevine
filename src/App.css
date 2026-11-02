@@ -623,7 +623,7 @@ button {
   align-self: center;
 }
 
-/* 폴더 보기: 칸반·캘린더·그래프 */
+/* 폴더 보기: 보드·캘린더·그래프 */
 .board,
 .calendar,
 .graph {
@@ -928,8 +928,13 @@ button {
   color: var(--danger);
 }
 .cm-host {
-  flex: 1;
-  padding-bottom: 40vh;
+  flex: none;
+  padding-bottom: 16px;
+}
+/* Room to scroll the last lines up, below the note and its tags. */
+.editor-tail {
+  flex: 1 0 40vh;
+  cursor: text;
 }
 .cm-host .cm-editor {
   font-size: 16px;
@@ -991,6 +996,16 @@ button {
 }
 .search-box {
   padding: 8px 8px 4px;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.save-search {
+  flex: none;
+  color: var(--muted);
+}
+.save-search.on {
+  color: #f08c00;
 }
 .search-input,
 .condition-form input,
@@ -1040,6 +1055,46 @@ button {
   border-radius: 6px;
   background: var(--bg-active);
   font-size: 12px;
+}
+.saved-searches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 8px 0;
+}
+.saved-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 12px;
+  overflow: hidden;
+}
+.saved-chip.on {
+  border-color: var(--accent);
+  background: var(--bg-active);
+}
+.saved-chip button {
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+}
+.saved-run {
+  padding: 2px 4px 2px 9px;
+}
+.saved-del {
+  padding: 2px 7px 2px 3px;
+  color: var(--muted) !important;
+  opacity: 0;
+}
+.saved-chip:hover .saved-del,
+.saved-del:focus-visible {
+  opacity: 1;
+}
+.saved-chip button:hover {
+  color: var(--accent);
 }
 .result-summary {
   padding-bottom: 2px;
@@ -1805,7 +1860,7 @@ kbd {
 .ai-input {
   display: flex;
   gap: 6px;
-  align-items: flex-end;
+  align-items: center;
   padding: 8px 10px 10px;
   border-top: 1px solid var(--border);
 }
@@ -1819,6 +1874,28 @@ kbd {
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px 8px;
+}
+.ai-input .ai-send {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+}
+.ai-send svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ai-send .ai-stop-icon {
+  fill: currentColor;
+  stroke: none;
 }
 
 /* SCR-19 전송 확인 */
@@ -2109,14 +2186,62 @@ kbd {
   font-weight: 600;
 }
 
+/* 노트 맨 아래 태그 줄 */
+.note-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: var(--editor-max);
+  margin: 8px auto 0;
+  /* Lines up with the note's text, like .note-view. */
+  padding: 12px 34px 0 38px;
+  font-size: 13px;
+  position: relative;
+}
+.note-tags::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 38px;
+  right: 34px;
+  border-top: 1px solid var(--border);
+}
+.note-tags .label {
+  color: var(--muted);
+  margin-right: 2px;
+}
+.note-tags button {
+  border: none;
+  border-radius: 12px;
+  padding: 2px 10px;
+  background: var(--bg-active);
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+.note-tags button:hover {
+  background: var(--bg-hover);
+}
+
 /* SCR-04 읽기 모드 */
+.note-view .block-flash {
+  animation: block-flash 2s ease-out;
+  border-radius: 4px;
+}
+@keyframes block-flash {
+  from {
+    background: var(--selection);
+  }
+}
 .note-view {
-  flex: 1;
+  flex: none;
   width: 100%;
   max-width: var(--editor-max);
   margin: 0 auto;
   /* Lines up with the editor's text (CodeMirror indents lines by 6px). */
-  padding: 4px 34px 40vh 38px;
+  padding: 4px 34px 16px 38px;
   font-size: 16px;
   line-height: 1.7;
   overflow-wrap: anywhere;

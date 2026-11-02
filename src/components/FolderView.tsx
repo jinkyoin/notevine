@@ -1,4 +1,4 @@
-// 폴더 보기: 편집기 자리에 폴더 안 노트를 표(FR-PRP-05)·칸반·캘린더(FR-PRS-08)·그래프(FR-UI-05)로 본다.
+// 폴더 보기: 편집기 자리에 폴더 안 노트를 표(FR-PRP-05)·보드·캘린더(FR-PRS-08)·그래프(FR-UI-05)로 본다.
 import { useEffect, useState } from "react";
 import { api, type FolderTable as Table } from "../api";
 import { useApp, type FolderMode } from "../store";
@@ -7,7 +7,7 @@ import { FolderBoard } from "./FolderBoard";
 import { FolderCalendar } from "./FolderCalendar";
 import { FolderGraph } from "./FolderGraph";
 
-export const MODE_LABEL: Record<FolderMode, string> = { table: "표", board: "칸반", calendar: "캘린더", graph: "그래프" };
+export const MODE_LABEL: Record<FolderMode, string> = { table: "표", board: "보드", calendar: "캘린더", graph: "그래프" };
 
 export function FolderView({ folder }: { folder: string }) {
   const mode = useApp((s) => s.folderMode);

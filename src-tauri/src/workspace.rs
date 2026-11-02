@@ -55,6 +55,29 @@ pub struct VaultConfig {
     pub language: String,
     /// Folder path → color of its name in the file tree; notes and folders inside take it too.
     pub folder_colors: BTreeMap<String, String>,
+    /// Named searches shown in the search panel (FR-SRC-06).
+    pub saved_searches: Vec<SavedSearch>,
+}
+
+/// A search kept under a name: the search box text plus the conditions added below it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SavedSearch {
+    pub name: String,
+    pub text: String,
+    pub filters: Vec<SavedFilter>,
+    /// "modified" | "created"
+    pub date_field: String,
+    /// "all" | "today" | "7d" | "30d"
+    pub range: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SavedFilter {
+    pub key: String,
+    pub op: String,
+    pub value: Option<String>,
 }
 
 impl Default for VaultConfig {
@@ -79,6 +102,7 @@ impl Default for VaultConfig {
             theme: "system".into(),
             language: "ko".into(),
             folder_colors: BTreeMap::new(),
+            saved_searches: Vec::new(),
         }
     }
 }
@@ -679,6 +703,13 @@ mod tests {
             autosave_ms: 2500,
             idea_statuses: vec!["새".into()],
             folder_colors: BTreeMap::from([("업무".into(), "#1c7ed6".into())]),
+            saved_searches: vec![SavedSearch {
+                name: "진행 중".into(),
+                text: "status:진행".into(),
+                filters: vec![SavedFilter { key: "owner".into(), op: "empty".into(), value: None }],
+                date_field: "modified".into(),
+                range: "7d".into(),
+            }],
             ..c
         };
         save_config(&v, &changed).unwrap();

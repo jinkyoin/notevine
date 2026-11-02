@@ -291,12 +291,22 @@ export function AiPanel() {
           }}
         />
         {running ? (
-          <button type="button" className="btn small" onClick={stop}>
-            중지
+          <button type="button" className="btn small ai-send" title="중지" aria-label="중지" onClick={stop}>
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <rect className="ai-stop-icon" x="4" y="4" width="8" height="8" rx="1.5" />
+            </svg>
           </button>
         ) : (
-          <button type="submit" className="btn primary small" disabled={!q.trim() || !usable.length}>
-            보내기
+          <button
+            type="submit"
+            className="btn primary small ai-send"
+            title="보내기 (Enter)"
+            aria-label="보내기"
+            disabled={!q.trim() || !usable.length}
+          >
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" />
+            </svg>
           </button>
         )}
       </form>

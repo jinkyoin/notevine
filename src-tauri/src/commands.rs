@@ -210,6 +210,12 @@ pub fn folder_table(state: State<AppState>, folder: String) -> AppResult<crate::
     with_vault(&state, |v| crate::search::folder_table(v.index(), &folder))
 }
 
+/// Tags of one note, shown under it.
+#[tauri::command]
+pub fn note_tags(state: State<AppState>, path: String) -> AppResult<Vec<String>> {
+    with_vault(&state, |v| crate::search::note_tags(v.index(), &path))
+}
+
 /// Notes of a folder and the links between them, for the graph view (FR-UI-05).
 #[tauri::command]
 pub fn link_graph(state: State<AppState>, folder: String) -> AppResult<crate::search::LinkGraph> {

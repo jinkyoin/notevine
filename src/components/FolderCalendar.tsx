@@ -47,6 +47,13 @@ export function FolderCalendar({ table }: { table: Table }) {
         <button className="btn ghost small" onClick={() => setMonth({ y: new Date().getFullYear(), m: new Date().getMonth() })}>
           오늘
         </button>
+        <button
+          className="btn ghost small"
+          title="이 달의 업무일지·회의록·프로젝트·아이디어를 모아 월간 회고 노트를 만듭니다"
+          onClick={() => void useApp.getState().createReview("month", new Date(month.y, month.m, 1))}
+        >
+          {month.m + 1}월 회고 만들기
+        </button>
         <span className="spacer" />
         <label className="muted small">
           날짜 기준{" "}

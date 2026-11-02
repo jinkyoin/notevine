@@ -23,6 +23,7 @@ import { colorSpans } from "../editor/colors";
 import { toggleTask } from "../lib/renderNote";
 import { FormatBar, ModeSwitch, type FormatAction } from "./FormatBar";
 import { NoteView } from "./NoteView";
+import { NoteTags } from "./NoteTags";
 
 const SAVE_DELAY_MS = 1000;
 const DOC_TEXT_DELAY_MS = 250;
@@ -256,8 +257,15 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
               history(),
               drawSelection(),
               EditorView.lineWrapping,
-              // Keep the cursor out from under the title and format bar pinned at the top.
-              EditorView.scrollMargins.of(() => ({ top: (pinned.current?.offsetHeight ?? 0) + 8 })),
+              // Keep the cursor out from under the title and format bar pinned at the top, but only
+              // once the note is scrolled under them: CodeMirror also takes the margin off the area
+              // where it shows tooltips, and a margin on an unscrolled note hid the [[ suggestions.
+              EditorView.scrollMargins.of((view) => {
+                const top = pinned.current;
+                if (!top) return null;
+                const covered = top.getBoundingClientRect().bottom > view.scrollDOM.getBoundingClientRect().top;
+                return covered ? { top: top.offsetHeight + 8 } : null;
+              }),
               EditorView.contentAttributes.of({ spellcheck: "false", autocorrect: "off" }),
               markdown({ base: markdownLanguage, codeLanguages: languages }),
               syntaxHighlighting(noteHighlight),
@@ -278,6 +286,16 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
                 },
                 openUrl: (url) => void openUrl(url).catch(() => {}),
                 clickMode: () => useApp.getState().config.link_click,
+                readTarget: async (target) => {
+                  const found = await api.resolveLink(target).catch(() => null);
+                  if (!found) return null;
+                  // An open note may have edits not saved yet.
+                  if (found === useApp.getState().openPath) await useApp.getState().flushEditor();
+                  const text = await api.readNote(found).catch(() => null);
+                  return text === null ? null : { path: found, text };
+                },
+                editTarget: (p, fn) => useApp.getState().editNote(p, fn, "블록 ID를 넣지 못했습니다"),
+                tags: () => api.allTags().catch(() => []),
               }),
               attachments({
                 path: () => path,
@@ -436,6 +454,18 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
         <>
           <div className="cm-host" ref={host} hidden={readMode} />
           {readMode && readText !== null && <NoteView path={path} text={readText} onToggleTask={toggleTaskAt} />}
+          <NoteTags path={path} />
+          <div
+            className="editor-tail"
+            // A click below the note puts the cursor at its end, as on an empty page.
+            onMouseDown={(e) => {
+              const v = viewRef.current;
+              if (readMode || !v) return;
+              e.preventDefault();
+              v.focus();
+              v.dispatch({ selection: { anchor: v.state.doc.length }, scrollIntoView: true });
+            }}
+          />
         </>
       )}
     </div>

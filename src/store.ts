@@ -13,9 +13,11 @@ import {
 } from "./api";
 import { ancestors, findNode, remapPath } from "./lib/tree";
 import { setProperty, type Prop } from "./lib/frontmatter";
+import { buildReview, period, reviewFolder, reviewName, type ReviewKind } from "./lib/review";
+import { day } from "./lib/folderTable";
 import type { ParaFolder } from "./lib/para";
 import { insertTemplate } from "./editor/template";
-import { findHeadingLine } from "./lib/headings";
+import { findBlockLine, findHeadingLine } from "./lib/headings";
 import {
   closeOtherTabs,
   closeTab,
@@ -84,6 +86,7 @@ export const DEFAULT_CONFIG: VaultConfig = {
   theme: "system",
   language: "ko",
   folder_colors: {},
+  saved_searches: [],
 };
 
 /** Applies the theme setting (FR-UI-02) to the document. */
@@ -187,6 +190,11 @@ interface AppStore {
   setTableView(folder: string | null, mode?: FolderMode): void;
   /** Sets (or with undefined removes) a frontmatter property, through the editor when the note is open. */
   setNoteProperty(path: string, key: string, value: Prop["value"] | undefined): Promise<void>;
+  /**
+   * Changes a note's text with `fn` (null = can't), through the editor when the note is open
+   * there, else on disk. `failed` is the message shown when `fn` gives up.
+   */
+  editNote(path: string, fn: (text: string) => string | null, failed: string): Promise<boolean>;
   /** Opens a note in the right pane, beside the current note. */
   openSplit(path: string): void;
   closeSplit(): void;
@@ -204,6 +212,8 @@ interface AppStore {
   openTodayJournal(): Promise<void>;
   /** Opens or creates the journal of a day (YYYY-MM-DD). */
   openJournalOn(date: string): Promise<void>;
+  /** Collects the week or month around `date` into a review note and opens it (an existing one is just opened). */
+  createReview(kind: ReviewKind, date?: Date): Promise<void>;
   /** Folder new notes go to: the open note's folder, else the vault root. */
   currentDir(): string;
   /** Creates a note (optionally from a template); without a name it starts renaming it in the tree. */
@@ -391,7 +401,7 @@ export const useApp = create<AppStore>((set, get) => {
       await get().refreshTree();
 
       unlistenChanges?.();
-      unlistenChanges = await listen<VaultChanged>("vault-changed", ({ payload }) => {
+      const changes = await listen<VaultChanged>("vault-changed", ({ payload }) => {
         if (payload.external.length) {
           set({ externalSeq: get().externalSeq + 1, externalPaths: payload.external });
         }
@@ -399,6 +409,13 @@ export const useApp = create<AppStore>((set, get) => {
         window.clearTimeout(treeTimer);
         treeTimer = window.setTimeout(() => get().refreshTree(), 150);
       });
+      // Indexing runs in the background after opening: reload the note list (link
+      // completion, idea board, folder views) once it is done.
+      const indexed = await listen("index-ready", () => void get().refreshTree());
+      unlistenChanges = () => {
+        changes();
+        indexed();
+      };
 
       // Reopen the tabs and the note that were open last time (FR-VLT-02).
       const ws = await api.getWorkspace().catch(() => null);
@@ -515,8 +532,10 @@ export const useApp = create<AppStore>((set, get) => {
         // Read the saved text, so flush the editor first when the heading is in the open note.
         if (found === get().openPath) await get().flushEditor();
         const text = await attempt(() => api.readNote(found));
-        const line = text === undefined ? null : findHeadingLine(text, heading);
-        if (line === null) get().toast(`'${heading}' 제목을 찾지 못해 노트 처음을 엽니다`);
+        // [[노트#^id]] points at a block, [[노트#제목]] at a heading.
+        const block = heading.startsWith("^");
+        const line = text === undefined ? null : block ? findBlockLine(text, heading) : findHeadingLine(text, heading);
+        if (line === null) get().toast(`'${heading}' ${block ? "블록" : "제목"}을 찾지 못해 노트 처음을 엽니다`);
         return get().openNote(found, line ?? undefined, line === null ? undefined : heading, opts);
       }
       if (found) return get().openNote(found, undefined, undefined, opts);
@@ -588,21 +607,30 @@ export const useApp = create<AppStore>((set, get) => {
     },
 
     async setNoteProperty(path, key, value) {
-      const failed = () => get().toast("속성 YAML에 오류가 있어 속성을 바꾸지 못했습니다", "error");
+      await get().editNote(path, (t) => setProperty(t, key, value), "속성 YAML에 오류가 있어 속성을 바꾸지 못했습니다");
+    },
+
+    async editNote(path, fn, failed) {
       if (get().openPath === path && get().editorApi) {
-        if (!get().editText((t) => setProperty(t, key, value))) failed();
-        return;
+        if (get().editText(fn)) return true;
+        get().toast(failed, "error");
+        return false;
       }
       try {
         // The right pane may hold unsaved edits of this note.
         await get().flushEditor();
-        const next = setProperty(await api.readNote(path), key, value);
-        if (next === null) return failed();
+        const next = fn(await api.readNote(path));
+        if (next === null) {
+          get().toast(failed, "error");
+          return false;
+        }
         const out = await api.writeNote(path, next, true);
         if (out.conflict) get().toast(`다른 프로그램이 동시에 고쳐서 "${out.conflict}"로 따로 저장했습니다`, "error");
         get().noteSaved();
+        return true;
       } catch (e) {
-        get().toast(`속성을 바꾸지 못했습니다: ${errorMessage(e)}`, "error");
+        get().toast(`노트를 고치지 못했습니다: ${errorMessage(e)}`, "error");
+        return false;
       }
     },
 
@@ -705,6 +733,26 @@ export const useApp = create<AppStore>((set, get) => {
       if (!path) return;
       await get().refreshTree();
       get().openNote(path);
+    },
+
+    async createReview(kind, date = new Date()) {
+      const config = get().config;
+      const p = period(kind, date);
+      const folder = reviewFolder(config);
+      const name = reviewName(kind, p);
+      const path = `${folder}/${name}.md`;
+      if (get().notes.some((n) => n.path.toLowerCase() === path.toLowerCase())) {
+        get().openNote(path);
+        get().toast(`이미 만든 회고를 엽니다 · 다시 만들려면 이 노트를 지우고 실행하세요`);
+        return;
+      }
+      const table = await attempt(() => api.folderTable(""));
+      if (!table) return;
+      const content = buildReview(kind, p, table.rows, config, day(Date.now()));
+      const created = await attempt(() => api.createNote(folder, name, content));
+      if (!created) return;
+      await get().refreshTree();
+      get().openNote(created);
     },
 
     async openJournalOn(date) {

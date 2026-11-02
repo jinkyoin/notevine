@@ -1,4 +1,4 @@
-// 폴더 칸반·캘린더 보기 (FR-PRS-08)의 묶음·날짜 규칙. 화면과 상관없는 규칙만 둔다.
+// 폴더 보드·캘린더 보기 (FR-PRS-08)의 묶음·날짜 규칙. 화면과 상관없는 규칙만 둔다.
 import type { FolderTable } from "../api";
 import { day, MODIFIED, type TableRow } from "./folderTable";
 
