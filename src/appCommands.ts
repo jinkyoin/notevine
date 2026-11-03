@@ -64,6 +64,16 @@ export function registerAppCommands(): () => void {
       run: () => st().setModal("mdHelp"),
     },
     {
+      id: "ai.noteWork",
+      title: "AI로 노트 만들기·고치기",
+      keywords: "AI 노트 작업 만들기 고치기 정리 수정 생성 편집 edit",
+      when: hasVault,
+      run: () => {
+        useAi.getState().setMode("edit");
+        st().focusAi();
+      },
+    },
+    {
       id: "canvas.new",
       title: "새 캔버스",
       keywords: "캔버스 화이트보드 보드 마인드맵 카드 canvas whiteboard",

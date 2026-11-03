@@ -158,7 +158,8 @@ function ModelPicker({
 
 export function AiPanel() {
   const { enabled, providers, chat, running } = useAi();
-  const { detect, setEnabled, setProvider, setModel, current, ask, stop, newChat, saveAnswer, login } = useAi.getState();
+  const { detect, setEnabled, setProvider, setModel, current, ask, stop, newChat, saveAnswer, login, proposeEdits, setMode } = useAi.getState();
+  const mode = useAi((s) => s.mode);
   const loggingIn = useAi((s) => s.loggingIn);
   const providerId = useAi((s) => s.providerId);
   const models = useAi((s) => s.models);
@@ -241,7 +242,13 @@ export function AiPanel() {
       )}
 
       <div className="ai-chat">
-        {chat.length === 0 && usable.length > 0 && (
+        {chat.length === 0 && usable.length > 0 && mode === "edit" && (
+          <p className="muted small pad">
+            예: "이 회의록의 결정사항을 새 노트로 정리해 줘", "할 일에 담당자를 채워 줘", "이 노트들에 #제안서 태그를 달아 줘". AI는 노트를
+            직접 바꾸지 않고 바꿀 안을 냅니다. 노트별로 바뀌는 부분을 보고 고른 것만 적용하며, 히스토리로 되돌릴 수 있습니다.
+          </p>
+        )}
+        {chat.length === 0 && usable.length > 0 && mode === "ask" && (
           <p className="muted small pad">
             예: "지난주 회의에서 결정한 것 정리해 줘", "Tauri 2 자동 업데이트 방법 조사해 줘". 관련 노트를 찾아 보내기 전에
             보여 드리고, 노트로 부족하면 웹에서도 찾아봅니다. 답은 [새 노트로 저장]으로 남길 수 있습니다.
@@ -292,20 +299,38 @@ export function AiPanel() {
         <div ref={bottom} />
       </div>
 
+      <div className="ai-mode" role="tablist" aria-label="AI에 맡길 일">
+        <button type="button" role="tab" className={mode === "ask" ? "on" : ""} onClick={() => setMode("ask")} title="노트와 웹을 바탕으로 답을 받습니다">
+          질문
+        </button>
+        <button
+          type="button"
+          role="tab"
+          className={mode === "edit" ? "on" : ""}
+          onClick={() => setMode("edit")}
+          title="AI가 노트를 새로 만들거나 고치는 안을 내고, 확인한 것만 적용합니다"
+        >
+          노트 작업
+        </button>
+      </div>
       <form
         className="ai-input"
         onSubmit={(e) => {
           e.preventDefault();
           const text = q;
           setQ("");
-          void ask(text);
+          void (mode === "edit" ? proposeEdits(text) : ask(text));
         }}
       >
         <textarea
           value={q}
           rows={2}
           placeholder={
-            usable.length ? "질문하거나 조사할 것을 쓰세요 (Enter 보내기, Shift+Enter 줄바꿈)" : "AI를 연결하면 질문할 수 있습니다"
+            !usable.length
+              ? "AI를 연결하면 질문할 수 있습니다"
+              : mode === "edit"
+                ? "만들거나 고칠 내용을 쓰세요 (Enter 보내기)"
+                : "질문하거나 조사할 것을 쓰세요 (Enter 보내기, Shift+Enter 줄바꿈)"
           }
           disabled={!usable.length}
           onChange={(e) => setQ(e.target.value)}

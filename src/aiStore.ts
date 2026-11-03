@@ -19,7 +19,10 @@ import {
   type WriteTask,
 } from "./ai";
 import { useApp } from "./store";
-import { noteTitle } from "./lib/tree";
+import { findNode, noteTitle } from "./lib/tree";
+import { appendText, applyChanges, editSystem, parseEdits, planEdit, type Planned } from "./lib/aiEdits";
+import { day } from "./lib/folderTable";
+import type { TreeNode } from "./api";
 
 export interface ChatMessage {
   role: "user" | "ai";
@@ -67,6 +70,27 @@ export interface Preview {
   handle?: RunHandle;
 }
 
+/** One proposed note change in the review dialog. */
+export interface EditItem extends Planned {
+  checked: boolean;
+}
+
+/** AI note work (create/append/edit proposals) waiting for the user's review. */
+export interface EditProposal {
+  request: string;
+  /** The AI's answer so far, while it streams. */
+  raw: string;
+  streaming: boolean;
+  error: string | null;
+  /** The AI's explanation outside the blocks. */
+  message: string;
+  items: EditItem[];
+  /** Notes sent with the request: the only ones it may change. */
+  sources: string[];
+  applying: boolean;
+  handle?: RunHandle;
+}
+
 interface AiState {
   enabled: boolean;
   providers: AiProvider[] | null;
@@ -79,6 +103,16 @@ interface AiState {
   preview: Preview | null;
   /** Provider whose login window is open. */
   loggingIn: string | null;
+  /** What the panel's box does: ask a question, or have the AI propose note changes. */
+  mode: "ask" | "edit";
+  setMode(mode: "ask" | "edit"): void;
+  edits: EditProposal | null;
+  /** Sends a request for note changes; the proposals open in the review dialog. */
+  proposeEdits(request: string): Promise<void>;
+  toggleEdit(index: number, on: boolean): void;
+  /** Applies the checked proposals (through the editor or the save path, so history keeps them). */
+  applyEdits(): Promise<void>;
+  closeEdits(): void;
   /** Questions may also search the web (choice in the send dialog, remembered). */
   webSearch: boolean;
   setWebSearch(on: boolean): void;
@@ -104,6 +138,23 @@ interface AiState {
 }
 
 const app = () => useApp.getState();
+
+/** Folders of the vault (two levels deep), for telling the AI where new notes can go. */
+function folderPaths(tree: TreeNode[], depth = 0): string[] {
+  return tree.flatMap((n) => (n.kind === "folder" ? [n.path, ...(depth < 1 ? folderPaths(n.children ?? [], depth + 1) : [])] : []));
+}
+
+/** Makes `dir` and the folders above it when they are missing. */
+async function ensureFolder(dir: string) {
+  const parts = dir.split("/").filter(Boolean);
+  for (let i = 0; i < parts.length; i++) {
+    const path = parts.slice(0, i + 1).join("/");
+    if (findNode(app().tree, path)) continue;
+    await api.createFolder(parts.slice(0, i).join("/"), parts[i]).catch((e) => {
+      if ((e as { code?: string })?.code !== "already_exists") throw e;
+    });
+  }
+}
 
 function stamp(d = new Date()) {
   const p = (n: number) => String(n).padStart(2, "0");
@@ -172,6 +223,126 @@ export const useAi = create<AiState>((set, get) => {
     preview: null,
     loggingIn: null,
     webSearch: aiPrefs.web(),
+    mode: "ask",
+    edits: null,
+
+    setMode(mode) {
+      set({ mode });
+    },
+
+    async proposeEdits(request) {
+      const q = request.trim();
+      if (!q || get().running) return;
+      const provider = await ready();
+      if (!provider) return;
+      const related = await relatedNotes(q);
+      // The open note is usually the one to work on: offer it checked.
+      const open = app().openPath;
+      const checked = open && related.notes.some((n) => n.path === open) ? [...new Set([...related.checked, open])] : related.checked;
+      const paths = await get().confirmSend({ provider, title: "노트 작업 보내기", ...related, checked, extra: { label: "요청", text: q } });
+      if (paths === null) return;
+      await app().flushEditor();
+      const cfg = app().config;
+      const system = editSystem({ folders: folderPaths(app().tree), newNoteDir: cfg.preset_enabled ? cfg.inbox_folder : "", today: day(Date.now()) });
+      const update = (patch: Partial<EditProposal>) => {
+        const cur = get().edits;
+        if (cur?.handle === handle) set({ edits: { ...cur, ...patch } });
+      };
+      const handle = runAi(provider.id, system, `요청: ${q}`, paths, (raw) => update({ raw }));
+      set({
+        running: handle,
+        edits: { request: q, raw: "", streaming: true, error: null, message: "", items: [], sources: paths, applying: false, handle },
+      });
+      try {
+        const { text } = await handle.done;
+        const { message, edits } = parseEdits(text);
+        const byLower = new Map(app().notes.map((n) => [n.path.toLowerCase(), n.path]));
+        const actual = (p: string) => byLower.get(p.toLowerCase()) ?? p;
+        const sent = new Set(paths);
+        const items = await Promise.all(
+          edits.map(async (e) => {
+            const plan = await planEdit(
+              { ...e, path: actual(e.path) },
+              {
+                sent,
+                exists: (p) => byLower.has(p.toLowerCase()) || !!findNode(app().tree, p),
+                read: (p) => api.readNote(actual(p)),
+              },
+            );
+            return { ...plan, path: actual(plan.path), checked: !plan.error };
+          }),
+        );
+        update({ raw: text, streaming: false, message: message || (edits.length ? "" : text.trim()), items });
+      } catch (e) {
+        update({ streaming: false, error: errorMessage(e) });
+      } finally {
+        set({ running: null });
+      }
+    },
+
+    toggleEdit(index, on) {
+      const p = get().edits;
+      if (!p) return;
+      set({ edits: { ...p, items: p.items.map((it, i) => (i === index && !it.error ? { ...it, checked: on } : it)) } });
+    },
+
+    async applyEdits() {
+      const p = get().edits;
+      if (!p || p.streaming || p.applying) return;
+      const todo = p.items.filter((it) => it.checked && !it.error);
+      if (!todo.length) return;
+      set({ edits: { ...p, applying: true } });
+      let done = 0;
+      let created: string | null = null;
+      const failed: string[] = [];
+      for (const it of todo) {
+        const e = it.edit;
+        if (e.kind === "create") {
+          const slash = it.path.lastIndexOf("/");
+          const dir = slash < 0 ? "" : it.path.slice(0, slash);
+          try {
+            await ensureFolder(dir);
+            const path = await api.createNote(dir, it.path.slice(slash + 1), it.after);
+            created ??= path;
+            done++;
+          } catch (err) {
+            failed.push(`${it.path}: ${errorMessage(err)}`);
+          }
+          continue;
+        }
+        // Worked out again from the note as it is now, in case it changed since the preview.
+        const ok = await app().editNote(
+          it.path,
+          (t) => {
+            if (e.kind === "append") return appendText(t, e.content);
+            const r = applyChanges(t, e.changes);
+            return "error" in r ? null : r.text;
+          },
+          `${it.path}: 그사이 노트가 바뀌어 적용하지 못했습니다`,
+        );
+        if (ok) done++;
+        else failed.push(it.path);
+      }
+      await app().refreshTree();
+      app().noteSaved();
+      set({ edits: null });
+      if (done) {
+        const open = created;
+        app().toast(
+          `노트 ${done}개에 적용했습니다 · 히스토리에서 되돌릴 수 있습니다`,
+          "info",
+          open ? { label: "새 노트 열기", run: () => app().openNote(open) } : undefined,
+        );
+      }
+      if (failed.length) app().toast(`적용하지 못한 것: ${failed.join(", ")}`, "error");
+    },
+
+    closeEdits() {
+      const p = get().edits;
+      if (p?.applying) return;
+      if (p?.streaming) p.handle?.cancel();
+      set({ edits: null });
+    },
 
     setWebSearch(on) {
       aiPrefs.setWeb(on);

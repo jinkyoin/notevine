@@ -33,6 +33,7 @@ import { Settings } from "./Settings";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { AiPanel } from "./AiPanel";
 import { AiPreview, AiSendConfirm } from "./AiDialogs";
+import { AiEdits } from "./AiEdits";
 
 /** The vault's `.app/custom.css`, last in the page so it wins over the app's own styles. */
 function applyUserCss(text: string) {
@@ -283,6 +284,7 @@ export function MainLayout() {
       <ConfirmDialog />
       <AiSendConfirm />
       <AiPreview />
+      <AiEdits />
     </div>
   );
 }
