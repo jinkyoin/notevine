@@ -5,7 +5,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { api, type TreeNode } from "../api";
 import { useApp } from "../store";
 import { baseName, countNotes, findNode, noteTitle, parentPath } from "../lib/tree";
-import { paraActions } from "../lib/para";
+import { paraActions, paraInfo } from "../lib/para";
 import { openProps } from "./TabBar";
 import { MODE_LABEL } from "./FolderView";
 import { TEXT_COLORS } from "../editor/colors";
@@ -160,7 +160,7 @@ function Row({ node, depth, onMenu, color }: { node: TreeNode; depth: number; on
           e.stopPropagation();
           onMenu({ x: e.clientX, y: e.clientY, node });
         }}
-        title={node.path}
+        title={(isFolder && paraInfo(node.path, useApp.getState().config)) ? `${node.path}\n${paraInfo(node.path, useApp.getState().config)}` : node.path}
       >
         <span className="twisty">{isFolder && <Chevron open={expanded} />}</span>
         {isRenaming ? (
@@ -251,7 +251,7 @@ function NewFolderRow({ parent, depth, project }: { parent: string; depth: numbe
 }
 
 function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
-  const { createNote, setEditing, remove, toggleFolder, toast, setVersionView, setModal, setFolderColor } = useApp.getState();
+  const { createNote, setEditing, remove, toggleFolder, toast, setVersionView, setModal } = useApp.getState();
   const node = menu.node;
   const folderColor = node?.kind === "folder" ? useApp.getState().config.folder_colors?.[node.path] : undefined;
   const dir = !node ? "" : node.kind === "folder" ? node.path : parentPath(node.path);
@@ -266,113 +266,161 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
     };
   }, [onClose]);
 
-  const items: [string, () => void][] = [
-    [tx("새 노트"), () => createNote(dir)],
-    [tx("새 캔버스"), () => void useApp.getState().createCanvas(dir)],
-    [
-      tx("새 폴더"),
-      () => {
-        if (dir) toggleFolder(dir, true);
-        setEditing({ mode: "new-folder", parent: dir });
-      },
-    ],
-  ];
-  if (node) {
-    const { config, tree, startNewProject, archive, unarchive } = useApp.getState();
-    const para = paraActions(node.path, node.kind === "folder", config, (f) => !!f && !!findNode(tree, f));
-    items.push(
-      ...(node.kind === "note"
-        ? ([
-            [tx("새 탭에서 열기"), () => useApp.getState().openNote(node.path, undefined, undefined, { newTab: true })],
-            [tx("오른쪽에 나란히 열기"), () => useApp.getState().openSplit(node.path)],
-          ] as [string, () => void][])
-        : []),
-      ...(node.kind === "folder"
-        ? (["table", "board", "calendar", "graph"] as const).map((m): [string, () => void] => [
-            tx("{0}로 보기", MODE_LABEL[m]),
-            () => useApp.getState().setTableView(node.path, m),
-          ])
-        : []),
-      ...para.map(
-        (a): [string, () => void] => [
-          a.label,
-          () => void (a.kind === "newProject" ? startNewProject() : a.kind === "archive" ? archive(node.path) : unarchive(node.path, a.to)),
-        ],
-      ),
-      ...(node.kind !== "folder"
-        ? ([[tx("연결된 프로그램으로 열기"), () => void useApp.getState().openExternal(node.path)]] as [string, () => void][])
-        : []),
-      [tx("이름 변경"), () => setEditing({ mode: "rename", path: node.path })],
-      ...(node.kind === "note" ? ([[tx("히스토리 보기"), () => setVersionView({ path: node.path, id: null })]] as [string, () => void][]) : []),
+  type Item = { label: string; run: () => void; danger?: boolean };
+  /** A line of small buttons ("새로 만들기  노트 · 캔버스 · 폴더"). */
+  type Row = { row: string; buttons: [string, () => void][] };
+  const newRow: Row = {
+    row: tx("새로 만들기"),
+    buttons: [
+      [tx("노트"), () => createNote(dir)],
+      [tx("캔버스"), () => void useApp.getState().createCanvas(dir)],
       [
-        tx("탐색기에서 보기"),
-        async () => {
+        tx("폴더"),
+        () => {
+          if (dir) toggleFolder(dir, true);
+          setEditing({ mode: "new-folder", parent: dir });
+        },
+      ],
+    ],
+  };
+  // Groups, drawn with a line between them; empty groups are left out.
+  const groups: (Item | Row)[][] = [];
+  if (!node) {
+    groups.push([newRow], [{ label: tx("삭제된 노트 히스토리"), run: () => setModal("deleted") }]);
+  } else {
+    const { config, tree, startNewProject, archive, unarchive, openNote, openSplit, openExternal, setTableView } = useApp.getState();
+    const para = paraActions(node.path, node.kind === "folder", config, (f) => !!f && !!findNode(tree, f));
+    const isFolder = node.kind === "folder";
+    const paraItems: Item[] = para.map((a) => ({
+      label: a.label,
+      run: () => void (a.kind === "newProject" ? startNewProject() : a.kind === "archive" ? archive(node.path) : unarchive(node.path, a.to)),
+    }));
+    if (isFolder) {
+      groups.push([
+        newRow,
+        {
+          row: tx("보기"),
+          buttons: (["table", "board", "calendar", "graph"] as const).map((m): [string, () => void] => [MODE_LABEL[m], () => setTableView(node.path, m)]),
+        },
+      ]);
+    } else {
+      // New things go into the note's folder.
+      groups.push([newRow]);
+      groups.push([
+        ...(node.kind === "note"
+          ? [
+              { label: tx("새 탭에서 열기"), run: () => openNote(node.path, undefined, undefined, { newTab: true }) },
+              { label: tx("오른쪽에 나란히 열기"), run: () => openSplit(node.path) },
+            ]
+          : []),
+        { label: tx("연결된 프로그램으로 열기"), run: () => void openExternal(node.path) },
+      ]);
+    }
+    groups.push([
+      { label: tx("이름 변경"), run: () => setEditing({ mode: "rename", path: node.path }) },
+      ...(node.kind === "note" ? [{ label: tx("히스토리 보기"), run: () => setVersionView({ path: node.path, id: null }) }] : []),
+      ...paraItems,
+    ]);
+    groups.push([
+      {
+        label: tx("탐색기에서 보기"),
+        run: async () => {
           try {
             await revealItemInDir(await api.revealEntry(node.path));
           } catch (e) {
             toast(String(e), "error");
           }
         },
-      ],
-      [
-        tx("경로 복사"),
-        () => navigator.clipboard.writeText(node.path).then(() => toast(tx("경로를 복사했습니다"))),
-      ],
-      [
-        tx("삭제"),
-        async () => {
-          const what = node.kind === "folder" ? tx("폴더 \"{0}\"와 안의 모든 파일", node.name) : `"${baseName(node.path)}"`;
+      },
+      { label: tx("경로 복사"), run: () => void navigator.clipboard.writeText(node.path).then(() => toast(tx("경로를 복사했습니다"))) },
+    ]);
+    groups.push([
+      {
+        label: tx("삭제"),
+        danger: true,
+        run: async () => {
+          const what = isFolder ? tx("폴더 \"{0}\"와 안의 모든 파일", node.name) : `"${baseName(node.path)}"`;
           if (await ask(tx("{0}을(를) 휴지통으로 옮길까요?", what), { title: tx("삭제"), kind: "warning" })) remove(node.path);
         },
-      ],
-    );
+      },
+    ]);
   }
-
-  items.push([tx("삭제된 노트 히스토리"), () => setModal("deleted")]);
+  const shown = groups.filter((g) => g.length);
+  // The folder colors sit just above "삭제".
+  const colorsAt = node?.kind === "folder" ? shown.length - 1 : -1;
 
   return (
     <PopupMenu x={menu.x} y={menu.y}>
-      {items.map(([label, run]) => (
-        <li
-          key={label}
-          className={label === tx("삭제") ? "danger" : ""}
-          onClick={() => {
-            onClose();
-            run();
-          }}
-        >
-          {label}
-        </li>
-      ))}
-      {node?.kind === "folder" && (
-        <li className="menu-colors" aria-label={tx("폴더 색")}>
-          <span className="muted small">{tx("폴더 색")}</span>
-          <div className="menu-swatches">
-            {TEXT_COLORS.map((c) => (
-              <button
-                key={c.value}
-                className={`menu-swatch${folderColor === c.value ? " on" : ""}`}
-                title={c.name}
-                aria-label={c.name}
-                style={{ background: c.value }}
-                onClick={() => {
-                  onClose();
-                  void setFolderColor(node.path, c.value);
-                }}
-              />
-            ))}
-            <button
-              className="menu-swatch none"
-              title={tx("색 없음")}
-              aria-label={tx("색 없음")}
+      {shown.map((group, gi) => [
+        gi > 0 && <li key={`sep${gi}`} className="menu-sep" role="separator" />,
+        gi === colorsAt && node && <FolderColors key="colors" path={node.path} current={folderColor} onClose={onClose} />,
+        gi === colorsAt && <li key="sep-colors" className="menu-sep" role="separator" />,
+        ...group.map((it) =>
+          "row" in it ? (
+            <li key={it.row} className="menu-row">
+              <span className="muted small">{it.row}</span>
+              <span className="menu-row-btns">
+                {it.buttons.map(([label, run]) => (
+                  <button
+                    key={label}
+                    onClick={() => {
+                      onClose();
+                      run();
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </span>
+            </li>
+          ) : (
+            <li
+              key={it.label}
+              className={it.danger ? "danger" : ""}
               onClick={() => {
                 onClose();
-                void setFolderColor(node.path, null);
+                void it.run();
               }}
-            />
-          </div>
-        </li>
-      )}
+            >
+              {it.label}
+            </li>
+          ),
+        ),
+      ])}
     </PopupMenu>
+  );
+}
+
+/** Folder name colors, as one row of swatches. */
+function FolderColors({ path, current, onClose }: { path: string; current: string | undefined; onClose: () => void }) {
+  const setFolderColor = useApp((s) => s.setFolderColor);
+  return (
+    <li className="menu-colors" aria-label={tx("폴더 색")}>
+      <span className="muted small">{tx("폴더 색")}</span>
+      <div className="menu-swatches">
+        {TEXT_COLORS.map((c) => (
+          <button
+            key={c.value}
+            className={`menu-swatch${current === c.value ? " on" : ""}`}
+            title={c.name}
+            aria-label={c.name}
+            style={{ background: c.value }}
+            onClick={() => {
+              onClose();
+              void setFolderColor(path, c.value);
+            }}
+          />
+        ))}
+        <button
+          className="menu-swatch none"
+          title={tx("색 없음")}
+          aria-label={tx("색 없음")}
+          onClick={() => {
+            onClose();
+            void setFolderColor(path, null);
+          }}
+        />
+      </div>
+    </li>
   );
 }

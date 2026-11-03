@@ -29,7 +29,7 @@ const read = (n) => fs.readFileSync(path.join(P, n), "utf8");
 
   // 1) Board from the folder menu.
   await page.click(row("10.프로젝트"), { button: "right" });
-  await page.click('.menu > li:text-is("보드로 보기")');
+  await page.click('.menu .menu-row-btns button:text-is("보드")');
   await page.waitForSelector(".board-col");
   const cols = await page.$$eval(".board-col h4", (hs) => hs.map((h) => h.textContent.trim()));
   console.log("1 columns:", JSON.stringify(cols));

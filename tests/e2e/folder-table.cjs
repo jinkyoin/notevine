@@ -1,4 +1,4 @@
-// 속성 표 보기 (FR-PRP-05): 폴더 우클릭 '표로 보기', 열·정렬, 행을 눌러 노트 열기, Esc로 닫기. AI 호출 없음.
+// 속성 표 보기 (FR-PRP-05): 폴더 우클릭 '보기: 표', 열·정렬, 행을 눌러 노트 열기, Esc로 닫기. AI 호출 없음.
 const { chromium } = require("playwright-core");
 const path = require("path");
 const fs = require("fs");
@@ -35,7 +35,7 @@ w("다른 노트.md", "# 다른\n");
   await page.click(row("다른 노트"));
   await page.waitForSelector(".note-title >> text=다른 노트");
   await page.click(row("프로젝트"), { button: "right" });
-  await page.click('.menu > li:text-is("표로 보기")');
+  await page.click('.menu .menu-row-btns button:text-is("표")');
   await page.waitForSelector(".folder-table tbody tr");
   console.log("1 table:", JSON.stringify(await grid(), null, 1));
   await page.screenshot({ path: path.join(os.tmpdir(), "notevine-e2e", "folder-table.png") });
@@ -63,7 +63,7 @@ w("다른 노트.md", "# 다른\n");
   await page.keyboard.press("Escape");
 
   await page.click(row("프로젝트"), { button: "right" });
-  await page.click('.menu > li:text-is("표로 보기")');
+  await page.click('.menu .menu-row-btns button:text-is("표")');
   await page.waitForSelector(".folder-table tbody tr");
   await page.click('.folder-table tbody tr:has-text("이사")');
   await page.waitForSelector(".note-title >> text=이사");

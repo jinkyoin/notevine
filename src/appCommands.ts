@@ -181,7 +181,8 @@ export function registerAppCommands(): () => void {
       id: "preset.enable",
       title: tx("기본 구조 만들기 (PARA 폴더·템플릿)"),
       keywords: tx("기본 구조 디폴트 초기 설정 기록 관리 프리셋 para 프로젝트 영역 자료 보관 업무일지 아이디어 조사자료 템플릿 폴더"),
-      when: () => hasVault() && !st().config.preset_enabled,
+      // Again later it only adds what is missing (folders, templates, guide notes).
+      when: hasVault,
       run: () => st().applyPreset(),
     },
     ...(

@@ -295,7 +295,13 @@ struct Preset {
     /// Folder key → file tree color, for folders that have none yet.
     #[serde(default)]
     colors: BTreeMap<String, String>,
+    /// Folder key → lines of the "_안내.md" note that says what goes in that folder (PARA).
+    #[serde(default)]
+    guides: BTreeMap<String, Vec<String>>,
 }
+
+/// Name of the guide note put in each PARA folder.
+pub const GUIDE_NOTE: &str = "_안내.md";
 
 #[derive(Debug, Deserialize)]
 struct PresetTemplate {
@@ -311,6 +317,8 @@ fn preset() -> AppResult<Preset> {
 pub struct PresetResult {
     pub created_folders: Vec<String>,
     pub created_templates: Vec<String>,
+    /// "_안내.md" notes that explain what goes in each PARA folder.
+    pub created_guides: Vec<String>,
     /// Folders and templates that already existed and were left untouched.
     pub skipped: Vec<String>,
 }
@@ -361,6 +369,27 @@ pub fn apply_preset_to(v: &Vault) -> AppResult<PresetResult> {
         });
         match v.create_note(&tpl_dir, Some(&name), &text) {
             Ok(rel) => res.created_templates.push(rel),
+            Err(AppError::AlreadyExists(rel)) => res.skipped.push(rel),
+            Err(e) => return Err(e),
+        }
+    }
+
+    // A guide in each PARA folder; one the user already has (or deleted and recreated) stays.
+    for (key, lines) in preset.folders.iter().filter_map(|k| preset.guides.get(k).map(|l| (k, l))) {
+        let dir = checked_dir(config.folder_for(key))?;
+        if dir.is_empty() {
+            continue;
+        }
+        let rel = join_rel(&dir, GUIDE_NOTE);
+        if v.abs(&rel)?.exists() {
+            res.skipped.push(rel);
+            continue;
+        }
+        let text = substitute(&lines.join("\n"), |k| {
+            (k.ends_with("_folder") && config.folder_for(k) != k).then(|| config.folder_for(k).to_string())
+        });
+        match v.create_note(&dir, Some(GUIDE_NOTE), &text) {
+            Ok(rel) => res.created_guides.push(rel),
             Err(AppError::AlreadyExists(rel)) => res.skipped.push(rel),
             Err(e) => return Err(e),
         }
@@ -836,6 +865,23 @@ mod tests {
                 "90.템플릿/자료.md"
             ]
         );
+        assert_eq!(
+            r.created_guides,
+            ["00.Inbox/_안내.md", "10.프로젝트/_안내.md", "20.영역/_안내.md", "30.자료/_안내.md", "40.보관/_안내.md"]
+        );
+        let inbox = read(&dir, "00.Inbox/_안내.md");
+        assert!(
+            inbox.starts_with(
+                "---
+type: guide
+---
+
+# Inbox"
+            ),
+            "{inbox}"
+        );
+        // Folder keys become the vault's folder names.
+        assert!(inbox.contains("| 10.프로젝트 |") && !inbox.contains("{{"), "{inbox}");
         assert!(r.skipped.is_empty());
         let c = load_config(&v).unwrap();
         assert!(c.preset_enabled);
@@ -859,8 +905,10 @@ mod tests {
 
         // applying again changes nothing
         let again = apply_preset_to(&v).unwrap();
-        assert!(again.created_folders.is_empty() && again.created_templates.is_empty());
-        assert_eq!(again.skipped.len(), 14);
+        assert!(
+            again.created_folders.is_empty() && again.created_templates.is_empty() && again.created_guides.is_empty()
+        );
+        assert_eq!(again.skipped.len(), 19); // 9 folders, 5 templates, 5 guides
     }
 
     #[test]

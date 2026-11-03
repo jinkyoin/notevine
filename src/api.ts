@@ -214,6 +214,8 @@ export interface SavedSearch {
 export interface PresetResult {
   created_folders: string[];
   created_templates: string[];
+  /** "_안내.md" notes that explain each PARA folder. */
+  created_guides: string[];
   skipped: string[];
 }
 

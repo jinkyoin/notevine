@@ -35,7 +35,7 @@ fs.mkdirSync(VAULT, { recursive: true });
   };
   walk("");
   console.log("2 folders on disk:", JSON.stringify(dirs));
-  console.log("  idea template folder:", /folder: (.*)/.exec(fs.readFileSync(path.join(VAULT, "90 템플릿/아이디어.md"), "utf8"))[1]);
+  console.log("  idea template folder:", /folder: (.*)/.exec(fs.readFileSync(path.join(VAULT, "90.템플릿/아이디어.md"), "utf8"))[1]);
 
   await page.keyboard.press("Control+Shift+D");
   await page.waitForTimeout(800);

@@ -8,6 +8,7 @@ import { FolderCalendar } from "./FolderCalendar";
 import { FolderGraph } from "./FolderGraph";
 
 import { tx } from "../i18n";
+import { paraInfo } from "../lib/para";
 export const MODE_LABEL: Record<FolderMode, string> = { table: tx("표"), board: tx("보드"), calendar: tx("캘린더"), graph: tx("그래프") };
 
 export function FolderView({ folder }: { folder: string }) {
@@ -44,12 +45,15 @@ export function FolderView({ folder }: { folder: string }) {
 
   const { setTableView } = useApp.getState();
   // Templates hold placeholder statuses and dates; only the table lists them.
-  const notes = table && mode !== "table" ? { ...table, rows: table.rows.filter((r) => !r.path.startsWith(templates + "/")) } : table;
+  // The base structure's "_안내" notes (type: guide) aren't work to show either.
+  const notes =
+    table && mode !== "table" ? { ...table, rows: table.rows.filter((r) => !r.path.startsWith(templates + "/") && r.props.type !== "guide") } : table;
+  const info = paraInfo(folder, useApp((s) => s.config));
 
   return (
     <div className="folder-table">
       <div className="folder-table-head">
-        <h2>{folder || tx("노트 폴더 전체")}</h2>
+        <h2 title={info ?? undefined}>{folder || tx("노트 폴더 전체")}</h2>
         {notes && mode !== "graph" && <span className="muted small">{tx("노트 {0}개", notes.rows.length)}</span>}
         <span className="spacer" />
         <div className="fb-mode" role="tablist" aria-label={tx("보기 방식")}>
@@ -63,6 +67,7 @@ export function FolderView({ folder }: { folder: string }) {
           ×
         </button>
       </div>
+      {info && <p className="muted small folder-info">{info}</p>}
       {mode === "graph" ? (
         <FolderGraph folder={folder} />
       ) : error ? (

@@ -822,7 +822,7 @@ export const useApp = create<AppStore>((set, get) => {
       ];
       const ok = await get().ask(
         tx("기본 구조 만들기 (PARA)"),
-        tx("노트 폴더에 PARA 방식의 폴더와 템플릿 5개(프로젝트·업무일지·회의록·아이디어·자료)를 만듭니다.\n\n{0}\n\n이미 있는 폴더와 노트는 바꾸지 않습니다.", folders.join("\n")),
+        tx("노트 폴더에 PARA 방식의 폴더와 템플릿 5개(프로젝트·업무일지·회의록·아이디어·자료)를 만들고, 폴더마다 무엇을 넣는지 적은 '_안내' 노트를 넣습니다.\n\n{0}\n\n이미 있는 폴더와 노트는 바꾸지 않습니다.", folders.join("\n")),
         tx("켜기"),
       );
       if (!ok) return;
@@ -831,10 +831,10 @@ export const useApp = create<AppStore>((set, get) => {
       const config = await api.getConfig().catch(() => get().config);
       set({ config });
       await get().refreshTree();
-      const made = r.created_folders.length + r.created_templates.length;
+      const made = r.created_folders.length + r.created_templates.length + r.created_guides.length;
       get().toast(
         made
-          ? tx("기본 구조를 만들었습니다 · 폴더 {0}개, 템플릿 {1}개", r.created_folders.length, r.created_templates.length)
+          ? tx("기본 구조를 만들었습니다 · 폴더 {0}개, 템플릿 {1}개, 안내 노트 {2}개", r.created_folders.length, r.created_templates.length, r.created_guides.length)
           : tx("기본 구조를 켰습니다 · 이미 있는 폴더와 템플릿은 그대로 두었습니다"),
       );
     },
