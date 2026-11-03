@@ -11,6 +11,7 @@ import { MODE_LABEL } from "./FolderView";
 import { TEXT_COLORS } from "../editor/colors";
 
 import { tx } from "../i18n";
+import { PopupMenu } from "./PopupMenu";
 interface Menu {
   x: number;
   y: number;
@@ -18,6 +19,17 @@ interface Menu {
 }
 
 const DRAG_TYPE = "application/x-notevine-path";
+
+/** Files dragged in from Windows Explorer (not a row of this tree). */
+const hasOsFiles = (e: React.DragEvent) => e.dataTransfer.types.includes("Files") && !e.dataTransfer.types.includes(DRAG_TYPE);
+
+/** Files dropped from Windows Explorer go into `dir`; dropped folders are reported, not copied. */
+function dropFiles(e: React.DragEvent, dir: string) {
+  const items = [...e.dataTransfer.items];
+  const folders = items.filter((i) => i.webkitGetAsEntry?.()?.isDirectory).map((i) => i.webkitGetAsEntry()!.name);
+  const files = items.flatMap((i) => (i.kind === "file" && !i.webkitGetAsEntry?.()?.isDirectory ? [i.getAsFile()!] : [])).filter(Boolean);
+  void useApp.getState().importFiles(dir, files, folders);
+}
 
 export function Explorer() {
   const tree = useApp((s) => s.tree);
@@ -44,8 +56,12 @@ export function Explorer() {
           e.preventDefault();
           setMenu({ x: e.clientX, y: e.clientY, node: null });
         }}
-        onDragOver={(e) => e.dataTransfer.types.includes(DRAG_TYPE) && e.preventDefault()}
+        onDragOver={(e) => (e.dataTransfer.types.includes(DRAG_TYPE) || hasOsFiles(e)) && e.preventDefault()}
         onDrop={(e) => {
+          if (hasOsFiles(e)) {
+            e.preventDefault();
+            return dropFiles(e, "");
+          }
           const from = e.dataTransfer.getData(DRAG_TYPE);
           if (from) move(from, "");
         }}
@@ -100,16 +116,26 @@ function Row({ node, depth, onMenu, color }: { node: TreeNode; depth: number; on
         draggable={!isRenaming}
         onDragStart={(e) => {
           e.dataTransfer.setData(DRAG_TYPE, node.path);
-          e.dataTransfer.effectAllowed = "move";
+          // Move within the tree, or link from the editor.
+          e.dataTransfer.effectAllowed = "linkMove";
         }}
         onDragOver={(e) => {
-          if (!isFolder || !e.dataTransfer.types.includes(DRAG_TYPE)) return;
+          // Files from Windows Explorer: into this folder, or the folder of this note.
+          const os = hasOsFiles(e);
+          if (!os && (!isFolder || !e.dataTransfer.types.includes(DRAG_TYPE))) return;
           e.preventDefault();
           e.stopPropagation();
+          e.dataTransfer.dropEffect = os ? "copy" : "move";
           setDropHover(true);
         }}
         onDragLeave={() => setDropHover(false)}
         onDrop={(e) => {
+          if (hasOsFiles(e)) {
+            e.preventDefault();
+            e.stopPropagation();
+            setDropHover(false);
+            return dropFiles(e, isFolder ? node.path : parentPath(node.path));
+          }
           if (!isFolder) return;
           e.preventDefault();
           e.stopPropagation();
@@ -124,7 +150,10 @@ function Row({ node, depth, onMenu, color }: { node: TreeNode; depth: number; on
                 ? openNote(node.path, undefined, undefined, o)
                 : /\.pdf$/i.test(node.path)
                   ? useApp.getState().openPdf(node.path)
-                  : /\.canvas$/i.test(node.path) && useApp.getState().openCanvas(node.path),
+                  : /\.canvas$/i.test(node.path)
+                    ? useApp.getState().openCanvas(node.path)
+                    : // Excel, Hangul, Word, images…: the program Windows uses for them.
+                      void useApp.getState().openExternal(node.path),
             ))}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -270,6 +299,9 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
           () => void (a.kind === "newProject" ? startNewProject() : a.kind === "archive" ? archive(node.path) : unarchive(node.path, a.to)),
         ],
       ),
+      ...(node.kind !== "folder"
+        ? ([[tx("연결된 프로그램으로 열기"), () => void useApp.getState().openExternal(node.path)]] as [string, () => void][])
+        : []),
       [tx("이름 변경"), () => setEditing({ mode: "rename", path: node.path })],
       ...(node.kind === "note" ? ([[tx("히스토리 보기"), () => setVersionView({ path: node.path, id: null })]] as [string, () => void][]) : []),
       [
@@ -299,7 +331,7 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
   items.push([tx("삭제된 노트 히스토리"), () => setModal("deleted")]);
 
   return (
-    <ul className="menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
+    <PopupMenu x={menu.x} y={menu.y}>
       {items.map(([label, run]) => (
         <li
           key={label}
@@ -341,6 +373,6 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
           </div>
         </li>
       )}
-    </ul>
+    </PopupMenu>
   );
 }

@@ -23,6 +23,9 @@ export function PdfView({ path, page, seq }: { path: string; page: number; seq: 
   const externalSeq = useApp((s) => s.externalSeq);
   const { closePdf, openNote, toast } = useApp.getState();
   const scroller = useRef<HTMLDivElement>(null);
+  const view = useRef<HTMLDivElement>(null);
+  // Focus the view so Esc closes it right away, without a click first.
+  useEffect(() => view.current?.focus({ preventScroll: true }), [path]);
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sizes, setSizes] = useState<{ w: number; h: number }[]>([]);
@@ -146,8 +149,9 @@ export function PdfView({ path, page, seq }: { path: string; page: number; seq: 
   }, [notes]);
 
   return (
-    <div className="pdf-view" onKeyDown={(e) => e.key === "Escape" && !form && closePdf()} tabIndex={-1}>
+    <div className="pdf-view" ref={view} onKeyDown={(e) => e.key === "Escape" && !form && closePdf()} tabIndex={-1}>
       <div className="pdf-head">
+        <BackButton onClick={closePdf} />
         <span className="pdf-name" title={path}>
           {name}
         </span>
@@ -326,5 +330,16 @@ function PdfPage({ doc, n, w, h, scale, marks }: { doc: PDFDocumentProxy; n: num
       ref={box}
       style={{ width: w, height: h, "--scale-factor": scale, "--total-scale-factor": scale } as React.CSSProperties}
     />
+  );
+}
+
+/** "‹ 노트 이름": back to the note under the PDF or canvas (Esc, Alt+←). */
+export function BackButton({ onClick }: { onClick: () => void }) {
+  const openPath = useApp((s) => s.openPath);
+  const name = openPath ? openPath.slice(openPath.lastIndexOf("/") + 1).replace(/\.md$/i, "") : null;
+  return (
+    <button className="btn ghost small view-back" onClick={onClick} title={tx("돌아가기 (Esc · Alt+←)")}>
+      ‹ {name ?? tx("닫기")}
+    </button>
   );
 }

@@ -3294,3 +3294,67 @@ kbd {
   padding: 12px 20px;
   border-top: 1px solid var(--border);
 }
+
+/* PDF·캔버스: 돌아가기 단추, 좁은 창에서는 줄을 바꿔 단추가 가려지지 않게 */
+.pdf-head {
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+.view-back {
+  font-weight: 600;
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 오른쪽 클릭 메뉴가 창보다 길면 메뉴 안에서 스크롤 */
+.menu {
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+}
+
+/* 사이드바·오른쪽 패널 폭 조절 손잡이 (안쪽 가장자리) */
+.sidebar,
+.rightpanel {
+  position: relative;
+}
+.panel-resizer {
+  position: absolute;
+  top: 0;
+  width: 8px;
+  height: 100%;
+  z-index: 5;
+  cursor: col-resize;
+  outline: none;
+}
+.panel-resizer.left {
+  right: -4px;
+}
+.panel-resizer.right {
+  left: -4px;
+}
+.panel-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.15s;
+}
+/* A quiet dark gray, not the accent color */
+.panel-resizer:hover::after,
+.panel-resizer:focus-visible::after,
+.panel-resizer.active::after {
+  background: var(--muted);
+}
+/* While dragging: no text selection, the resize cursor everywhere */
+body.resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+body.resizing iframe {
+  pointer-events: none;
+}

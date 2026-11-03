@@ -23,6 +23,7 @@ import { UserManual } from "./UserManual";
 import { WebClip } from "./WebClip";
 import { PdfView } from "./PdfView";
 import { CanvasView } from "./CanvasView";
+import { PanelResizer } from "./PanelResizer";
 import { PluginPanels } from "./PluginPanels";
 import { usePluginHost } from "../plugins";
 import { IdeaBoard } from "./IdeaBoard";
@@ -237,6 +238,7 @@ export function MainLayout() {
               )}
             </div>
             {sidebarTab === "search" ? <SearchPanel /> : sidebarTab === "ideas" && preset ? <IdeaBoard /> : <Explorer />}
+            <PanelResizer side="left" />
           </aside>
         )}
         <main className="center">
@@ -271,6 +273,7 @@ export function MainLayout() {
         </main>
         {rightOpen && (
           <aside className="rightpanel">
+            <PanelResizer side="right" />
             {/* Note info on top, the AI assistant always below it (SCR-18). */}
             <div className="info-scroll">
               {openPath && <PropertiesPanel />}

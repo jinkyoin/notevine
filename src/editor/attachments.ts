@@ -15,6 +15,24 @@ export interface AttachEnv {
   resolve(target: string): Promise<string | null>;
   absPath(rel: string): Promise<string>;
   error(message: string): void;
+  /** Link text for a vault file dragged from the file tree; null for a folder or a missing file. */
+  linkTo(path: string): string | null;
+}
+
+/** What the file tree puts on a drag: the dragged entry's vault path. */
+export const TREE_DRAG_TYPE = "application/x-notevine-path";
+
+/**
+ * The link for a vault file: a note by its name (with the folder only when another
+ * note has the same name, as link completion does), an image as an embed, any other
+ * file by its path.
+ */
+export function linkFor(path: string, notes: { path: string; title: string }[]): string {
+  if (!/\.md$/i.test(path)) return attachmentLink(path);
+  const title = path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/i, "");
+  const key = title.normalize("NFC").toLowerCase();
+  const same = notes.filter((n) => n.title.normalize("NFC").toLowerCase() === key).length;
+  return `[[${same > 1 ? path.replace(/\.md$/i, "") : title}]]`;
 }
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
@@ -49,9 +67,42 @@ async function saveFiles(view: EditorView, env: AttachEnv, files: File[], at: nu
       env.error(tx("\"{0}\"을(를) 첨부하지 못했습니다: {1}", f.name, String((e as { message?: string })?.message ?? e)));
     }
   }
+  insertLinks(view, links, at);
+}
+
+/**
+ * Where an inline link dropped at `col` of `text` goes: the nearer edge of the word
+ * under the pointer, with a space added on a side that touches other text.
+ */
+export function inlineSpot(text: string, col: number): { col: number; before: string; after: string } {
+  let at = Math.max(0, Math.min(col, text.length));
+  if (at > 0 && at < text.length && /\S/.test(text[at - 1]) && /\S/.test(text[at])) {
+    let l = at;
+    while (l > 0 && /\S/.test(text[l - 1])) l--;
+    let r = at;
+    while (r < text.length && /\S/.test(text[r])) r++;
+    at = at - l <= r - at ? l : r;
+  }
+  return { col: at, before: at > 0 && /\S/.test(text[at - 1]) ? " " : "", after: at < text.length && /\S/.test(text[at]) ? " " : "" };
+}
+
+/** Puts one link into the text where it was dropped (see inlineSpot). */
+function insertInline(view: EditorView, link: string, at: number) {
+  const line = view.state.doc.lineAt(Math.min(at, view.state.doc.length));
+  const s = inlineSpot(line.text, at - line.from);
+  const pos = line.from + s.col;
+  const insert = s.before + link + s.after;
+  view.dispatch({ changes: { from: pos, insert }, selection: { anchor: pos + s.before.length + link.length }, userEvent: "input.drop" });
+}
+
+/** Puts links at `at`, each on its own line, without gluing them to the text around. */
+function insertLinks(view: EditorView, links: string[], at: number) {
   if (!links.length) return;
-  const insert = links.join("\n");
   const pos = Math.min(at, view.state.doc.length);
+  const line = view.state.doc.lineAt(pos);
+  const before = pos > line.from ? "\n" : "";
+  const after = pos < line.to ? "\n" : "";
+  const insert = before + links.join("\n") + after;
   view.dispatch({ changes: { from: pos, insert }, selection: { anchor: pos + insert.length }, userEvent: "input.attach" });
 }
 
@@ -91,6 +142,41 @@ class MissingWidget extends WidgetType {
     el.textContent = tx("이미지를 찾을 수 없음: {0}", this.target);
     return el;
   }
+}
+
+/** Each editor's attachment setup, for drops on the space around its text. */
+const envOf = new WeakMap<EditorView, AttachEnv>();
+
+/**
+ * Files dropped anywhere on the editor's page (the margins, below the last line):
+ * placed at the nearest text position, or at the end below the text. Returns false
+ * when it isn't a file drop for this editor.
+ */
+export function dropFilesOn(view: EditorView | null, e: DragEvent): boolean {
+  const env = view && envOf.get(view);
+  if (!view || !env || e.defaultPrevented) return false;
+  const below = e.clientY > view.contentDOM.getBoundingClientRect().bottom;
+  const pos = below ? view.state.doc.length : (view.posAtCoords({ x: e.clientX, y: e.clientY }, false) ?? view.state.doc.length);
+  return dropAt(view, env, e, pos, below);
+}
+
+/** A drop of a file-tree entry (a link to it) or of files from Windows Explorer (copied in). */
+function dropAt(view: EditorView, env: AttachEnv, e: DragEvent, pos: number, ownLine = false): boolean {
+  const treePath = e.dataTransfer?.getData(TREE_DRAG_TYPE);
+  if (treePath) {
+    e.preventDefault();
+    const link = env.linkTo(treePath);
+    // On the text: in the sentence. Below the text: a line of its own.
+    if (link) (ownLine ? insertLinks(view, [link], pos) : insertInline(view, link, pos));
+    else env.error(tx("폴더는 링크로 넣을 수 없습니다"));
+    view.focus();
+    return true;
+  }
+  const files = [...(e.dataTransfer?.files ?? [])];
+  if (!files.length) return false;
+  e.preventDefault();
+  void saveFiles(view, env, files, pos);
+  return true;
 }
 
 export function attachments(env: AttachEnv): Extension {
@@ -151,6 +237,7 @@ export function attachments(env: AttachEnv): Extension {
       composed = false;
       constructor(view: EditorView) {
         this.decorations = build(view);
+        envOf.set(view, env);
       }
       update(u: ViewUpdate) {
         const step = composingStep(u, this);
@@ -165,19 +252,18 @@ export function attachments(env: AttachEnv): Extension {
 
   const handlers = EditorView.domEventHandlers({
     dragover(e) {
-      if (e.dataTransfer?.types.includes("Files")) {
+      const types = e.dataTransfer?.types ?? [];
+      if (types.includes("Files") || types.includes(TREE_DRAG_TYPE)) {
         e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = types.includes(TREE_DRAG_TYPE) ? "link" : "copy";
         return true;
       }
       return false;
     },
     drop(e, view) {
-      const files = [...(e.dataTransfer?.files ?? [])];
-      if (!files.length) return false;
-      e.preventDefault();
-      const pos = view.posAtCoords({ x: e.clientX, y: e.clientY }) ?? view.state.selection.main.head;
-      void saveFiles(view, env, files, pos);
-      return true;
+      // Nearest place to the pointer, even between lines or past a line's end.
+      const pos = view.posAtCoords({ x: e.clientX, y: e.clientY }, false) ?? view.state.selection.main.head;
+      return dropAt(view, env, e, pos);
     },
     paste(e, view) {
       const items = [...(e.clipboardData?.items ?? [])];

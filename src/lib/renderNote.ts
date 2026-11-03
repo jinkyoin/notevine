@@ -46,7 +46,9 @@ const wiki: TokenizerAndRendererExtension = {
       return `<img data-embed="${esc(target)}" alt="${esc(alias && !width ? alias : target)}"${width}>`;
     }
     const h = heading ? ` data-heading="${esc(heading)}"` : "";
-    const label = alias || (heading ? (target ? `${target} › ${heading}` : heading) : target);
+    // Only the name shows; the folder is in the link, not in the text read.
+    const name = target.slice(target.lastIndexOf("/") + 1);
+    const label = alias || (heading ? (target ? `${name} › ${heading}` : heading) : name);
     const link = `<a href="#" class="wikilink" data-target="${esc(target)}"${h}>${esc(label)}</a>`;
     // ![[노트]] / ![[노트#제목]]: the read view puts the note's text under the link.
     // Other files (![[견적서.xlsx]]) stay links.

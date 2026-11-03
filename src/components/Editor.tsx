@@ -12,7 +12,7 @@ import { useApp } from "../store";
 import { noteTitle } from "../lib/tree";
 import { frontmatterEnd, livePreview, livePreviewTheme } from "../editor/livePreview";
 import { frontmatterFold } from "../editor/frontmatterFold";
-import { attachments } from "../editor/attachments";
+import { attachments, dropFilesOn, linkFor, TREE_DRAG_TYPE } from "../editor/attachments";
 import { openPath as openWithOs } from "@tauri-apps/plugin-opener";
 import { noteHighlight } from "../editor/highlight";
 import { refreshLinks, wikiLinks } from "../editor/wikilinks";
@@ -311,6 +311,11 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
                 resolve: (target) => api.resolveAttachment(target, path),
                 absPath: (rel) => api.attachmentPath(rel),
                 error: (m) => useApp.getState().toast(m, "error"),
+                linkTo: (p) => {
+                  const { tree, notes } = useApp.getState();
+                  const node = findNode(tree, p);
+                  return node && node.kind !== "folder" ? linkFor(p, notes) : null;
+                },
               }),
               keymap.of([
                 { key: "Mod-s", run: () => (void save(true), true), preventDefault: true },
@@ -436,7 +441,17 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
   }, [path, side, setFlushEditor, toast, setReadMode]);
 
   return (
-    <div className="editor" ref={scroller}>
+    <div
+      className="editor"
+      ref={scroller}
+      // Files from Windows Explorer may land beside or below the text, not only on it.
+      onDragOver={(e) => {
+        if (!readMode && (e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes(TREE_DRAG_TYPE))) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        if (!readMode) dropFilesOn(viewRef.current, e.nativeEvent);
+      }}
+    >
       {/* Title, mode switch and format bar stay on screen while the note scrolls. */}
       <div className="editor-top" ref={pinned}>
         <div className="editor-head">

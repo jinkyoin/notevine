@@ -190,6 +190,8 @@ interface AppStore {
   followLink(target: string, heading?: string | null, opts?: OpenOpts): Promise<void>;
   /** Opens a non-note file with its default program (FR-ATT-05). */
   openAttachment(target: string, page?: number): Promise<void>;
+  /** Opens a vault file (a note too) with the program Windows uses for its type. */
+  openExternal(path: string): Promise<void>;
   /** Shows a PDF in the app at `page` (1-based). */
   openPdf(path: string, page?: number): void;
   closePdf(): void;
@@ -238,6 +240,11 @@ interface AppStore {
   openJournalOn(date: string): Promise<void>;
   /** Collects the week or month around `date` into a review note and opens it (an existing one is just opened). */
   createReview(kind: ReviewKind, date?: Date): Promise<void>;
+  /**
+   * Copies files dropped from Windows Explorer into `dir` (never over an existing file:
+   * a taken name gets a number). `folders` are dropped folders, which are not copied.
+   */
+  importFiles(dir: string, files: File[], folders?: string[]): Promise<void>;
   /** Backs the vault up to Git now (and syncs with its remote); `quiet` only reports problems. */
   backupNow(quiet?: boolean): Promise<boolean>;
   /** Saves a web page's article as a note in the Inbox and opens it (FR-ATT-03); false if it failed. */
@@ -278,6 +285,8 @@ interface AppStore {
 }
 
 let toastSeq = 0;
+/** Largest file taken from a drop (as for attachments in the editor). */
+const MAX_IMPORT_BYTES = 50 * 1024 * 1024;
 let backingUp = false;
 
 function parentOf(p: string) {
@@ -557,6 +566,16 @@ export const useApp = create<AppStore>((set, get) => {
       set({ pdfView: null });
     },
 
+    async openExternal(path) {
+      try {
+        // Unsaved edits of an open note go to disk before another program reads it.
+        if (path === get().openPath || path === get().splitPath) await get().flushEditor();
+        await openWithOs(await api.attachmentPath(path));
+      } catch (e) {
+        get().toast(tx("파일을 열지 못했습니다: {0}", errorMessage(e)), "error");
+      }
+    },
+
     openCanvas(path) {
       void get().flushEditor();
       set({ canvasView: path, pdfView: null, tableView: null });
@@ -734,6 +753,8 @@ export const useApp = create<AppStore>((set, get) => {
     },
 
     goBack() {
+      // A PDF or canvas shown over the note: back is the note.
+      if (get().pdfView || get().canvasView) return set({ pdfView: null, canvasView: null });
       const next = goHistory(tabState(), -1, (p) => !!findNode(get().tree, p));
       if (!next) return;
       void get().flushEditor();
@@ -848,6 +869,29 @@ export const useApp = create<AppStore>((set, get) => {
       if (!created) return;
       await get().refreshTree();
       get().openNote(created);
+    },
+
+    async importFiles(dir, files, folders = []) {
+      const saved: string[] = [];
+      for (const f of files) {
+        if (f.size > MAX_IMPORT_BYTES) {
+          get().toast(tx("\"{0}\"은(는) 50MB가 넘어 넣지 않았습니다", f.name), "error");
+          continue;
+        }
+        try {
+          saved.push(await api.saveAttachment(f.name, new Uint8Array(await f.arrayBuffer()), dir));
+        } catch (e) {
+          get().toast(tx("\"{0}\"을(를) 넣지 못했습니다: {1}", f.name, errorMessage(e)), "error");
+        }
+      }
+      if (folders.length) get().toast(tx("폴더는 넣을 수 없습니다: {0} · 폴더 안의 파일을 골라 끌어다 놓으세요", folders.join(", ")), "error");
+      if (!saved.length) return;
+      await get().refreshTree();
+      if (dir) expandTo(dir + "/");
+      const where = dir || tx("노트 폴더 맨 위");
+      get().toast(
+        saved.length === 1 ? tx("\"{0}\"을(를) {1}에 넣었습니다", saved[0].split("/").pop(), where) : tx("파일 {0}개를 {1}에 넣었습니다", saved.length, where),
+      );
     },
 
     async backupNow(quiet = false) {

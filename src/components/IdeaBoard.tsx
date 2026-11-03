@@ -5,6 +5,7 @@ import { useApp } from "../store";
 import { noteTitle } from "../lib/tree";
 
 import { tx } from "../i18n";
+import { PopupMenu } from "./PopupMenu";
 const DRAG = "application/x-notevine-idea";
 
 const changeStatus = (path: string, status: string) => useApp.getState().setNoteProperty(path, "status", status);
@@ -108,7 +109,7 @@ export function IdeaBoard() {
         </section>
       </div>
       {menu && (
-        <ul className="menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
+        <PopupMenu x={menu.x} y={menu.y}>
           <li className="menu-label">{tx("상태 변경")}</li>
           {statuses.map((s) => (
             <li
@@ -121,7 +122,7 @@ export function IdeaBoard() {
               {s}
             </li>
           ))}
-        </ul>
+        </PopupMenu>
       )}
     </div>
   );

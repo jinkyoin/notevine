@@ -113,7 +113,10 @@ function buildDecorations(view: EditorView, env: LinkEnv): DecorationSet {
           out.push(hide.range(innerFrom, innerFrom + targetLen + 1)); // "target#anchor|"
           out.push(mark.range(innerFrom + targetLen + 1, innerTo));
         } else {
-          out.push(mark.range(innerFrom, innerTo));
+          // Only the name shows: "자료/견적서.xlsx" reads as "견적서.xlsx" (the text keeps the folder).
+          const folder = target.lastIndexOf("/") + 1;
+          if (folder > 0) out.push(hide.range(innerFrom, innerFrom + folder));
+          out.push(mark.range(innerFrom + folder, innerTo));
         }
         out.push(hide.range(innerTo, innerTo + 2)); // ]]
       }

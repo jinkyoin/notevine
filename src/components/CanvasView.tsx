@@ -6,6 +6,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { api, errorMessage } from "../api";
 import { useApp } from "../store";
 import { safeHtml } from "./NoteView";
+import { BackButton } from "./PdfView";
 import { findNode, noteTitle } from "../lib/tree";
 import { rankNotes } from "../lib/fuzzy";
 import {
@@ -315,6 +316,7 @@ export function CanvasView({ path }: { path: string }) {
     else if (ctrl && key === "y") undo(true);
     else if (ctrl && key === "a" && board) setSelected(new Set(board.nodes.map((n) => n.id)));
     else if (e.key === "Escape") {
+      if (!selected.size && !selEdge) return closeCanvas();
       setSelected(new Set());
       setSelEdge(null);
     } else if (e.key === "Enter" && selected.size === 1) setEditing([...selected][0]);
@@ -522,6 +524,7 @@ export function CanvasView({ path }: { path: string }) {
 function CanvasHead({ name, path, onClose, children }: { name: string; path: string; onClose: () => void; children?: React.ReactNode }) {
   return (
     <div className="pdf-head canvas-head">
+      <BackButton onClick={onClose} />
       <span className="pdf-name" title={path}>
         {name}
       </span>

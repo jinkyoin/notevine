@@ -4,6 +4,7 @@ import { useApp, type OpenOpts } from "../store";
 import { noteTitle } from "../lib/tree";
 
 import { tx } from "../i18n";
+import { PopupMenu } from "./PopupMenu";
 /**
  * Click handlers for anything that opens a note: a plain click opens it in the current
  * tab, Ctrl+click or a middle click in a new tab (as in a browser).
@@ -90,7 +91,7 @@ export function TabBar() {
         </div>
       ))}
       {menu && (
-        <ul className="menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
+        <PopupMenu x={menu.x} y={menu.y}>
           {(
             [
               [tx("탭 닫기"), () => closeTab(menu.path)],
@@ -111,7 +112,7 @@ export function TabBar() {
               {label}
             </li>
           ))}
-        </ul>
+        </PopupMenu>
       )}
     </div>
   );
