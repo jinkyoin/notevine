@@ -2,6 +2,7 @@
 // 노트 내용은 사용자가 전송 확인(SCR-19)을 거친 것만 보낸다 (FR-AI-03, NFR-SEC-02).
 import { api, type AiEvent, type AiProvider, type ContextNote } from "./api";
 
+import { tx } from "./i18n";
 const KEY_ENABLED = "notevine.ai.enabled";
 const KEY_PROVIDER = "notevine.ai.provider";
 
@@ -44,7 +45,7 @@ export const PROVIDER_COMPANY: Record<string, string> = {
   codex: "OpenAI",
   anthropic: "Anthropic",
   openai: "OpenAI",
-  ollama: "내 PC의 Ollama",
+  ollama: tx("내 PC의 Ollama"),
 };
 
 /** Connected with an API key or Ollama (FR-AI-07): their models come from the service. */
@@ -52,9 +53,9 @@ export const API_PROVIDERS = ["anthropic", "openai", "ollama"];
 
 /** What "기본" means for an API provider. */
 export const API_DEFAULT_LABEL: Record<string, string> = {
-  anthropic: "기본 (claude-opus-5-5)",
-  openai: "기본 (가장 최근 모델)",
-  ollama: "기본 (설치된 첫 모델)",
+  anthropic: tx("기본 (claude-opus-5-5)"),
+  openai: tx("기본 (가장 최근 모델)"),
+  ollama: tx("기본 (설치된 첫 모델)"),
 };
 
 /** Official install commands (PowerShell), shown when a CLI is missing. */
@@ -67,6 +68,29 @@ export const INSTALL_COMMAND: Record<string, string> = {
 export const needsLogin = (p: AiProvider) => p.version !== null && p.logged_in === false;
 
 /** Error text the backend gives for a missing or expired login. */
+/** A provider's name and state as the backend reports them, in the screen language. */
+export function localizeProvider(p: AiProvider): AiProvider {
+  const name = p.id === "ollama" ? tx("Ollama (내 PC)") : p.name;
+  const d = p.detail ?? "";
+  let m: RegExpExecArray | null;
+  const detail = !d
+    ? p.detail
+    : d === "Claude Code가 설치되어 있지 않습니다"
+      ? tx("Claude Code가 설치되어 있지 않습니다")
+      : d === "Codex CLI가 설치되어 있지 않습니다"
+        ? tx("Codex CLI가 설치되어 있지 않습니다")
+        : d === "로그인이 필요합니다"
+          ? tx("로그인이 필요합니다")
+          : d === "API 키를 넣으면 쓸 수 있습니다"
+            ? tx("API 키를 넣으면 쓸 수 있습니다")
+            : (m = /^Ollama가 실행 중이 아닙니다 \((.*)\)$/.exec(d))
+              ? tx("Ollama가 실행 중이 아닙니다 ({0})", m[1])
+              : (m = /^(.*)을\(를\) 실행할 수 없습니다 \((.*) --version 실패\)$/.exec(d))
+                ? tx("{0}을(를) 실행할 수 없습니다 ({1} --version 실패)", m[1], m[2])
+                : d;
+  return { ...p, name, detail };
+}
+
 export const isLoginError = (message: string) => message.includes("로그인되어 있지 않습니다");
 
 /**
@@ -76,14 +100,14 @@ export const isLoginError = (message: string) => message.includes("로그인되�
  */
 export const MODEL_OPTIONS: Record<string, { value: string; label: string }[]> = {
   claude: [
-    { value: "", label: "기본 (Opus)" },
-    { value: "opus", label: "Opus · 가장 똑똑함" },
-    { value: "sonnet", label: "Sonnet · 균형" },
-    { value: "haiku", label: "Haiku · 가장 빠름" },
+    { value: "", label: tx("기본 (Opus)") },
+    { value: "opus", label: tx("Opus · 가장 똑똑함") },
+    { value: "sonnet", label: tx("Sonnet · 균형") },
+    { value: "haiku", label: tx("Haiku · 가장 빠름") },
     { value: "claude-fable-5-1", label: "Fable 5.1" },
   ],
   codex: [
-    { value: "", label: "기본" },
+    { value: "", label: tx("기본") },
     { value: "gpt-6.1-sol", label: "gpt-6.1-sol" },
   ],
 };
@@ -117,10 +141,10 @@ export function qaSystem(web: boolean): string {
 export type WriteTask = "summarize" | "polish" | "continue" | "translate";
 
 export const WRITE_LABEL: Record<WriteTask, string> = {
-  summarize: "요약",
-  polish: "다듬기",
-  continue: "이어 쓰기",
-  translate: "영어로 번역",
+  summarize: tx("요약"),
+  polish: tx("다듬기"),
+  continue: tx("이어 쓰기"),
+  translate: tx("영어로 번역"),
 };
 
 const WRITE_INSTRUCTION: Record<WriteTask, string> = {

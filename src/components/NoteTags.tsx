@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { useApp } from "../store";
 
+import { tx } from "../i18n";
 export function NoteTags({ path }: { path: string }) {
   // The index catches up on each save, so reload then.
   const savedSeq = useApp((s) => s.savedSeq);
@@ -22,10 +23,10 @@ export function NoteTags({ path }: { path: string }) {
 
   if (!tags.length) return null;
   return (
-    <div className="note-tags" aria-label="이 노트의 태그">
-      <span className="label">태그</span>
+    <div className="note-tags" aria-label={tx("이 노트의 태그")}>
+      <span className="label">{tx("태그")}</span>
       {tags.map((t) => (
-        <button key={t} title={`#${t} 태그로 검색`} onClick={() => useApp.getState().searchTag(t)}>
+        <button key={t} title={tx("#{0} 태그로 검색", t)} onClick={() => useApp.getState().searchTag(t)}>
           #{t}
         </button>
       ))}

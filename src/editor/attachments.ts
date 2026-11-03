@@ -6,6 +6,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { composingStep, frontmatterEnd } from "./livePreview";
 import { resolveDest } from "./wikilinks";
 
+import { tx } from "../i18n";
 export interface AttachEnv {
   path(): string;
   folder(): string;
@@ -26,7 +27,7 @@ export const refreshEmbeds = StateEffect.define<null>();
 /** "이미지 20261028-143201.png" */
 export function pastedImageName(now = new Date(), ext = "png"): string {
   const p = (n: number) => String(n).padStart(2, "0");
-  return `이미지 ${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}.${ext}`;
+  return tx("이미지 {0}{1}{2}-{3}{4}{5}.{6}", now.getFullYear(), p(now.getMonth() + 1), p(now.getDate()), p(now.getHours()), p(now.getMinutes()), p(now.getSeconds()), ext);
 }
 
 /** Link text for a saved attachment: images embed, other files link. */
@@ -38,14 +39,14 @@ async function saveFiles(view: EditorView, env: AttachEnv, files: File[], at: nu
   const links: string[] = [];
   for (const f of files) {
     if (f.size > MAX_BYTES) {
-      env.error(`"${f.name}"은(는) 50MB가 넘어 첨부하지 않았습니다`);
+      env.error(tx("\"{0}\"은(는) 50MB가 넘어 첨부하지 않았습니다", f.name));
       continue;
     }
     try {
       const rel = await env.save(f.name || pastedImageName(), new Uint8Array(await f.arrayBuffer()));
       links.push(attachmentLink(rel));
     } catch (e) {
-      env.error(`"${f.name}"을(를) 첨부하지 못했습니다: ${String((e as { message?: string })?.message ?? e)}`);
+      env.error(tx("\"{0}\"을(를) 첨부하지 못했습니다: {1}", f.name, String((e as { message?: string })?.message ?? e)));
     }
   }
   if (!links.length) return;
@@ -87,7 +88,7 @@ class MissingWidget extends WidgetType {
   toDOM() {
     const el = document.createElement("span");
     el.className = "cm-embed-missing";
-    el.textContent = `이미지를 찾을 수 없음: ${this.target}`;
+    el.textContent = tx("이미지를 찾을 수 없음: {0}", this.target);
     return el;
   }
 }

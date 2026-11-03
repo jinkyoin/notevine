@@ -1,5 +1,6 @@
 mod ai;
 mod ai_api;
+mod backup;
 mod canvas;
 mod commands;
 mod error;
@@ -30,8 +31,34 @@ use recent::RecentStore;
 /// Inside the app the shortcut stays Ctrl+Shift+N.
 const QUICK_MEMO_KEY: &str = "CommandOrControl+Alt+N";
 
+/// A development build keeps its own settings, web storage and saved keys, so trying
+/// things in it never touches the installed app's recent folders or preferences.
+pub const DEV_BUILD: bool = cfg!(debug_assertions);
+
+/// The app's settings folder; a development build uses `<identifier>.dev` beside it.
+fn config_dir(app: &tauri::App) -> tauri::Result<std::path::PathBuf> {
+    let dir = app.path().app_config_dir()?;
+    Ok(if DEV_BUILD {
+        let name = format!("{}.dev", dir.file_name().unwrap_or_default().to_string_lossy());
+        dir.with_file_name(name)
+    } else {
+        dir
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Before any window exists: a development build gets its own WebView2 profile
+    // (localStorage holds the AI choices) unless a test already chose one.
+    #[cfg(windows)]
+    if DEV_BUILD
+        && std::env::var_os("WEBVIEW2_USER_DATA_FOLDER").is_none()
+        && let Some(local) = std::env::var_os("LOCALAPPDATA")
+    {
+        let dir = std::path::Path::new(&local).join("net.notevine.app.dev").join("EBWebView");
+        // SAFETY: first thing in main, before any other thread is started.
+        unsafe { std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", dir) };
+    }
     tauri::Builder::default()
         // First: a second launch (e.g. while hidden in the tray) shows this window instead.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| tray::show_main(app)))
@@ -55,7 +82,7 @@ pub fn run() {
             if let Err(e) = app.global_shortcut().register(QUICK_MEMO_KEY) {
                 eprintln!("quick memo shortcut {QUICK_MEMO_KEY} not registered: {e}");
             }
-            let config_dir = app.path().app_config_dir()?;
+            let config_dir = config_dir(app)?;
             let settings = tray::SettingsStore::new(&config_dir);
             let tray_on = settings.load().tray;
             app.manage(AppState {
@@ -107,6 +134,10 @@ pub fn run() {
             ai_api::ai_set_key,
             ai_api::ai_models,
             web::fetch_page,
+            backup::backup_status,
+            backup::backup_init,
+            backup::backup_set_remote,
+            backup::backup_now,
             canvas::create_canvas,
             canvas::save_canvas,
             plugins::list_plugins,

@@ -6,12 +6,13 @@ import { openProps } from "./TabBar";
 import { parseQuery } from "../lib/query";
 import { sameSearch, searchLabel, upsertSearch } from "../lib/savedSearch";
 
+import { dateLocale, tx } from "../i18n";
 const DEBOUNCE_MS = 200;
 const DAY = 24 * 60 * 60 * 1000;
 
 type Range = "all" | "today" | "7d" | "30d";
-const RANGE_LABEL: Record<Range, string> = { all: "전체 기간", today: "오늘", "7d": "최근 7일", "30d": "최근 30일" };
-const OP_LABEL: Record<PropFilter["op"], string> = { eq: "=", ne: "≠", contains: "포함", empty: "비어 있음" };
+const RANGE_LABEL: Record<Range, string> = { all: tx("전체 기간"), today: tx("오늘"), "7d": tx("최근 7일"), "30d": tx("최근 30일") };
+const OP_LABEL: Record<PropFilter["op"], string> = { eq: "=", ne: "≠", contains: tx("포함"), empty: tx("비어 있음") };
 
 function dateFilter(field: DateFilter["field"], range: Range): DateFilter | null {
   if (range === "all") return null;
@@ -103,7 +104,7 @@ export function SearchPanel() {
         <input
           ref={input}
           className="search-input"
-          placeholder='검색  (#태그  status:검토  "정확한 구")'
+          placeholder={tx("검색  (#태그  status:검토  \"정확한 구\")")}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Escape" && setText("")}
@@ -111,8 +112,8 @@ export function SearchPanel() {
         {!empty && (
           <button
             className={`icon-btn save-search${active ? " on" : ""}`}
-            title={active ? `저장된 검색 "${active.name}"` : "이 검색 저장"}
-            aria-label="이 검색 저장"
+            title={active ? tx("저장된 검색 \"{0}\"", active.name) : tx("이 검색 저장")}
+            aria-label={tx("이 검색 저장")}
             onClick={() => setNaming(naming === null ? (active?.name ?? searchLabel(current)) : null)}
           >
             {active ? "★" : "☆"}
@@ -127,14 +128,14 @@ export function SearchPanel() {
             saveAs(naming);
           }}
         >
-          <input value={naming} onChange={(e) => setNaming(e.target.value)} placeholder="검색 이름" aria-label="검색 이름" autoFocus onKeyDown={(e) => e.key === "Escape" && setNaming(null)} />
+          <input value={naming} onChange={(e) => setNaming(e.target.value)} placeholder={tx("검색 이름")} aria-label={tx("검색 이름")} autoFocus onKeyDown={(e) => e.key === "Escape" && setNaming(null)} />
           <button className="btn small primary" type="submit">
-            저장
+            {tx("저장")}
           </button>
         </form>
       )}
       {saved.length > 0 && (
-        <div className="saved-searches" aria-label="저장된 검색">
+        <div className="saved-searches" aria-label={tx("저장된 검색")}>
           {saved.map((s) => (
             <span key={s.name} className={`saved-chip${active?.name === s.name ? " on" : ""}`} title={searchLabel(s)}>
               <button className="saved-run" onClick={() => apply(s)}>
@@ -142,8 +143,8 @@ export function SearchPanel() {
               </button>
               <button
                 className="saved-del"
-                title="저장된 검색 지우기"
-                aria-label={`${s.name} 지우기`}
+                title={tx("저장된 검색 지우기")}
+                aria-label={tx("{0} 지우기", s.name)}
                 onClick={() => store(saved.filter((x) => x.name !== s.name))}
               >
                 ×
@@ -156,8 +157,8 @@ export function SearchPanel() {
       <div className="filters">
         <div className="filter-row">
           <select value={dateField} onChange={(e) => setDateField(e.target.value as DateFilter["field"])}>
-            <option value="modified">수정일</option>
-            <option value="created">생성일</option>
+            <option value="modified">{tx("수정일")}</option>
+            <option value="created">{tx("생성일")}</option>
           </select>
           <select value={range} onChange={(e) => setRange(e.target.value as Range)}>
             {(Object.keys(RANGE_LABEL) as Range[]).map((r) => (
@@ -167,7 +168,7 @@ export function SearchPanel() {
             ))}
           </select>
           <button className="btn ghost small" onClick={() => setAdding((v) => !v)}>
-            ＋ 조건
+            {tx("＋ 조건")}
           </button>
         </div>
         {adding && (
@@ -183,7 +184,7 @@ export function SearchPanel() {
             <span>
               {f.key} {OP_LABEL[f.op]} {f.value ?? ""}
             </span>
-            <button className="icon-btn" title="조건 삭제" onClick={() => setExtra(extra.filter((_, j) => j !== i))}>
+            <button className="icon-btn" title={tx("조건 삭제")} onClick={() => setExtra(extra.filter((_, j) => j !== i))}>
               ×
             </button>
           </div>
@@ -193,7 +194,7 @@ export function SearchPanel() {
       {error && <p className="error pad small">{error}</p>}
       {result && (
         <p className="muted small pad result-summary">
-          결과 {result.total}개 · {result.took_ms}ms
+          {tx("결과 {0}개 · {1}ms", result.total, result.took_ms)}
         </p>
       )}
       <ul className="results">
@@ -206,13 +207,13 @@ export function SearchPanel() {
               </div>
             )}
             <div className="r-meta">
-              {h.path.includes("/") ? h.path.slice(0, h.path.lastIndexOf("/")) : "맨 위 폴더"} ·{" "}
-              {new Date(h.mtime).toLocaleDateString("ko-KR", { month: "2-digit", day: "2-digit" })}
+              {h.path.includes("/") ? h.path.slice(0, h.path.lastIndexOf("/")) : tx("맨 위 폴더")} ·{" "}
+              {new Date(h.mtime).toLocaleDateString(dateLocale(), { month: "2-digit", day: "2-digit" })}
             </div>
           </li>
         ))}
       </ul>
-      {result && result.total === 0 && <p className="muted small pad">결과 없음 · 조건을 줄여 보세요</p>}
+      {result && result.total === 0 && <p className="muted small pad">{tx("결과 없음 · 조건을 줄여 보세요")}</p>}
     </div>
   );
 }
@@ -234,7 +235,7 @@ function ConditionForm({ onAdd }: { onAdd: (f: PropFilter) => void }) {
   const submit = () => key.trim() && onAdd({ key: key.trim(), op, value: op === "empty" ? null : value });
   return (
     <div className="condition-form" onKeyDown={(e) => e.key === "Enter" && submit()}>
-      <input list="nv-prop-keys" placeholder="속성" value={key} onChange={(e) => setKey(e.target.value)} autoFocus />
+      <input list="nv-prop-keys" placeholder={tx("속성")} value={key} onChange={(e) => setKey(e.target.value)} autoFocus />
       <datalist id="nv-prop-keys">
         {keys.map((k) => (
           <option key={k} value={k} />
@@ -249,7 +250,7 @@ function ConditionForm({ onAdd }: { onAdd: (f: PropFilter) => void }) {
       </select>
       {op !== "empty" && (
         <>
-          <input list="nv-prop-values" placeholder="값" value={value} onChange={(e) => setValue(e.target.value)} />
+          <input list="nv-prop-values" placeholder={tx("값")} value={value} onChange={(e) => setValue(e.target.value)} />
           <datalist id="nv-prop-values">
             {values.map((v) => (
               <option key={v} value={v} />
@@ -258,7 +259,7 @@ function ConditionForm({ onAdd }: { onAdd: (f: PropFilter) => void }) {
         </>
       )}
       <button className="btn small primary" onClick={submit}>
-        추가
+        {tx("추가")}
       </button>
     </div>
   );

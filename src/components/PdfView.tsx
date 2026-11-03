@@ -12,6 +12,7 @@ import { useApp } from "../store";
 import { findNode } from "../lib/tree";
 import { annotationPath, parseAnnotations, quoteSpans, type Annotation } from "../lib/pdfNotes";
 
+import { tx } from "../i18n";
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
 const ZOOMS = [0.5, 0.67, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
@@ -126,7 +127,7 @@ export function PdfView({ path, page, seq }: { path: string; page: number; seq: 
     if (!form) return;
     const ok = await useApp.getState().annotatePdf(path, form.page, form.quote, memo);
     if (ok) {
-      toast(`주석을 "${notePath.split("/").pop()}"에 넣었습니다`);
+      toast(tx("주석을 \"{0}\"에 넣었습니다", notePath.split("/").pop()));
       setForm(null);
       setMemo("");
       window.getSelection()?.removeAllRanges();
@@ -151,7 +152,7 @@ export function PdfView({ path, page, seq }: { path: string; page: number; seq: 
           {name}
         </span>
         <span className="pdf-pages">
-          <button className="icon-btn" title="이전 쪽" disabled={current <= 1} onClick={() => goTo(current - 1)}>
+          <button className="icon-btn" title={tx("이전 쪽")} disabled={current <= 1} onClick={() => goTo(current - 1)}>
             ‹
           </button>
           <input
@@ -165,40 +166,40 @@ export function PdfView({ path, page, seq }: { path: string; page: number; seq: 
             }}
           />
           <span className="muted">/ {sizes.length || "…"}</span>
-          <button className="icon-btn" title="다음 쪽" disabled={current >= sizes.length} onClick={() => goTo(current + 1)}>
+          <button className="icon-btn" title={tx("다음 쪽")} disabled={current >= sizes.length} onClick={() => goTo(current + 1)}>
             ›
           </button>
         </span>
         <span className="pdf-zoom">
-          <button className="icon-btn" title="축소" onClick={() => zoomBy(-1)}>
+          <button className="icon-btn" title={tx("축소")} onClick={() => zoomBy(-1)}>
             −
           </button>
-          <button className="btn ghost small" title="폭에 맞추기" onClick={() => setZoom(1)}>
+          <button className="btn ghost small" title={tx("폭에 맞추기")} onClick={() => setZoom(1)}>
             {Math.round(zoom * 100)}%
           </button>
-          <button className="icon-btn" title="확대" onClick={() => zoomBy(1)}>
+          <button className="icon-btn" title={tx("확대")} onClick={() => zoomBy(1)}>
             ＋
           </button>
         </span>
         <span className="pdf-actions">
           <button className="btn ghost small" disabled={!hasNote} onClick={() => openNote(notePath)} title={notePath}>
-            주석 노트
+            {tx("주석 노트")}
           </button>
           <button
             className="btn ghost small"
             onClick={() => void api.attachmentPath(path).then(openWithOs).catch((e) => toast(errorMessage(e), "error"))}
           >
-            기본 프로그램으로 열기
+            {tx("기본 프로그램으로 열기")}
           </button>
-          <button className="icon-btn" title="닫기 (Esc)" onClick={closePdf}>
+          <button className="icon-btn" title={tx("닫기 (Esc)")} onClick={closePdf}>
             ×
           </button>
         </span>
       </div>
       <div className="pdf-main">
         <div className="pdf-scroll" ref={scroller} onScroll={onScroll} onMouseUp={onMouseUp}>
-          {error && <p className="error pad">PDF를 열지 못했습니다: {error}</p>}
-          {!doc && !error && <p className="muted pad">PDF를 여는 중…</p>}
+          {error && <p className="error pad">{tx("PDF를 열지 못했습니다: {0}", error)}</p>}
+          {!doc && !error && <p className="muted pad">{tx("PDF를 여는 중…")}</p>}
           {doc &&
             sizes.map((s, i) => (
               <PdfPage key={i} doc={doc} n={i + 1} w={s.w * scale} h={s.h * scale} scale={scale} marks={byPage.get(i + 1) ?? []} />
@@ -213,19 +214,19 @@ export function PdfView({ path, page, seq }: { path: string; page: number; seq: 
                 setPick(null);
               }}
             >
-              주석 달기
+              {tx("주석 달기")}
             </button>
           )}
         </div>
         <aside className="pdf-side">
           {form ? (
             <div className="pdf-form">
-              <div className="small muted">p.{form.page}에 주석</div>
+              <div className="small muted">{tx("p.{0}에 주석", form.page)}</div>
               <blockquote>{form.quote.length > 300 ? form.quote.slice(0, 300) + "…" : form.quote}</blockquote>
               <textarea
                 autoFocus
                 rows={4}
-                placeholder="메모 (비워도 됩니다)"
+                placeholder={tx("메모 (비워도 됩니다)")}
                 value={memo}
                 onChange={(e) => setMemo(e.target.value)}
                 onKeyDown={(e) => {
@@ -235,15 +236,15 @@ export function PdfView({ path, page, seq }: { path: string; page: number; seq: 
               />
               <div className="modal-actions">
                 <button className="btn ghost small" onClick={() => setForm(null)}>
-                  취소
+                  {tx("취소")}
                 </button>
                 <button className="btn primary small" onClick={() => void save()} title="Ctrl+Enter">
-                  주석 저장
+                  {tx("주석 저장")}
                 </button>
               </div>
             </div>
           ) : (
-            <p className="muted small">글을 끌어 고르면 [주석 달기]가 나옵니다. 주석은 "{notePath.split("/").pop()}"에 쌓입니다.</p>
+            <p className="muted small">{tx("글을 끌어 고르면 [주석 달기]가 나옵니다. 주석은 \"{0}\"에 쌓입니다.", notePath.split("/").pop())}</p>
           )}
           <div className="pdf-notes">
             {notes.map((a, i) => (

@@ -10,6 +10,7 @@ import { openProps } from "./TabBar";
 import { MODE_LABEL } from "./FolderView";
 import { TEXT_COLORS } from "../editor/colors";
 
+import { tx } from "../i18n";
 interface Menu {
   x: number;
   y: number;
@@ -29,11 +30,11 @@ export function Explorer() {
   return (
     <div className="explorer">
       <div className="pane-toolbar">
-        <span className="pane-title">파일</span>
-        <button className="icon-btn" title="새 노트" onClick={() => createNote("")}>
+        <span className="pane-title">{tx("파일")}</span>
+        <button className="icon-btn" title={tx("새 노트")} onClick={() => createNote("")}>
           ＋
         </button>
-        <button className="icon-btn" title="새 폴더" onClick={() => setEditing({ mode: "new-folder", parent: "" })}>
+        <button className="icon-btn" title={tx("새 폴더")} onClick={() => setEditing({ mode: "new-folder", parent: "" })}>
           ▣
         </button>
       </div>
@@ -53,7 +54,7 @@ export function Explorer() {
         {tree.map((n) => (
           <Row key={n.path} node={n} depth={0} onMenu={setMenu} />
         ))}
-        {tree.length === 0 && <p className="muted small pad">노트가 없습니다. ＋로 새 노트를 만드세요.</p>}
+        {tree.length === 0 && <p className="muted small pad">{tx("노트가 없습니다. ＋로 새 노트를 만드세요.")}</p>}
       </div>
       {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
     </div>
@@ -210,7 +211,7 @@ function NewFolderRow({ parent, depth, project }: { parent: string; depth: numbe
         <Chevron open={false} />
       </span>
       <NameInput
-        initial={project ? "새 프로젝트" : "새 폴더"}
+        initial={project ? tx("새 프로젝트") : tx("새 폴더")}
         onCommit={(name) => {
           setEditing(null);
           if (name) void (project ? createProject(name) : createFolder(parent, name));
@@ -237,10 +238,10 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
   }, [onClose]);
 
   const items: [string, () => void][] = [
-    ["새 노트", () => createNote(dir)],
-    ["새 캔버스", () => void useApp.getState().createCanvas(dir)],
+    [tx("새 노트"), () => createNote(dir)],
+    [tx("새 캔버스"), () => void useApp.getState().createCanvas(dir)],
     [
-      "새 폴더",
+      tx("새 폴더"),
       () => {
         if (dir) toggleFolder(dir, true);
         setEditing({ mode: "new-folder", parent: dir });
@@ -253,13 +254,13 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
     items.push(
       ...(node.kind === "note"
         ? ([
-            ["새 탭에서 열기", () => useApp.getState().openNote(node.path, undefined, undefined, { newTab: true })],
-            ["오른쪽에 나란히 열기", () => useApp.getState().openSplit(node.path)],
+            [tx("새 탭에서 열기"), () => useApp.getState().openNote(node.path, undefined, undefined, { newTab: true })],
+            [tx("오른쪽에 나란히 열기"), () => useApp.getState().openSplit(node.path)],
           ] as [string, () => void][])
         : []),
       ...(node.kind === "folder"
         ? (["table", "board", "calendar", "graph"] as const).map((m): [string, () => void] => [
-            `${MODE_LABEL[m]}로 보기`,
+            tx("{0}로 보기", MODE_LABEL[m]),
             () => useApp.getState().setTableView(node.path, m),
           ])
         : []),
@@ -269,10 +270,10 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
           () => void (a.kind === "newProject" ? startNewProject() : a.kind === "archive" ? archive(node.path) : unarchive(node.path, a.to)),
         ],
       ),
-      ["이름 변경", () => setEditing({ mode: "rename", path: node.path })],
-      ...(node.kind === "note" ? ([["히스토리 보기", () => setVersionView({ path: node.path, id: null })]] as [string, () => void][]) : []),
+      [tx("이름 변경"), () => setEditing({ mode: "rename", path: node.path })],
+      ...(node.kind === "note" ? ([[tx("히스토리 보기"), () => setVersionView({ path: node.path, id: null })]] as [string, () => void][]) : []),
       [
-        "탐색기에서 보기",
+        tx("탐색기에서 보기"),
         async () => {
           try {
             await revealItemInDir(await api.revealEntry(node.path));
@@ -282,27 +283,27 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
         },
       ],
       [
-        "경로 복사",
-        () => navigator.clipboard.writeText(node.path).then(() => toast("경로를 복사했습니다")),
+        tx("경로 복사"),
+        () => navigator.clipboard.writeText(node.path).then(() => toast(tx("경로를 복사했습니다"))),
       ],
       [
-        "삭제",
+        tx("삭제"),
         async () => {
-          const what = node.kind === "folder" ? `폴더 "${node.name}"와 안의 모든 파일` : `"${baseName(node.path)}"`;
-          if (await ask(`${what}을(를) 휴지통으로 옮길까요?`, { title: "삭제", kind: "warning" })) remove(node.path);
+          const what = node.kind === "folder" ? tx("폴더 \"{0}\"와 안의 모든 파일", node.name) : `"${baseName(node.path)}"`;
+          if (await ask(tx("{0}을(를) 휴지통으로 옮길까요?", what), { title: tx("삭제"), kind: "warning" })) remove(node.path);
         },
       ],
     );
   }
 
-  items.push(["삭제된 노트 히스토리", () => setModal("deleted")]);
+  items.push([tx("삭제된 노트 히스토리"), () => setModal("deleted")]);
 
   return (
     <ul className="menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
       {items.map(([label, run]) => (
         <li
           key={label}
-          className={label === "삭제" ? "danger" : ""}
+          className={label === tx("삭제") ? "danger" : ""}
           onClick={() => {
             onClose();
             run();
@@ -312,8 +313,8 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
         </li>
       ))}
       {node?.kind === "folder" && (
-        <li className="menu-colors" aria-label="폴더 색">
-          <span className="muted small">폴더 색</span>
+        <li className="menu-colors" aria-label={tx("폴더 색")}>
+          <span className="muted small">{tx("폴더 색")}</span>
           <div className="menu-swatches">
             {TEXT_COLORS.map((c) => (
               <button
@@ -330,8 +331,8 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
             ))}
             <button
               className="menu-swatch none"
-              title="색 없음"
-              aria-label="색 없음"
+              title={tx("색 없음")}
+              aria-label={tx("색 없음")}
               onClick={() => {
                 onClose();
                 void setFolderColor(node.path, null);

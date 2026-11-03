@@ -4,6 +4,7 @@ import { api, type IdeaItem } from "../api";
 import { useApp } from "../store";
 import { noteTitle } from "../lib/tree";
 
+import { tx } from "../i18n";
 const DRAG = "application/x-notevine-idea";
 
 const changeStatus = (path: string, status: string) => useApp.getState().setNoteProperty(path, "status", status);
@@ -39,7 +40,7 @@ export function IdeaBoard() {
   const statuses = config.idea_statuses;
   const groups: [string, IdeaItem[]][] = statuses.map((s) => [s, ideas.filter((i) => i.status === s)]);
   const other = ideas.filter((i) => !statuses.includes(i.status));
-  if (other.length) groups.push(["기타", other]);
+  if (other.length) groups.push([tx("기타"), other]);
   const ideaPaths = new Set(ideas.map((i) => i.path));
 
   const inbox = notes.filter((n) => n.path.startsWith(config.inbox_folder + "/") && !ideaPaths.has(n.path));
@@ -77,14 +78,14 @@ export function IdeaBoard() {
   return (
     <div className="idea-board">
       <div className="pane-toolbar">
-        <span className="pane-title">아이디어</span>
+        <span className="pane-title">{tx("아이디어")}</span>
         <button className="btn ghost small" onClick={() => setModal("quickMemo")} title="Ctrl+Shift+N">
-          ＋ 빠른 메모
+          {tx("＋ 빠른 메모")}
         </button>
       </div>
       <div className="idea-groups">
         {groups.map(([status, items]) => (
-          <section key={status} className={`idea-group ${hover === status ? "drop" : ""}`} {...dropTo(status === "기타" ? null : status)}>
+          <section key={status} className={`idea-group ${hover === status ? "drop" : ""}`} {...dropTo(status === tx("기타") ? null : status)}>
             <h4>
               {status} <span className="count">{items.length}</span>
             </h4>
@@ -97,7 +98,7 @@ export function IdeaBoard() {
         ))}
         <section className="idea-group inbox">
           <h4>
-            {config.inbox_folder} · 상태 없음 <span className="count">{inbox.length}</span>
+            {tx("{0} · 상태 없음", config.inbox_folder)}{" "} <span className="count">{inbox.length}</span>
           </h4>
           <ul>
             {inbox.map((n) => (
@@ -108,7 +109,7 @@ export function IdeaBoard() {
       </div>
       {menu && (
         <ul className="menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
-          <li className="menu-label">상태 변경</li>
+          <li className="menu-label">{tx("상태 변경")}</li>
           {statuses.map((s) => (
             <li
               key={s}

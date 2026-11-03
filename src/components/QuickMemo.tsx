@@ -3,6 +3,7 @@ import { useState } from "react";
 import { api, errorMessage } from "../api";
 import { useApp } from "../store";
 
+import { tx } from "../i18n";
 export function QuickMemo() {
   const modal = useApp((s) => s.modal);
   const setModal = useApp((s) => s.setModal);
@@ -23,10 +24,10 @@ function Memo({ close }: { close: () => void }) {
       const path = await api.quickMemo(text, firstLine || null);
       close();
       await refreshTree();
-      toast(config.preset_enabled ? "Inbox에 저장됨" : "메모를 저장했습니다", "info", { label: "열기", run: () => openNote(path) });
+      toast(config.preset_enabled ? tx("Inbox에 저장됨") : tx("메모를 저장했습니다"), "info", { label: tx("열기"), run: () => openNote(path) });
     } catch (e) {
       setBusy(false);
-      toast(`메모를 저장하지 못했습니다: ${errorMessage(e)}`, "error");
+      toast(tx("메모를 저장하지 못했습니다: {0}", errorMessage(e)), "error");
     }
   };
 
@@ -34,12 +35,12 @@ function Memo({ close }: { close: () => void }) {
     <div className="modal-backdrop top" onMouseDown={close}>
       <div className="palette memo" onMouseDown={(e) => e.stopPropagation()}>
         <div className="memo-head">
-          빠른 메모 <span className="muted small">첫 줄이 제목 · Ctrl+Enter 저장 · Esc 닫기</span>
+          {tx("빠른 메모")}{" "} <span className="muted small">{tx("첫 줄이 제목 · Ctrl+Enter 저장 · Esc 닫기")}</span>
         </div>
         <textarea
           autoFocus
           value={text}
-          placeholder="떠오른 생각을 적으세요"
+          placeholder={tx("떠오른 생각을 적으세요")}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return;
@@ -51,10 +52,10 @@ function Memo({ close }: { close: () => void }) {
         />
         <div className="modal-actions pad">
           <button className="btn ghost" onClick={close}>
-            취소
+            {tx("취소")}
           </button>
           <button className="btn primary" disabled={!text.trim() || busy} onClick={() => void save()}>
-            {config.preset_enabled ? `${config.inbox_folder}에 저장` : "저장"}
+            {config.preset_enabled ? tx("{0}에 저장", config.inbox_folder) : tx("저장")}
           </button>
         </div>
       </div>

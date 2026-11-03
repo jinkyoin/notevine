@@ -6,6 +6,7 @@ import { api } from "../api";
 import { useApp } from "../store";
 import { readFrontmatter, setProperty, typeOf, type Prop } from "../lib/frontmatter";
 
+import { tx } from "../i18n";
 export function PropertiesPanel() {
   const docText = useApp((s) => s.docText);
   const editText = useApp((s) => s.editText);
@@ -22,27 +23,27 @@ export function PropertiesPanel() {
 
   const commit = (key: string, value: Prop["value"] | undefined) => {
     const ok = editText((t) => setProperty(t, key, value));
-    if (!ok) toast("속성 YAML에 문법 오류가 있어 고칠 수 없습니다. 편집기에서 먼저 고쳐 주세요", "error");
+    if (!ok) toast(tx("속성 YAML에 문법 오류가 있어 고칠 수 없습니다. 편집기에서 먼저 고쳐 주세요"), "error");
   };
 
   return (
     <section className="panel-section props-panel">
-      <h3 className="panel-heading">속성</h3>
-      {fm.error && <p className="props-error">YAML 오류: {fm.error}</p>}
+      <h3 className="panel-heading">{tx("속성")}</h3>
+      {fm.error && <p className="props-error">{tx("YAML 오류: {0}", fm.error)}</p>}
       {fm.props.map((p) => (
         <PropRow key={p.key} prop={p} onChange={(v) => commit(p.key, v)} onRemove={() => commit(p.key, undefined)} />
       ))}
       <div className="prop-add">
         <input
           list="nv-all-keys"
-          placeholder="＋ 속성 추가"
+          placeholder={tx("＋ 속성 추가")}
           value={newKey}
           onChange={(e) => setNewKey(e.target.value)}
           onKeyDown={(e) => {
             if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
             const k = newKey.trim();
             if (!k) return;
-            if (fm.props.some((p) => p.key === k)) return toast(`"${k}" 속성이 이미 있습니다`);
+            if (fm.props.some((p) => p.key === k)) return toast(tx("\"{0}\" 속성이 이미 있습니다", k));
             commit(k, k.toLowerCase() === "tags" ? [] : "");
             setNewKey("");
           }}
@@ -71,7 +72,7 @@ function PropRow({ prop, onChange, onRemove }: { prop: Prop; onChange: (v: Prop[
           {items.map((v, i) => (
             <span key={i} className="chip">
               {v}
-              <button title="삭제" onClick={() => onChange(items.filter((_, j) => j !== i))}>
+              <button title={tx("삭제")} onClick={() => onChange(items.filter((_, j) => j !== i))}>
                 ×
               </button>
             </span>
@@ -113,7 +114,7 @@ function PropRow({ prop, onChange, onRemove }: { prop: Prop; onChange: (v: Prop[
             onChange(asNum);
           }} />
           {prop.type === "url" && (
-            <button className="icon-btn" title="브라우저로 열기" onClick={() => void openUrl(String(prop.value)).catch(() => {})}>
+            <button className="icon-btn" title={tx("브라우저로 열기")} onClick={() => void openUrl(String(prop.value)).catch(() => {})}>
               ↗
             </button>
           )}
@@ -127,7 +128,7 @@ function PropRow({ prop, onChange, onRemove }: { prop: Prop; onChange: (v: Prop[
         {prop.key}
       </span>
       <div className="prop-value">{input}</div>
-      <button className="icon-btn prop-remove" title="속성 삭제" onClick={onRemove}>
+      <button className="icon-btn prop-remove" title={tx("속성 삭제")} onClick={onRemove}>
         ×
       </button>
       <datalist id={listId}>
@@ -161,5 +162,5 @@ function TextValue({ value, listId, onFocus, onCommit }: { value: string; listId
 }
 
 function typeLabel(t: ReturnType<typeof typeOf>) {
-  return { text: "텍스트", number: "숫자", bool: "예/아니오", date: "날짜", url: "URL", list: "목록" }[t];
+  return { text: tx("텍스트"), number: tx("숫자"), bool: tx("예/아니오"), date: tx("날짜"), url: "URL", list: tx("목록") }[t];
 }

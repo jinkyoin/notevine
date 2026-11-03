@@ -35,6 +35,7 @@ import { AiPanel } from "./AiPanel";
 import { AiPreview, AiSendConfirm } from "./AiDialogs";
 import { AiEdits } from "./AiEdits";
 
+import { tx } from "../i18n";
 /** The vault's `.app/custom.css`, last in the page so it wins over the app's own styles. */
 function applyUserCss(text: string) {
   let el = document.getElementById("user-css");
@@ -80,16 +81,16 @@ function VaultMenu({ name, root }: { name: string; root: string }) {
   };
   return (
     <div className="vault-menu" ref={box}>
-      <button className="vault-name" title={`${root}\n눌러서 노트 폴더 바꾸기`} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button className="vault-name" title={tx("{0}\n눌러서 노트 폴더 바꾸기", root)} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(!open)}>
         {name} <span className="caret">▾</span>
       </button>
       {open && (
         <div className="menu" role="menu">
           <button role="menuitem" onClick={() => run(() => useApp.getState().closeVault())}>
-            노트 폴더 바꾸기…
+            {tx("노트 폴더 바꾸기…")}
           </button>
           <button role="menuitem" onClick={() => run(() => void revealItemInDir(root).catch(() => {}))}>
-            탐색기에서 노트 폴더 열기
+            {tx("탐색기에서 노트 폴더 열기")}
           </button>
         </div>
       )}
@@ -144,6 +145,19 @@ export function MainLayout() {
     return () => void off.then((f) => f());
   }, []);
 
+  // Git backup on a timer (settings → 백업), only when the vault is a repository with changes.
+  const backupMinutes = useApp((s) => s.config.backup_minutes);
+  useEffect(() => {
+    if (!backupMinutes) return;
+    const id = window.setInterval(() => {
+      void api
+        .backupStatus()
+        .then((s) => s.repo && (s.changed > 0 || s.ahead > 0) && useApp.getState().backupNow(true))
+        .catch(() => {});
+    }, backupMinutes * 60_000);
+    return () => window.clearInterval(id);
+  }, [backupMinutes, vault?.root]);
+
   // Plugins of this vault (FR-EXT-02), run while it is open.
   usePluginHost();
 
@@ -154,17 +168,17 @@ export function MainLayout() {
       <header className="topbar">
         <button
           className="icon-btn"
-          title={leftOpen ? "왼쪽 사이드바 닫기 (Ctrl+\\)" : "왼쪽 사이드바 열기 (Ctrl+\\)"}
-          aria-label="왼쪽 사이드바"
+          title={leftOpen ? tx("왼쪽 사이드바 닫기 (Ctrl+\\)") : tx("왼쪽 사이드바 열기 (Ctrl+\\)")}
+          aria-label={tx("왼쪽 사이드바")}
           aria-pressed={leftOpen}
           onClick={() => setPanels({ leftOpen: !leftOpen })}
         >
           <PanelIcon side="left" open={leftOpen} />
         </button>
-        <button className="icon-btn" title="이전 노트 (Alt+←)" disabled={!canBack} onClick={goBack}>
+        <button className="icon-btn" title={tx("이전 노트 (Alt+←)")} disabled={!canBack} onClick={goBack}>
           ‹
         </button>
-        <button className="icon-btn" title="다음 노트 (Alt+→)" disabled={!canForward} onClick={goForward}>
+        <button className="icon-btn" title={tx("다음 노트 (Alt+→)")} disabled={!canForward} onClick={goForward}>
           ›
         </button>
         <VaultMenu name={vault?.name ?? ""} root={vault?.root ?? ""} />
@@ -182,24 +196,24 @@ export function MainLayout() {
           <button
             className="btn ghost small"
             onClick={() => void useApp.getState().applyPreset()}
-            title="PARA(프로젝트·영역·자료·보관) 폴더와 템플릿을 만듭니다"
+            title={tx("PARA(프로젝트·영역·자료·보관) 폴더와 템플릿을 만듭니다")}
           >
-            기본 구조 만들기
+            {tx("기본 구조 만들기")}
           </button>
         )}
-        <button className="btn ghost small" onClick={() => setModal("quickMemo")} title="Ctrl+Shift+N · 다른 프로그램을 쓰는 중에는 Ctrl+Alt+N">
-          빠른 메모
+        <button className="btn ghost small" onClick={() => setModal("quickMemo")} title={tx("Ctrl+Shift+N · 다른 프로그램을 쓰는 중에는 Ctrl+Alt+N")}>
+          {tx("빠른 메모")}
         </button>
-        <button className="icon-btn" title="명령 팔레트 (Ctrl+P)" onClick={() => setModal("palette")}>
+        <button className="icon-btn" title={tx("명령 팔레트 (Ctrl+P)")} onClick={() => setModal("palette")}>
           ⌘
         </button>
-        <button className="icon-btn" title="설정 (Ctrl+,)" onClick={() => setModal("settings")}>
+        <button className="icon-btn" title={tx("설정 (Ctrl+,)")} onClick={() => setModal("settings")}>
           ⚙
         </button>
         <button
           className="icon-btn"
-          title={rightOpen ? "오른쪽 패널 닫기 (Ctrl+Shift+\\)" : "오른쪽 패널 열기 (Ctrl+Shift+\\)"}
-          aria-label="오른쪽 패널"
+          title={rightOpen ? tx("오른쪽 패널 닫기 (Ctrl+Shift+\\)") : tx("오른쪽 패널 열기 (Ctrl+Shift+\\)")}
+          aria-label={tx("오른쪽 패널")}
           aria-pressed={rightOpen}
           onClick={() => setPanels({ rightOpen: !rightOpen })}
         >
@@ -211,14 +225,14 @@ export function MainLayout() {
           <aside className="sidebar">
             <div className="side-tabs" role="tablist">
               <button role="tab" className={sidebarTab === "files" ? "on" : ""} onClick={() => setSidebarTab("files")}>
-                파일
+                {tx("파일")}
               </button>
               <button role="tab" className={sidebarTab === "search" ? "on" : ""} onClick={focusSearch} title="Ctrl+Shift+F">
-                검색
+                {tx("검색")}
               </button>
               {preset && (
                 <button role="tab" className={sidebarTab === "ideas" ? "on" : ""} onClick={() => setSidebarTab("ideas")}>
-                  아이디어
+                  {tx("아이디어")}
                 </button>
               )}
             </div>
@@ -238,15 +252,15 @@ export function MainLayout() {
               <Editor key={openPath} path={openPath} />
             ) : (
               <div className="empty">
-                <p>열린 노트가 없습니다.</p>
+                <p>{tx("열린 노트가 없습니다.")}</p>
                 <button className="btn primary" onClick={() => setModal("template")}>
-                  새 노트 (Ctrl+N)
+                  {tx("새 노트 (Ctrl+N)")}
                 </button>
                 {!preset && (
                   <p className="muted small">
-                    PARA(프로젝트·영역·자료·보관) 폴더와 템플릿이 필요하면{" "}
+                    {tx("PARA(프로젝트·영역·자료·보관) 폴더와 템플릿이 필요하면")}{" "}
                     <button className="link-btn" onClick={() => void useApp.getState().applyPreset()}>
-                      기본 구조 만들기
+                      {tx("기본 구조 만들기")}
                     </button>
                   </p>
                 )}

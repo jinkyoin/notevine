@@ -21,7 +21,8 @@ use crate::commands::AppState;
 use crate::error::{AppError, AppResult};
 use crate::web::agent;
 
-const KEY_SERVICE: &str = "Notevine AI";
+// A development build keeps its keys apart from the installed app's.
+const KEY_SERVICE: &str = if crate::DEV_BUILD { "Notevine AI (dev)" } else { "Notevine AI" };
 const RUN_TIMEOUT: Duration = Duration::from_secs(300);
 const ANTHROPIC_VERSION: &str = "2026-10-21";
 /// Used when the user picked no model.

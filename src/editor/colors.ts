@@ -5,30 +5,31 @@ import { EditorSelection, type EditorState, type Range, type TransactionSpec } f
 import { Decoration, type DecorationSet, type EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { composingStep, frontmatterEnd } from "./livePreview";
 
+import { tx } from "../i18n";
 export type ColorProp = "color" | "background-color";
 
 /** Mid-tone text colors that read on both the light and the dark theme. */
 export const TEXT_COLORS = [
-  { name: "빨강", value: "#e03131" },
-  { name: "주황", value: "#e8590c" },
-  { name: "갈색", value: "#a0522d" },
-  { name: "초록", value: "#2f9e44" },
-  { name: "파랑", value: "#1c7ed6" },
-  { name: "보라", value: "#9c36b5" },
-  { name: "분홍", value: "#d6336c" },
-  { name: "회색", value: "#868e96" },
+  { name: tx("빨강"), value: "#e03131" },
+  { name: tx("주황"), value: "#e8590c" },
+  { name: tx("갈색"), value: "#a0522d" },
+  { name: tx("초록"), value: "#2f9e44" },
+  { name: tx("파랑"), value: "#1c7ed6" },
+  { name: tx("보라"), value: "#9c36b5" },
+  { name: tx("분홍"), value: "#d6336c" },
+  { name: tx("회색"), value: "#868e96" },
 ];
 
 /** Translucent backgrounds, so the text color underneath works on both themes. */
 export const BG_COLORS = [
-  { name: "노랑", value: "rgba(255, 212, 59, 0.45)" },
-  { name: "주황", value: "rgba(255, 146, 43, 0.35)" },
-  { name: "빨강", value: "rgba(250, 82, 82, 0.3)" },
-  { name: "초록", value: "rgba(64, 192, 87, 0.3)" },
-  { name: "파랑", value: "rgba(51, 154, 240, 0.3)" },
-  { name: "보라", value: "rgba(151, 117, 250, 0.3)" },
-  { name: "분홍", value: "rgba(240, 101, 149, 0.3)" },
-  { name: "회색", value: "rgba(134, 142, 150, 0.3)" },
+  { name: tx("노랑"), value: "rgba(255, 212, 59, 0.45)" },
+  { name: tx("주황"), value: "rgba(255, 146, 43, 0.35)" },
+  { name: tx("빨강"), value: "rgba(250, 82, 82, 0.3)" },
+  { name: tx("초록"), value: "rgba(64, 192, 87, 0.3)" },
+  { name: tx("파랑"), value: "rgba(51, 154, 240, 0.3)" },
+  { name: tx("보라"), value: "rgba(151, 117, 250, 0.3)" },
+  { name: tx("분홍"), value: "rgba(240, 101, 149, 0.3)" },
+  { name: tx("회색"), value: "rgba(134, 142, 150, 0.3)" },
 ];
 
 const VALUE = /^(#[0-9a-f]{3,8}|rgba?\(\s*[\d.]+%?\s*,\s*[\d.]+%?\s*,\s*[\d.]+%?\s*(,\s*[\d.]+%?\s*)?\)|[a-z]{3,20})$/i;

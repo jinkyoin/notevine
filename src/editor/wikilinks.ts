@@ -10,6 +10,7 @@ import { composingStep, frontmatterEnd } from "./livePreview";
 import { blockCandidates, newBlockId, noteHeadings, withBlockId } from "../lib/headings";
 import { rankTags, tagBefore } from "../lib/tags";
 
+import { tx } from "../i18n";
 export interface LinkEnv {
   /** Path of the note being edited. */
   path(): string;
@@ -98,8 +99,8 @@ function buildDecorations(view: EditorView, env: LinkEnv): DecorationSet {
           : !target || noteExists(notes, target) // [[#제목]] is in this note
             ? "cm-wikilink"
             : "cm-wikilink cm-wikilink-missing";
-        const how = env.clickMode() === "click" ? "클릭" : "Ctrl+클릭";
-        const where = heading ? `${target || "이 노트"} › ${heading}` : target;
+        const how = env.clickMode() === "click" ? tx("클릭") : tx("Ctrl+클릭");
+        const where = heading ? `${target || tx("이 노트")} › ${heading}` : target;
         const mark = Decoration.mark({ class: cls, attributes: { title: `${how}: ${where}` } });
         const innerFrom = start + bang + 2;
         const innerTo = innerFrom + inner.length;
@@ -203,7 +204,7 @@ function completeNotes(env: LinkEnv) {
     if (query.trim() && !notes.some((n) => linkKey(n.title) === q)) {
       const name = query.trim();
       options.push({
-        label: `＋ "${name}" 새 노트 만들기`,
+        label: tx("＋ \"{0}\" 새 노트 만들기", name),
         apply: (view, _c, from, to) => {
           const insert = name + closeAfter(view, to);
           view.dispatch({ changes: { from, to, insert }, selection: { anchor: from + insert.length } });
@@ -252,8 +253,8 @@ function completeAnchors(env: LinkEnv) {
         }));
       // Typing ^ switches to blocks; offer it for those who don't know the syntax.
       options.push({
-        label: "^ 문단·목록 항목에 연결…",
-        detail: "블록 링크",
+        label: tx("^ 문단·목록 항목에 연결…"),
+        detail: tx("블록 링크"),
         apply: (view, _c, a, b) => {
           view.dispatch({ changes: { from: a, to: b, insert: "^" }, selection: { anchor: a + 1 } });
           startCompletion(view);
@@ -269,7 +270,7 @@ function completeAnchors(env: LinkEnv) {
       .slice(0, 50);
     const options: Completion[] = blocks.map((b) => ({
       label: b.text.length > 60 ? b.text.slice(0, 59) + "…" : b.text,
-      detail: b.id ? "^" + b.id : "새 블록 ID",
+      detail: b.id ? "^" + b.id : tx("새 블록 ID"),
       apply: (view: EditorView, _c: Completion, a: number, to: number) => {
         if (b.id) return finish(view, a, to, b.id);
         const id = newBlockId(self ? view.state.doc.toString() : found.text);
@@ -301,7 +302,7 @@ function completeTags(env: LinkEnv) {
     if (ctx.aborted || !tags.length) return null;
     return {
       from: ctx.pos - query.length,
-      options: tags.map((t) => ({ label: t.tag, detail: `${t.count}개 노트`, type: "tag" })),
+      options: tags.map((t) => ({ label: t.tag, detail: tx("{0}개 노트", t.count), type: "tag" })),
       filter: false,
     };
   };

@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { availableCommands } from "../commands";
 import { useApp } from "../store";
 
+import { tx } from "../i18n";
 export function CommandPalette() {
   const modal = useApp((s) => s.modal);
   const setModal = useApp((s) => s.setModal);
@@ -35,7 +36,7 @@ function Palette({ close }: { close: () => void }) {
         <input
           className="palette-input"
           autoFocus
-          placeholder="명령 찾기"
+          placeholder={tx("명령 찾기")}
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
@@ -58,7 +59,7 @@ function Palette({ close }: { close: () => void }) {
               {c.keys && <kbd>{c.keys}</kbd>}
             </li>
           ))}
-          {items.length === 0 && <li className="muted">맞는 명령이 없습니다</li>}
+          {items.length === 0 && <li className="muted">{tx("맞는 명령이 없습니다")}</li>}
         </ul>
       </div>
     </div>

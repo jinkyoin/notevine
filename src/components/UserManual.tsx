@@ -6,6 +6,7 @@ import { headingSlug, MANUAL, manualChapters } from "../lib/manual";
 import { drawRichBlocks } from "../lib/richBlocks";
 import { safeHtml } from "./NoteView";
 
+import { tx } from "../i18n";
 export function UserManual() {
   const modal = useApp((s) => s.modal);
   if (modal !== "manual") return null;
@@ -54,13 +55,13 @@ function ManualDialog({ close }: { close: () => void }) {
     <div className="modal-backdrop" onMouseDown={close} onKeyDown={(e) => e.key === "Escape" && close()}>
       <div className="modal manual" tabIndex={-1} ref={(el) => el?.focus()} onMouseDown={(e) => e.stopPropagation()}>
         <div className="vv-head">
-          <h2>사용자 매뉴얼</h2>
-          <button className="icon-btn" title="닫기 (Esc)" onClick={close}>
+          <h2>{tx("사용자 매뉴얼")}</h2>
+          <button className="icon-btn" title={tx("닫기 (Esc)")} onClick={close}>
             ×
           </button>
         </div>
         <div className="manual-main">
-          <nav className="manual-toc" aria-label="목차">
+          <nav className="manual-toc" aria-label={tx("목차")}>
             {chapters.map((c) => (
               <button key={c.slug} className={c.slug === current ? "on" : ""} onClick={() => go(c.slug)}>
                 {c.title}

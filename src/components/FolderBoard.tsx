@@ -6,6 +6,7 @@ import { boardColumns, groupKeys, NONE } from "../lib/folderViews";
 import { openProps } from "./TabBar";
 import { subFolder } from "./FolderTable";
 
+import { tx } from "../i18n";
 const DRAG = "application/x-notevine-card";
 
 export function FolderBoard({ table }: { table: Table }) {
@@ -25,7 +26,7 @@ export function FolderBoard({ table }: { table: Table }) {
     <div className="board">
       <div className="board-bar">
         <label className="muted small">
-          묶을 속성{" "}
+          {tx("묶을 속성")}{" "}
           <select value={key} onChange={(e) => setPicked(e.target.value)}>
             {(keys.includes(key) ? keys : [key, ...keys]).map((k) => (
               <option key={k} value={k}>
@@ -34,7 +35,7 @@ export function FolderBoard({ table }: { table: Table }) {
             ))}
           </select>
         </label>
-        <span className="muted small">카드를 다른 칸으로 끌어 놓으면 노트의 {key} 값이 바뀝니다.</span>
+        <span className="muted small">{tx("카드를 다른 칸으로 끌어 놓으면 노트의 {0} 값이 바뀝니다.", key)}</span>
       </div>
       <div className="board-cols">
         {cols.map((c) => (
@@ -55,7 +56,7 @@ export function FolderBoard({ table }: { table: Table }) {
             }}
           >
             <h4>
-              {c.value === NONE ? `${key} 없음` : c.value} <span className="count">{c.rows.length}</span>
+              {c.value === NONE ? tx("{0} 없음", key) : c.value} <span className="count">{c.rows.length}</span>
             </h4>
             <ul>
               {c.rows.map((r) => {

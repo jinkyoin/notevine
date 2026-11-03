@@ -1,6 +1,7 @@
 // AI 노트 작업: AI는 파일을 직접 건드리지 않고 정해진 형식으로 변경을 "제안"만 한다.
 // 여기서 그 제안을 읽고(parseEdits), 지금 노트에 적용했을 때의 결과를 계산하고(planEdit),
 // 바뀌는 줄을 비교해(lineDiff) 사용자가 확인한 것만 앱이 저장한다.
+import { tx } from "../i18n";
 
 export type Change = { find: string; replace: string };
 
@@ -9,7 +10,7 @@ export type Edit =
   | { kind: "append"; path: string; content: string }
   | { kind: "edit"; path: string; changes: Change[] };
 
-export const EDIT_KIND_LABEL: Record<Edit["kind"], string> = { create: "새 노트", append: "덧붙이기", edit: "고치기" };
+export const EDIT_KIND_LABEL: Record<Edit["kind"], string> = { create: tx("새 노트"), append: tx("덧붙이기"), edit: tx("고치기") };
 
 /** What the AI is told about the format; `folders` helps it put new notes in the right place. */
 export function editSystem(opts: { folders: string[]; newNoteDir: string; today: string }): string {
@@ -130,9 +131,9 @@ export function applyChanges(text: string, changes: Change[]): { text: string } 
   let out = text.replace(/\r\n/g, "\n");
   for (const [i, c] of changes.entries()) {
     const hit = locate(out, c.find.replace(/\r\n/g, "\n"));
-    const n = changes.length > 1 ? ` (${i + 1}번째)` : "";
-    if (hit === "missing") return { error: `바꿀 원래 글을 노트에서 찾지 못했습니다${n}` };
-    if (hit === "many") return { error: `바꿀 원래 글이 노트에 여러 군데 있어 어디인지 모릅니다${n}` };
+    const n = changes.length > 1 ? tx(" ({0}번째)", i + 1) : "";
+    if (hit === "missing") return { error: tx("바꿀 원래 글을 노트에서 찾지 못했습니다{0}", n) };
+    if (hit === "many") return { error: tx("바꿀 원래 글이 노트에 여러 군데 있어 어디인지 모릅니다{0}", n) };
     out = out.slice(0, hit.from) + c.replace + out.slice(hit.to);
   }
   return { text: out };
@@ -166,28 +167,28 @@ export interface Planned {
 export async function planEdit(edit: Edit, ctx: PlanContext): Promise<Planned> {
   const path = cleanPath(edit.path);
   const base = { edit, path: path ?? edit.path, before: "", after: "" };
-  if (!path) return { ...base, error: "쓸 수 없는 경로입니다" };
+  if (!path) return { ...base, error: tx("쓸 수 없는 경로입니다") };
   if (edit.kind === "create") {
-    if (ctx.exists(path)) return { ...base, error: "같은 이름의 노트가 이미 있습니다" };
+    if (ctx.exists(path)) return { ...base, error: tx("같은 이름의 노트가 이미 있습니다") };
     const content = edit.content.trim() ? edit.content.replace(/\s*$/, "\n") : "";
-    return { ...base, after: content, error: content ? null : "내용이 비어 있습니다" };
+    return { ...base, after: content, error: content ? null : tx("내용이 비어 있습니다") };
   }
-  if (!ctx.exists(path)) return { ...base, error: "없는 노트입니다" };
-  if (!ctx.sent.has(path)) return { ...base, error: "AI에 보내지 않은 노트라 고칠 수 없습니다" };
+  if (!ctx.exists(path)) return { ...base, error: tx("없는 노트입니다") };
+  if (!ctx.sent.has(path)) return { ...base, error: tx("AI에 보내지 않은 노트라 고칠 수 없습니다") };
   let before: string;
   try {
     before = await ctx.read(path);
   } catch {
-    return { ...base, error: "노트를 읽지 못했습니다" };
+    return { ...base, error: tx("노트를 읽지 못했습니다") };
   }
   if (edit.kind === "append") {
-    if (!edit.content.trim()) return { ...base, before, after: before, error: "덧붙일 내용이 비어 있습니다" };
+    if (!edit.content.trim()) return { ...base, before, after: before, error: tx("덧붙일 내용이 비어 있습니다") };
     return { ...base, before, after: appendText(before, edit.content), error: null };
   }
-  if (!edit.changes.length) return { ...base, before, after: before, error: "바꿀 내용이 없습니다" };
+  if (!edit.changes.length) return { ...base, before, after: before, error: tx("바꿀 내용이 없습니다") };
   const r = applyChanges(before, edit.changes);
   if ("error" in r) return { ...base, before, after: before, error: r.error };
-  if (r.text === before.replace(/\r\n/g, "\n")) return { ...base, before, after: r.text, error: "바뀌는 내용이 없습니다" };
+  if (r.text === before.replace(/\r\n/g, "\n")) return { ...base, before, after: r.text, error: tx("바뀌는 내용이 없습니다") };
   return { ...base, before, after: r.text, error: null };
 }
 

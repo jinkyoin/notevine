@@ -4,6 +4,7 @@ import { api, type LinkGraph } from "../api";
 import { useApp } from "../store";
 import { degrees, fitView, initialLayout, stepLayout, type Point } from "../lib/graphLayout";
 
+import { tx } from "../i18n";
 const TICKS = 300;
 
 type Drag = { kind: "pan"; x: number; y: number; moved: boolean } | { kind: "node"; i: number; moved: boolean };
@@ -104,7 +105,7 @@ export function FolderGraph({ folder }: { folder: string }) {
     };
   }, [shown]);
 
-  if (error) return <p className="error pad">그래프를 만들지 못했습니다: {error}</p>;
+  if (error) return <p className="error pad">{tx("그래프를 만들지 못했습니다: {0}", error)}</p>;
   if (!shown) return null;
 
   const { nodes, edges } = shown;
@@ -120,18 +121,18 @@ export function FolderGraph({ folder }: { folder: string }) {
     <div className="graph">
       <div className="board-bar">
         <span className="muted small">
-          노트 {nodes.length}개 · 링크 {edges.length}개
+          {tx("노트 {0}개 · 링크 {1}개", nodes.length, edges.length)}
         </span>
         <label className="muted small">
-          <input type="checkbox" checked={hideLonely} onChange={(e) => setHideLonely(e.target.checked)} /> 링크 없는 노트 숨기기
+          <input type="checkbox" checked={hideLonely} onChange={(e) => setHideLonely(e.target.checked)} /> {" "}{tx("링크 없는 노트 숨기기")}
         </label>
         <span className="spacer" />
         <button className="btn ghost small" onClick={fit}>
-          화면에 맞추기
+          {tx("화면에 맞추기")}
         </button>
       </div>
       {!nodes.length ? (
-        <p className="muted pad">보여 줄 노트가 없습니다.</p>
+        <p className="muted pad">{tx("보여 줄 노트가 없습니다.")}</p>
       ) : (
         <svg
           ref={svg}

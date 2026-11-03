@@ -6,6 +6,7 @@ import { CALLOUTS } from "../lib/callout";
 import { applyColor, BG_COLORS, TEXT_COLORS, type ColorProp } from "../editor/colors";
 import { useApp } from "../store";
 
+import { tx } from "../i18n";
 type Action = (s: EditorState) => TransactionSpec;
 
 interface Tool {
@@ -28,16 +29,16 @@ const text = (t: string, style?: React.CSSProperties) => (
 
 const GROUPS: Tool[][] = [
   [
-    { label: "제목 1", icon: text("H1"), run: (s) => toggleLines(s, "h1") },
-    { label: "제목 2", icon: text("H2"), run: (s) => toggleLines(s, "h2") },
-    { label: "제목 3", icon: text("H3"), run: (s) => toggleLines(s, "h3") },
+    { label: tx("제목 1"), icon: text("H1"), run: (s) => toggleLines(s, "h1") },
+    { label: tx("제목 2"), icon: text("H2"), run: (s) => toggleLines(s, "h2") },
+    { label: tx("제목 3"), icon: text("H3"), run: (s) => toggleLines(s, "h3") },
   ],
   [
-    { label: "굵게", keys: "Ctrl+B", icon: text("B", { fontWeight: 800 }), run: (s) => toggleWrap(s, "**") },
-    { label: "기울임", keys: "Ctrl+I", icon: text("I", { fontStyle: "italic", fontFamily: "Georgia, serif" }), run: (s) => toggleWrap(s, "*") },
-    { label: "취소선", keys: "Ctrl+Shift+X", icon: text("S", { textDecoration: "line-through" }), run: (s) => toggleWrap(s, "~~") },
+    { label: tx("굵게"), keys: "Ctrl+B", icon: text("B", { fontWeight: 800 }), run: (s) => toggleWrap(s, "**") },
+    { label: tx("기울임"), keys: "Ctrl+I", icon: text("I", { fontStyle: "italic", fontFamily: "Georgia, serif" }), run: (s) => toggleWrap(s, "*") },
+    { label: tx("취소선"), keys: "Ctrl+Shift+X", icon: text("S", { textDecoration: "line-through" }), run: (s) => toggleWrap(s, "~~") },
     {
-      label: "형광펜 강조",
+      label: tx("형광펜 강조"),
       keys: "Ctrl+Shift+H",
       icon: svg(
         <>
@@ -47,11 +48,11 @@ const GROUPS: Tool[][] = [
       ),
       run: (s) => toggleWrap(s, "=="),
     },
-    { label: "인라인 코드", keys: "Ctrl+`", icon: svg(<path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5" />), run: (s) => toggleWrap(s, "`") },
+    { label: tx("인라인 코드"), keys: "Ctrl+`", icon: svg(<path d="M5.5 4.5L2 8l3.5 3.5M10.5 4.5L14 8l-3.5 3.5" />), run: (s) => toggleWrap(s, "`") },
   ],
   [
     {
-      label: "글머리 목록",
+      label: tx("글머리 목록"),
       icon: svg(
         <>
           <circle cx="3" cy="4.5" r="1" className="dot" />
@@ -63,7 +64,7 @@ const GROUPS: Tool[][] = [
       run: (s) => toggleLines(s, "bullet"),
     },
     {
-      label: "번호 목록",
+      label: tx("번호 목록"),
       icon: svg(
         <>
           <path d="M2.5 3.5h1v3M2.3 9.5h1.8l-1.8 2.5h1.9" />
@@ -73,7 +74,7 @@ const GROUPS: Tool[][] = [
       run: (s) => toggleLines(s, "number"),
     },
     {
-      label: "체크리스트",
+      label: tx("체크리스트"),
       keys: "Ctrl+L",
       icon: svg(
         <>
@@ -86,7 +87,7 @@ const GROUPS: Tool[][] = [
       run: (s) => toggleLines(s, "task"),
     },
     {
-      label: "인용",
+      label: tx("인용"),
       icon: svg(
         <>
           <path d="M3 3.5v9" />
@@ -98,12 +99,12 @@ const GROUPS: Tool[][] = [
   ],
   [
     {
-      label: "노트 링크 [[ ]]",
+      label: tx("노트 링크 [[ ]]"),
       icon: svg(<path d="M5.5 3H3.5v10h2M10.5 3h2v10h-2M7 3H6v10h1M9 3h1v10H9" />),
       run: wikiLink,
     },
     {
-      label: "웹 링크",
+      label: tx("웹 링크"),
       keys: "Ctrl+K",
       icon: svg(
         <>
@@ -114,7 +115,7 @@ const GROUPS: Tool[][] = [
       run: webLink,
     },
     {
-      label: "표",
+      label: tx("표"),
       icon: svg(
         <>
           <rect x="2" y="3" width="12" height="10" rx="1" />
@@ -124,7 +125,7 @@ const GROUPS: Tool[][] = [
       run: (s) => insertBlock(s, TABLE, TABLE.lastIndexOf("|  |") + 2),
     },
     {
-      label: "코드 블록",
+      label: tx("코드 블록"),
       icon: svg(
         <>
           <rect x="1.8" y="2.5" width="12.4" height="11" rx="1.2" />
@@ -133,7 +134,7 @@ const GROUPS: Tool[][] = [
       ),
       run: codeBlock,
     },
-    { label: "구분선", icon: svg(<path d="M2 8h12" />), run: (s) => insertBlock(s, "---") },
+    { label: tx("구분선"), icon: svg(<path d="M2 8h12" />), run: (s) => insertBlock(s, "---") },
   ],
 ];
 
@@ -150,7 +151,7 @@ function readLast(prop: ColorProp, fallback: string): string {
 /** Text or background color: a button that opens a palette (plus "none"). */
 function ColorButton({ prop, apply, disabled }: { prop: ColorProp; apply: (a: Action) => void; disabled: boolean }) {
   const palette = prop === "color" ? TEXT_COLORS : BG_COLORS;
-  const label = prop === "color" ? "글자 색" : "배경색";
+  const label = prop === "color" ? tx("글자 색") : tx("배경색");
   const [open, setOpen] = useState(false);
   const [last, setLast] = useState(() => readLast(prop, palette[0].value));
   const box = useRef<HTMLDivElement>(null);
@@ -184,7 +185,7 @@ function ColorButton({ prop, apply, disabled }: { prop: ColorProp; apply: (a: Ac
     <div className="fb-color" ref={box}>
       <button
         className="fb-btn"
-        data-tip={`${label} (선택한 글)`}
+        data-tip={tx("{0} (선택한 글)", label)}
         aria-label={label}
         aria-haspopup="true"
         aria-expanded={open}
@@ -223,7 +224,7 @@ function ColorButton({ prop, apply, disabled }: { prop: ColorProp; apply: (a: Ac
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => choose(null)}
           >
-            {prop === "color" ? "기본 색으로" : "배경 없애기"}
+            {prop === "color" ? tx("기본 색으로") : tx("배경 없애기")}
           </button>
         </div>
       )}
@@ -252,8 +253,8 @@ function CalloutButton({ apply, disabled }: { apply: (a: Action) => void; disabl
     <div className="fb-color" ref={box}>
       <button
         className="fb-btn"
-        data-tip="강조 상자 (중요도 표시)"
-        aria-label="강조 상자"
+        data-tip={tx("강조 상자 (중요도 표시)")}
+        aria-label={tx("강조 상자")}
         aria-haspopup="true"
         aria-expanded={open}
         disabled={disabled}
@@ -268,7 +269,7 @@ function CalloutButton({ apply, disabled }: { apply: (a: Action) => void; disabl
         )}
       </button>
       {open && (
-        <div className="fb-callouts" role="menu" aria-label="강조 상자">
+        <div className="fb-callouts" role="menu" aria-label={tx("강조 상자")}>
           {CALLOUTS.map((c) => (
             <button
               key={c.kind}
@@ -293,10 +294,10 @@ function CalloutButton({ apply, disabled }: { apply: (a: Action) => void; disabl
 /** [편집 | 읽기] switch, shown in the title row (Ctrl+E). */
 export function ModeSwitch({ readMode, setReadMode }: { readMode: boolean; setReadMode: (on: boolean) => void }) {
   return (
-    <div className="fb-mode" role="tablist" title="편집/읽기 전환 (Ctrl+E)">
+    <div className="fb-mode" role="tablist" title={tx("편집/읽기 전환 (Ctrl+E)")}>
       <button role="tab" aria-selected={!readMode} className={!readMode ? "on" : ""} onClick={() => setReadMode(false)}>
         {svg(<path d="M10.5 2.5l3 3-8 8h-3v-3z" />)}
-        편집
+        {tx("편집")}
       </button>
       <button role="tab" aria-selected={readMode} className={readMode ? "on" : ""} onClick={() => setReadMode(true)}>
         {svg(
@@ -305,7 +306,7 @@ export function ModeSwitch({ readMode, setReadMode }: { readMode: boolean; setRe
             <circle cx="8" cy="8" r="2" />
           </>,
         )}
-        읽기
+        {tx("읽기")}
       </button>
     </div>
   );
@@ -338,7 +339,7 @@ export function FormatBar({ apply, readMode }: { apply: (a: Action) => void; rea
     <div
       className="format-bar"
       role="toolbar"
-      aria-label="서식"
+      aria-label={tx("서식")}
       onMouseOver={tip.show}
       onMouseLeave={tip.hide}
       onMouseDown={tip.hide}
@@ -374,8 +375,8 @@ export function FormatBar({ apply, readMode }: { apply: (a: Action) => void; rea
       <div className="fb-group">
         <button
           className="fb-btn"
-          data-tip="마크다운 문법 도움말 (F1)"
-          aria-label="마크다운 문법 도움말"
+          data-tip={tx("마크다운 문법 도움말 (F1)")}
+          aria-label={tx("마크다운 문법 도움말")}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => useApp.getState().setModal("mdHelp")}
         >

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useAi } from "../aiStore";
 import { isLoginError, PROVIDER_COMPANY } from "../ai";
 
+import { tx } from "../i18n";
 export function AiSendConfirm() {
   const req = useAi((s) => s.send);
   const webSearch = useAi((s) => s.webSearch);
@@ -28,8 +29,7 @@ export function AiSendConfirm() {
       <div className="modal ai-send" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
         <h2>{req.title}</h2>
         <p className="small">
-          아래 내용을 <b>{req.provider.name}</b>를 통해 {PROVIDER_COMPANY[req.provider.id] ?? "AI 서비스"}로 보냅니다. 보내지
-          않을 노트는 체크를 해제하세요.
+          {tx("아래 내용을 {0}를 통해 {1}로 보냅니다. 보내지 않을 노트는 체크를 해제하세요.", req.provider.name, PROVIDER_COMPANY[req.provider.id] ?? tx("AI 서비스"))}
         </p>
         {req.extra && (
           <div className="ai-extra">
@@ -46,36 +46,35 @@ export function AiSendConfirm() {
                   <span className="ai-note-title" title={n.path}>
                     {n.title}
                   </span>
-                  <span className="muted small">{n.chars.toLocaleString()}자</span>
+                  <span className="muted small">{tx("{0}자", n.chars.toLocaleString())}</span>
                 </label>
                 {n.snippet && <div className="muted small ai-snippet">{n.snippet}</div>}
               </li>
             ))}
           </ul>
         ) : (
-          req.extra === undefined && <p className="muted small">보낼 노트가 없습니다.</p>
+          req.extra === undefined && <p className="muted small">{tx("보낼 노트가 없습니다.")}</p>
         )}
         {req.web && (
           <label className="small ai-web">
             <input type="checkbox" checked={webSearch} onChange={(e) => useAi.getState().setWebSearch(e.target.checked)} />
             <span>
-              <b>웹에서도 찾아보기</b> — 노트로 부족하면 AI가 웹을 검색하고 페이지를 읽어 출처 링크와 함께 답합니다(시간이
-              더 걸림). 노트 내용은 검색어에 넣지 말라고 지시하지만, 질문과 관련된 표현이 검색에 쓰일 수 있습니다.
+              <b>{tx("웹에서도 찾아보기")}</b> {" "}{tx("— 노트로 부족하면 AI가 웹을 검색하고 페이지를 읽어 출처 링크와 함께 답합니다(시간이 더 걸림). 노트 내용은 검색어에 넣지 말라고 지시하지만, 질문과 관련된 표현이 검색에 쓰일 수 있습니다.")}
             </span>
           </label>
         )}
         {!!req.privateExcluded && (
-          <p className="small ai-private">#비공개 태그가 있는 노트 {req.privateExcluded}개는 보내지 않도록 뺐습니다.</p>
+          <p className="small ai-private">{tx("#비공개 태그가 있는 노트 {0}개는 보내지 않도록 뺐습니다.", req.privateExcluded)}</p>
         )}
         <p className="muted small">
-          보낼 분량: 노트 {chosen.length}개 · 약 {chars.toLocaleString()}자
+          {tx("보낼 분량: 노트 {0}개 · 약 {1}자", chosen.length, chars.toLocaleString())}
         </p>
         <div className="modal-actions">
           <button className="btn ghost" onClick={() => answer(null)}>
-            취소
+            {tx("취소")}
           </button>
           <button className="btn primary" autoFocus onClick={() => answer(chosen.map((n) => n.path))}>
-            보내기
+            {tx("보내기")}
           </button>
         </div>
       </div>
@@ -102,20 +101,20 @@ export function AiPreview() {
       <div className="modal ai-preview" role="dialog" aria-modal="true">
         <div className="vv-head">
           <h2>{p.title}</h2>
-          <button className="icon-btn" title="닫기 (Esc)" onClick={closePreview}>
+          <button className="icon-btn" title={tx("닫기 (Esc)")} onClick={closePreview}>
             ×
           </button>
         </div>
         <div className={p.mode === "edit" ? "ai-compare" : "ai-single"}>
           {p.mode === "edit" && (
             <div>
-              <div className="muted small">원문</div>
+              <div className="muted small">{tx("원문")}</div>
               <pre className="ai-original">{p.original}</pre>
             </div>
           )}
           <div>
             <div className="muted small">
-              결과 {p.streaming ? "· 작성 중…" : "· 고쳐 쓸 수 있습니다"}
+              {tx("결과 {0}", p.streaming ? tx("· 작성 중…") : tx("· 고쳐 쓸 수 있습니다"))}
             </div>
             <textarea
               className="ai-result"
@@ -133,27 +132,27 @@ export function AiPreview() {
             {p.error}{" "}
             {isLoginError(p.error) && loginId && (
               <button className="btn primary small" onClick={() => void useAi.getState().login(loginId)}>
-                로그인
+                {tx("로그인")}
               </button>
             )}
           </p>
         )}
         <div className="modal-actions">
           <button className="btn ghost" onClick={closePreview}>
-            {p.streaming ? "중지" : "취소"}
+            {p.streaming ? tx("중지") : tx("취소")}
           </button>
           {p.mode === "edit" ? (
             <>
               <button className="btn" disabled={p.streaming || !draft.trim()} onClick={() => void applyPreview("below", draft)}>
-                아래에 넣기
+                {tx("아래에 넣기")}
               </button>
               <button className="btn primary" disabled={p.streaming || !draft.trim()} onClick={() => void applyPreview("replace", draft)}>
-                바꾸기
+                {tx("바꾸기")}
               </button>
             </>
           ) : (
             <button className="btn primary" disabled={p.streaming || !draft.trim()} onClick={() => void applyPreview("note", draft)}>
-              새 노트로 만들기
+              {tx("새 노트로 만들기")}
             </button>
           )}
         </div>

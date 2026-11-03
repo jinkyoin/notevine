@@ -7,7 +7,8 @@ import { FolderBoard } from "./FolderBoard";
 import { FolderCalendar } from "./FolderCalendar";
 import { FolderGraph } from "./FolderGraph";
 
-export const MODE_LABEL: Record<FolderMode, string> = { table: "표", board: "보드", calendar: "캘린더", graph: "그래프" };
+import { tx } from "../i18n";
+export const MODE_LABEL: Record<FolderMode, string> = { table: tx("표"), board: tx("보드"), calendar: tx("캘린더"), graph: tx("그래프") };
 
 export function FolderView({ folder }: { folder: string }) {
   const mode = useApp((s) => s.folderMode);
@@ -48,26 +49,26 @@ export function FolderView({ folder }: { folder: string }) {
   return (
     <div className="folder-table">
       <div className="folder-table-head">
-        <h2>{folder || "노트 폴더 전체"}</h2>
-        {notes && mode !== "graph" && <span className="muted small">노트 {notes.rows.length}개</span>}
+        <h2>{folder || tx("노트 폴더 전체")}</h2>
+        {notes && mode !== "graph" && <span className="muted small">{tx("노트 {0}개", notes.rows.length)}</span>}
         <span className="spacer" />
-        <div className="fb-mode" role="tablist" aria-label="보기 방식">
+        <div className="fb-mode" role="tablist" aria-label={tx("보기 방식")}>
           {(Object.keys(MODE_LABEL) as FolderMode[]).map((m) => (
             <button key={m} role="tab" aria-selected={m === mode} className={m === mode ? "on" : ""} onClick={() => setTableView(folder, m)}>
               {MODE_LABEL[m]}
             </button>
           ))}
         </div>
-        <button className="icon-btn" title="닫기 (Esc)" aria-label="폴더 보기 닫기" onClick={() => setTableView(null)}>
+        <button className="icon-btn" title={tx("닫기 (Esc)")} aria-label={tx("폴더 보기 닫기")} onClick={() => setTableView(null)}>
           ×
         </button>
       </div>
       {mode === "graph" ? (
         <FolderGraph folder={folder} />
       ) : error ? (
-        <p className="error pad">노트 목록을 읽지 못했습니다: {error}</p>
+        <p className="error pad">{tx("노트 목록을 읽지 못했습니다: {0}", error)}</p>
       ) : !notes ? null : !notes.rows.length ? (
-        <p className="muted pad">이 폴더에는 노트가 없습니다.</p>
+        <p className="muted pad">{tx("이 폴더에는 노트가 없습니다.")}</p>
       ) : mode === "board" ? (
         <FolderBoard table={notes} />
       ) : mode === "calendar" ? (

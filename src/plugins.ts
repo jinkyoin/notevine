@@ -9,10 +9,11 @@ import { api, errorMessage, type PluginInfo, type PluginPermission } from "./api
 import { registerCommands } from "./commands";
 import { useApp } from "./store";
 
+import { tx } from "./i18n";
 export const PERMISSION_LABEL: Record<PluginPermission, string> = {
-  read: "노트 읽기 (목록·내용·열린 노트·선택한 글, 노트 열기·저장 알림)",
-  write: "노트 쓰기 (노트 고치기·만들기, 편집기에 글 넣기)",
-  network: "인터넷 접속 (웹 페이지 받아 오기)",
+  read: tx("노트 읽기 (목록·내용·열린 노트·선택한 글, 노트 열기·저장 알림)"),
+  write: tx("노트 쓰기 (노트 고치기·만들기, 편집기에 글 넣기)"),
+  network: tx("인터넷 접속 (웹 페이지 받아 오기)"),
 };
 
 /** Each call a plugin can make and the permission it needs (null = always allowed). */
@@ -165,7 +166,7 @@ class PluginHost {
     this.perms = new Set(granted);
     const f = document.createElement("iframe");
     f.className = "plugin-frame";
-    f.title = `플러그인: ${info.name}`;
+    f.title = tx("플러그인: {0}", info.name);
     f.setAttribute("sandbox", "allow-scripts");
     // CSP Embedded Enforcement: also stops the frame from navigating to a web page.
     f.setAttribute("csp", FRAME_CSP);
@@ -195,16 +196,16 @@ class PluginHost {
 
   private fail(message: string) {
     usePlugins.setState((s) => ({ errors: { ...s.errors, [this.info.id]: message } }));
-    useApp.getState().toast(`플러그인 "${this.info.name}" 오류: ${message}`, "error");
+    useApp.getState().toast(tx("플러그인 \"{0}\" 오류: {1}", this.info.name, message), "error");
   }
 
   async handle(id: number, method: string, args: unknown[]) {
     if (method === "error") return this.fail(String(args[0]));
     const reply = (ok: boolean, value?: unknown, error?: string) => id && this.send({ reply: id, ok, value, error });
     try {
-      if (!(method in NEEDS)) throw new Error(`알 수 없는 함수: ${method}`);
+      if (!(method in NEEDS)) throw new Error(tx("알 수 없는 함수: {0}", method));
       const need = NEEDS[method];
-      if (need && !this.perms.has(need)) throw new Error(`"${need}" 권한이 없어 ${method}를 쓸 수 없습니다`);
+      if (need && !this.perms.has(need)) throw new Error(tx("\"{0}\" 권한이 없어 {1}를 쓸 수 없습니다", need, method));
       reply(true, await this.run(method, args));
     } catch (e) {
       reply(false, undefined, errorMessage(e));
@@ -223,7 +224,7 @@ class PluginHost {
             {
               id: `plugin.${pid}.${cid}`,
               title: `${this.info.name}: ${str(1)}`,
-              keywords: `플러그인 plugin ${pid}`,
+              keywords: tx("플러그인 plugin {0}", pid),
               when: () => !!useApp.getState().vault,
               run: () => this.send({ type: "command", id: cid }),
             },
@@ -246,7 +247,7 @@ class PluginHost {
         app.toast(`${this.info.name}: ${str(0)}`, args[1] === "error" ? "error" : "info");
         return null;
       case "on":
-        if (!(PLUGIN_EVENTS as readonly string[]).includes(str(0))) throw new Error(`알 수 없는 알림: ${str(0)} (${PLUGIN_EVENTS.join(", ")})`);
+        if (!(PLUGIN_EVENTS as readonly string[]).includes(str(0))) throw new Error(tx("알 수 없는 알림: {0} ({1})", str(0), PLUGIN_EVENTS.join(", ")));
         this.events.add(str(0));
         return null;
       case "notes.list":
@@ -256,7 +257,7 @@ class PluginHost {
       case "notes.read": {
         const path = str(0);
         // What may leave the PC never includes #비공개 notes (as for AI).
-        if (this.perms.has("network") && (await api.aiPrivateNotes([path])).length) throw new Error("#비공개 노트는 인터넷 접속 권한이 있는 플러그인에 보여 주지 않습니다");
+        if (this.perms.has("network") && (await api.aiPrivateNotes([path])).length) throw new Error(tx("#비공개 노트는 인터넷 접속 권한이 있는 플러그인에 보여 주지 않습니다"));
         if (path === app.openPath) await app.flushEditor();
         return api.readNote(path);
       }
@@ -266,9 +267,9 @@ class PluginHost {
       }
       case "notes.write": {
         const path = str(0);
-        if (!/\.md$/i.test(path) || !app.notes.some((n) => n.path === path)) throw new Error(`없는 노트입니다: ${path}`);
+        if (!/\.md$/i.test(path) || !app.notes.some((n) => n.path === path)) throw new Error(tx("없는 노트입니다: {0}", path));
         const text = str(1);
-        if (!(await app.editNote(path, () => text, "플러그인이 노트를 고치지 못했습니다"))) throw new Error("노트를 고치지 못했습니다");
+        if (!(await app.editNote(path, () => text, tx("플러그인이 노트를 고치지 못했습니다")))) throw new Error(tx("노트를 고치지 못했습니다"));
         return null;
       }
       case "notes.create": {
@@ -278,7 +279,7 @@ class PluginHost {
       }
       case "editor.insert": {
         const ed = app.editorApi;
-        if (!ed || !app.openPath) throw new Error("열린 노트가 없습니다");
+        if (!ed || !app.openPath) throw new Error(tx("열린 노트가 없습니다"));
         if (app.readMode) app.setReadMode(false);
         const text = str(0);
         const sel = ed.selection();

@@ -1,6 +1,7 @@
 // Typed wrappers for the Tauri commands in src-tauri/src/commands.rs.
 // Keep names and argument shapes in sync with the Rust side.
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { tx } from "./i18n";
 
 export type EntryKind = "folder" | "note" | "file";
 
@@ -145,6 +146,28 @@ export interface VaultConfig {
   custom_css: boolean;
   /** Plugin id → permissions the user granted when turning it on (FR-EXT-02). */
   plugins: Record<string, PluginPermission[]>;
+  /** Back up to Git every this many minutes when something changed; 0 = only by hand. */
+  backup_minutes: number;
+}
+
+/** The vault as a Git repository (backup). */
+export interface BackupStatus {
+  git: boolean;
+  repo: boolean;
+  branch: string | null;
+  remote: string | null;
+  changed: number;
+  ahead: number;
+  behind: number;
+  last_at: number | null;
+  last_message: string | null;
+}
+
+export interface BackupResult {
+  committed: boolean;
+  files: number;
+  pushed: boolean;
+  pulled: boolean;
 }
 
 export type PluginPermission = "read" | "write" | "network";
@@ -223,7 +246,7 @@ export interface DeletedNote {
 }
 
 export interface AiProvider {
-  id: "claude" | "codex";
+  id: "claude" | "codex" | "anthropic" | "openai" | "ollama";
   name: string;
   available: boolean;
   version: string | null;
@@ -251,8 +274,25 @@ export interface AppError {
   message: string;
 }
 
+/** Backend errors whose wording the screen language decides; the detail after ": " is kept. */
+const ERROR_TEXT: Record<string, () => string> = {
+  no_vault: () => tx("노트 폴더가 열려 있지 않습니다"),
+  not_a_directory: () => tx("폴더를 찾을 수 없습니다"),
+  not_found: () => tx("파일이나 폴더를 찾을 수 없습니다"),
+  already_exists: () => tx("같은 이름이 이미 있습니다"),
+  invalid_name: () => tx("사용할 수 없는 이름입니다"),
+  outside_vault: () => tx("노트 폴더 밖의 경로는 사용할 수 없습니다"),
+  trash: () => tx("휴지통으로 옮기지 못했습니다"),
+};
+
 export function errorMessage(e: unknown): string {
-  if (e && typeof e === "object" && "message" in e) return String((e as AppError).message);
+  if (e && typeof e === "object" && "message" in e) {
+    const { code, message } = e as AppError;
+    const text = ERROR_TEXT[code];
+    if (!text) return String(message);
+    const at = String(message).indexOf(": ");
+    return at < 0 ? text() : `${text()}: ${String(message).slice(at + 2)}`;
+  }
   return String(e);
 }
 
@@ -355,6 +395,11 @@ export const api = {
   /** Makes an empty `.canvas` board in `dir`; returns its path. */
   createCanvas: (dir: string, name?: string) => invoke<string>("create_canvas", { dir, name: name ?? null }),
   saveCanvas: (path: string, content: string) => invoke<void>("save_canvas", { path, content }),
+  backupStatus: () => invoke<BackupStatus>("backup_status"),
+  backupInit: () => invoke<void>("backup_init"),
+  /** "" removes the remote. */
+  backupSetRemote: (url: string) => invoke<void>("backup_set_remote", { url }),
+  backupNow: (message: string) => invoke<BackupResult>("backup_now", { message }),
   listPlugins: () => invoke<PluginInfo[]>("list_plugins"),
   pluginSource: (id: string) => invoke<string>("plugin_source", { id }),
   /** `.app/plugins` as an absolute path (made if missing). */

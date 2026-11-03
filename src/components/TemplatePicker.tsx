@@ -5,6 +5,7 @@ import { api, type TemplateRef } from "../api";
 import { useApp } from "../store";
 import { findNode } from "../lib/tree";
 
+import { tx } from "../i18n";
 export function TemplatePicker() {
   const modal = useApp((s) => s.modal);
   const setModal = useApp((s) => s.setModal);
@@ -70,8 +71,8 @@ function InsertPicker({ close }: { close: () => void }) {
     return (
       <div className="modal-backdrop top" onMouseDown={close} onKeyDown={(e) => e.key === "Escape" && close()}>
         <div className="palette" tabIndex={-1} ref={(el) => el?.focus()} onMouseDown={(e) => e.stopPropagation()}>
-          <div className="memo-head">템플릿 삽입</div>
-          <p className="muted small tpl-empty">'{folder}' 폴더에 템플릿이 없습니다. 이 폴더에 .md 파일을 넣으면 템플릿이 됩니다.</p>
+          <div className="memo-head">{tx("템플릿 삽입")}</div>
+          <p className="muted small tpl-empty">{tx("'{0}' 폴더에 템플릿이 없습니다. 이 폴더에 .md 파일을 넣으면 템플릿이 됩니다.", folder)}</p>
         </div>
       </div>
     );
@@ -80,7 +81,7 @@ function InsertPicker({ close }: { close: () => void }) {
     <TemplateList
       head={
         <>
-          템플릿 삽입 <span className="muted small">커서 위치에 넣습니다 · ↑↓ 선택 · Enter</span>
+          {tx("템플릿 삽입")}{" "} <span className="muted small">{tx("커서 위치에 넣습니다 · ↑↓ 선택 · Enter")}</span>
         </>
       }
       options={templates.map((t) => ({ label: t.title, preview: t.preview }))}
@@ -115,7 +116,7 @@ function Picker({ close }: { close: () => void }) {
   }, []);
 
   const options: { label: string; preview: string; template: string | null; dir: string }[] = [
-    { label: "빈 노트", preview: "", template: null, dir: here },
+    { label: tx("빈 노트"), preview: "", template: null, dir: here },
     ...templates.map((t) => ({
       label: t.title,
       preview: t.preview,
@@ -141,12 +142,12 @@ function Picker({ close }: { close: () => void }) {
       <div className="modal-backdrop top" onMouseDown={close}>
         <div className="palette" onMouseDown={(e) => e.stopPropagation()}>
           <div className="memo-head">
-            {o.label} <span className="muted small">→ {o.dir || "맨 위 폴더"}</span>
+            {o.label} <span className="muted small">→ {o.dir || tx("맨 위 폴더")}</span>
           </div>
           <input
             className="palette-input"
             autoFocus
-            placeholder="노트 이름 (비우면 제목 없음)"
+            placeholder={tx("노트 이름 (비우면 제목 없음)")}
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
@@ -166,10 +167,10 @@ function Picker({ close }: { close: () => void }) {
     <TemplateList
       head={
         <>
-          새 노트 <span className="muted small">↑↓ 선택 · Enter 만들기</span>
+          {tx("새 노트")}{" "} <span className="muted small">{tx("↑↓ 선택 · Enter 만들기")}</span>
         </>
       }
-      options={options.map((o) => ({ label: o.label, preview: o.preview, note: o.dir || "맨 위 폴더" }))}
+      options={options.map((o) => ({ label: o.label, preview: o.preview, note: o.dir || tx("맨 위 폴더") }))}
       choose={choose}
       close={close}
     />

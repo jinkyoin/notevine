@@ -26,6 +26,7 @@ import { FormatBar, ModeSwitch, type FormatAction } from "./FormatBar";
 import { NoteView } from "./NoteView";
 import { NoteTags } from "./NoteTags";
 
+import { tx } from "../i18n";
 const SAVE_DELAY_MS = 1000;
 const DOC_TEXT_DELAY_MS = 250;
 
@@ -65,7 +66,7 @@ function NoteTitle({ path, f2 = true }: { path: string; f2?: boolean }) {
     return (
       <h1
         className="note-title editable"
-        title="눌러서 이름 바꾸기 (F2)"
+        title={tx("눌러서 이름 바꾸기 (F2)")}
         onClick={() => {
           done.current = false;
           setEditing(true);
@@ -86,7 +87,7 @@ function NoteTitle({ path, f2 = true }: { path: string; f2?: boolean }) {
   return (
     <input
       className="note-title note-title-input"
-      aria-label="노트 이름"
+      aria-label={tx("노트 이름")}
       defaultValue={title}
       ref={(el) => {
         if (el && document.activeElement !== el) {
@@ -197,13 +198,13 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
         .then(async ({ warning, conflict }) => {
           if (warning && !historyWarned) {
             historyWarned = true;
-            toast(`노트는 저장했지만 히스토리·인덱스를 갱신하지 못했습니다: ${warning}`, "error");
+            toast(tx("노트는 저장했지만 히스토리·인덱스를 갱신하지 못했습니다: {0}", warning), "error");
           }
           if (conflict) {
             // Disk kept the other program's version; show it and point to our copy (NFR-REL-02).
             const { refreshTree, openNote } = useApp.getState();
-            toast(`다른 프로그램이 이 노트를 동시에 고쳤습니다. 내 변경은 "${conflict}"로 저장했습니다`, "error", {
-              label: "열기",
+            toast(tx("다른 프로그램이 이 노트를 동시에 고쳤습니다. 내 변경은 \"{0}\"로 저장했습니다", conflict), "error", {
+              label: tx("열기"),
               run: () => openNote(conflict),
             });
             await refreshTree();
@@ -215,7 +216,7 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
         .catch((e) => {
           dirty = true;
           setSaveState("error");
-          toast(`저장하지 못했습니다: ${errorMessage(e)}`, "error");
+          toast(tx("저장하지 못했습니다: {0}", errorMessage(e)), "error");
         });
       return saving;
     };
@@ -240,7 +241,7 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
     // in which case the next save reports a conflict instead of overwriting.
     const unsubscribe = useApp.subscribe((s, prev) => {
       if (s.externalSeq !== prev.externalSeq && s.externalPaths.includes(path) && !dirty) {
-        reload().catch((e) => toast(`노트를 다시 읽지 못했습니다: ${errorMessage(e)}`, "error"));
+        reload().catch((e) => toast(tx("노트를 다시 읽지 못했습니다: {0}", errorMessage(e)), "error"));
       }
     });
 
@@ -284,7 +285,7 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
                   if (node?.kind === "note") st.openNote(p);
                   else if (node && /\.pdf$/i.test(p)) st.openPdf(p);
                   else if (node) void api.attachmentPath(p).then(openWithOs).catch((e) => st.toast(errorMessage(e), "error"));
-                  else st.toast(`첨부 파일을 찾을 수 없음: ${p}`, "error");
+                  else st.toast(tx("첨부 파일을 찾을 수 없음: {0}", p), "error");
                 },
                 openUrl: (url) => void openUrl(url).catch(() => {}),
                 clickMode: () => useApp.getState().config.link_click,
@@ -296,7 +297,7 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
                   const text = await api.readNote(found).catch(() => null);
                   return text === null ? null : { path: found, text };
                 },
-                editTarget: (p, fn) => useApp.getState().editNote(p, fn, "블록 ID를 넣지 못했습니다"),
+                editTarget: (p, fn) => useApp.getState().editNote(p, fn, tx("블록 ID를 넣지 못했습니다")),
                 tags: () => api.allTags().catch(() => []),
               }),
               attachments({
@@ -442,16 +443,16 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
           <NoteTitle path={path} f2={!side} />
           {!loadError && <ModeSwitch readMode={readMode} setReadMode={setReadMode} />}
           <span className={`save-state ${saveState}`}>
-            {saveState === "saved" && "√ 저장됨"}
-            {saveState === "dirty" && "편집 중"}
-            {saveState === "saving" && "저장 중…"}
-            {saveState === "error" && "저장 실패"}
+            {saveState === "saved" && tx("√ 저장됨")}
+            {saveState === "dirty" && tx("편집 중")}
+            {saveState === "saving" && tx("저장 중…")}
+            {saveState === "error" && tx("저장 실패")}
           </span>
         </div>
         {!loadError && <FormatBar apply={applyFormat} readMode={readMode} />}
       </div>
       {loadError ? (
-        <p className="error pad">노트를 열지 못했습니다: {loadError}</p>
+        <p className="error pad">{tx("노트를 열지 못했습니다: {0}", loadError)}</p>
       ) : (
         <>
           <div className="cm-host" ref={host} hidden={readMode} />

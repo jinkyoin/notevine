@@ -4,6 +4,7 @@ import type { NoteRef } from "../api";
 import { useApp } from "../store";
 import { rankNotes } from "../lib/fuzzy";
 
+import { tx } from "../i18n";
 export function QuickOpen() {
   const open = useApp((s) => s.quickOpen);
   const setQuickOpen = useApp((s) => s.setQuickOpen);
@@ -48,7 +49,7 @@ export function QuickOpen() {
         <input
           className="palette-input"
           autoFocus
-          placeholder="노트 이름으로 찾기"
+          placeholder={tx("노트 이름으로 찾기")}
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
@@ -74,7 +75,7 @@ export function QuickOpen() {
           ))}
           {q.trim() && (
             <li className="create" onClick={create}>
-              ＋ "{q.trim()}" 새 노트 만들기 <span className="muted small">Shift+Enter</span>
+              {tx("＋ \"{0}\" 새 노트 만들기", q.trim())}{" "} <span className="muted small">Shift+Enter</span>
             </li>
           )}
         </ul>

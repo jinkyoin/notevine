@@ -1,6 +1,7 @@
 // 앱 안 확인 대화상자. OS 대화상자와 달리 화면 테스트로도 누를 수 있다.
 import { useApp } from "../store";
 
+import { tx } from "../i18n";
 export function ConfirmDialog() {
   const c = useApp((s) => s.confirm);
   if (!c) return null;
@@ -15,7 +16,7 @@ export function ConfirmDialog() {
         <p className="confirm-msg">{c.message}</p>
         <div className="modal-actions">
           <button className="btn ghost" onClick={() => answer(false)}>
-            취소
+            {tx("취소")}
           </button>
           <button className="btn primary" autoFocus onClick={() => answer(true)}>
             {c.okLabel}

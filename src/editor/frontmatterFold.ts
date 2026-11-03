@@ -3,6 +3,7 @@ import { type EditorState, type Extension, type Range, StateField } from "@codem
 import { Decoration, type DecorationSet, EditorView, WidgetType } from "@codemirror/view";
 import { readFrontmatter, splitFrontmatter } from "../lib/frontmatter";
 
+import { tx } from "../i18n";
 class SummaryWidget extends WidgetType {
   constructor(
     readonly text: string,
@@ -17,7 +18,7 @@ class SummaryWidget extends WidgetType {
     const el = document.createElement("div");
     el.className = this.error ? "cm-fm-summary error" : "cm-fm-summary";
     el.textContent = this.text;
-    el.title = "클릭해서 YAML 편집";
+    el.title = tx("클릭해서 YAML 편집");
     el.addEventListener("mousedown", (e) => {
       e.preventDefault();
       view.dispatch({ selection: { anchor: Math.min(4, view.state.doc.length) } });
@@ -52,13 +53,13 @@ function build(state: EditorState): DecorationSet {
   }
   const fm = readFrontmatter(text);
   const summary = fm.error
-    ? `속성 YAML 오류: ${fm.error}`
+    ? tx("속성 YAML 오류: {0}", fm.error)
     : fm.props.length === 0
-      ? "속성 없음"
+      ? tx("속성 없음")
       : fm.props
           .slice(0, 4)
           .map((p) => `${p.key}: ${Array.isArray(p.value) ? p.value.join(", ") : String(p.value)}`)
-          .join("   ·   ") + (fm.props.length > 4 ? `   ·   외 ${fm.props.length - 4}개` : "");
+          .join("   ·   ") + (fm.props.length > 4 ? tx("   ·   외 {0}개", fm.props.length - 4) : "");
   out.push(Decoration.replace({ widget: new SummaryWidget(summary, !!fm.error), block: true }).range(0, end));
   return Decoration.set(out);
 }

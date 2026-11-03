@@ -128,7 +128,8 @@ pub fn set_tray(app: AppHandle, state: State<AppState>, on: bool) -> AppResult<(
     state.settings.save(&s)?;
     apply_tray(&app, on).map_err(|e| AppError::System(e.to_string()))?;
     // Starting with Windows only makes sense into the tray.
-    if !on && app.autolaunch().is_enabled().unwrap_or(false) {
+    // The start-up entry is the installed app's; a development build leaves it alone.
+    if !on && !crate::DEV_BUILD && app.autolaunch().is_enabled().unwrap_or(false) {
         let _ = app.autolaunch().disable();
     }
     Ok(())
@@ -145,6 +146,9 @@ pub fn set_ollama_url(state: State<AppState>, url: String) -> AppResult<()> {
 
 #[tauri::command]
 pub fn set_autostart(app: AppHandle, on: bool) -> AppResult<()> {
+    if crate::DEV_BUILD {
+        return Err(AppError::System("개발용 빌드는 Windows 시작 프로그램에 등록하지 않습니다".into()));
+    }
     let auto = app.autolaunch();
     let r = if on { auto.enable() } else { auto.disable() };
     r.map_err(|e| AppError::System(e.to_string()))

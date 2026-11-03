@@ -4,6 +4,7 @@ import { api, type Backlink } from "../api";
 import { useApp } from "../store";
 import { openProps } from "./TabBar";
 
+import { tx } from "../i18n";
 export function Backlinks() {
   const openPath = useApp((s) => s.openPath);
   const savedSeq = useApp((s) => s.savedSeq);
@@ -30,10 +31,10 @@ export function Backlinks() {
   return (
     <section className="panel-section">
       <h3 className="panel-heading">
-        백링크 <span className="count">{links.length}</span>
+        {tx("백링크")}{" "} <span className="count">{links.length}</span>
       </h3>
       {groups.size === 0 ? (
-        <p className="muted small pad">이 노트를 가리키는 링크가 없습니다.</p>
+        <p className="muted small pad">{tx("이 노트를 가리키는 링크가 없습니다.")}</p>
       ) : (
         <ul className="backlinks">
           {[...groups].map(([path, items]) => (
@@ -43,7 +44,7 @@ export function Backlinks() {
               </div>
               {items.map((b) => (
                 <button key={b.line} className="bl-line" {...openProps((o) => openNote(b.path, b.line, undefined, o))}>
-                  {b.context || `${b.line}번째 줄`}
+                  {b.context || tx("{0}번째 줄", b.line)}
                 </button>
               ))}
             </li>

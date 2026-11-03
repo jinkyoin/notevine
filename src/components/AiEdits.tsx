@@ -5,6 +5,7 @@ import { useAi, type EditItem } from "../aiStore";
 import { diffHunks, EDIT_KIND_LABEL, lineDiff } from "../lib/aiEdits";
 import { noteTitle } from "../lib/tree";
 
+import { tx } from "../i18n";
 export function AiEdits() {
   const edits = useAi((s) => s.edits);
   const { toggleEdit, applyEdits, closeEdits } = useAi.getState();
@@ -15,26 +16,26 @@ export function AiEdits() {
     <div className="modal-backdrop" onMouseDown={() => !edits.streaming && closeEdits()} onKeyDown={(e) => e.key === "Escape" && closeEdits()}>
       <div className="modal ai-edits" tabIndex={-1} onMouseDown={(e) => e.stopPropagation()}>
         <div className="vv-head">
-          <h2>AI 노트 작업</h2>
-          <button className="icon-btn" title="닫기 (Esc)" onClick={closeEdits}>
+          <h2>{tx("AI 노트 작업")}</h2>
+          <button className="icon-btn" title={tx("닫기 (Esc)")} onClick={closeEdits}>
             ×
           </button>
         </div>
         <div className="ae-body">
           <p className="ae-request">
-            <span className="muted small">요청</span> {edits.request}
+            <span className="muted small">{tx("요청")}</span> {edits.request}
           </p>
           {edits.streaming ? (
             <div className="ae-wait">
-              <p>AI가 바꿀 내용을 만드는 중입니다… {edits.raw ? <span className="muted small">({[...edits.raw].length.toLocaleString()}자)</span> : null}</p>
-              <p className="muted small">노트는 아직 바뀌지 않았습니다. 다 만들어지면 바뀌는 부분을 보여 드립니다.</p>
+              <p>{tx("AI가 바꿀 내용을 만드는 중입니다…")}{" "} {edits.raw ? <span className="muted small">{tx("({0}자)", [...edits.raw].length.toLocaleString())}</span> : null}</p>
+              <p className="muted small">{tx("노트는 아직 바뀌지 않았습니다. 다 만들어지면 바뀌는 부분을 보여 드립니다.")}</p>
             </div>
           ) : edits.error ? (
             <p className="error">{edits.error}</p>
           ) : (
             <>
               {edits.message && <p className="ae-message">{edits.message}</p>}
-              {!edits.items.length && <p className="muted">AI가 바꿀 것을 제안하지 않았습니다.</p>}
+              {!edits.items.length && <p className="muted">{tx("AI가 바꿀 것을 제안하지 않았습니다.")}</p>}
               {edits.items.map((it, i) => (
                 <EditCard key={i} item={it} open={edits.items.length <= 3} onToggle={(on) => toggleEdit(i, on)} />
               ))}
@@ -42,13 +43,13 @@ export function AiEdits() {
           )}
         </div>
         <div className="ae-foot">
-          <span className="muted small">적용하면 히스토리에 남아 언제든 되돌릴 수 있습니다. 지우기·이름 바꾸기는 하지 않습니다.</span>
+          <span className="muted small">{tx("적용하면 히스토리에 남아 언제든 되돌릴 수 있습니다. 지우기·이름 바꾸기는 하지 않습니다.")}</span>
           <span className="spacer" />
           <button className="btn" onClick={closeEdits} disabled={edits.applying}>
-            {edits.streaming ? "중지" : "취소"}
+            {edits.streaming ? tx("중지") : tx("취소")}
           </button>
           <button className="btn primary" disabled={edits.streaming || edits.applying || !ready} onClick={() => void applyEdits()}>
-            {edits.applying ? "적용하는 중…" : `선택한 ${ready}개 적용`}
+            {edits.applying ? tx("적용하는 중…") : tx("선택한 {0}개 적용", ready)}
           </button>
         </div>
       </div>
@@ -84,17 +85,17 @@ function EditCard({ item, open, onToggle }: { item: EditItem; open: boolean; onT
               setShow(!show);
             }}
           >
-            {show ? "접기" : "바뀌는 부분 보기"}
+            {show ? tx("접기") : tx("바뀌는 부분 보기")}
           </button>
         )}
       </label>
-      {item.error && <div className="error small ae-error">적용할 수 없음: {item.error}</div>}
+      {item.error && <div className="error small ae-error">{tx("적용할 수 없음: {0}", item.error)}</div>}
       {show && !item.error && (
         <pre className="ae-diff">
           {rows.map((r, i) =>
             "skip" in r ? (
               <div key={i} className="ae-skip">
-                … 같은 줄 {r.skip}개
+                {tx("… 같은 줄 {0}개", r.skip)}
               </div>
             ) : (
               <div key={i} className={`ae-row ${r.kind}`}>

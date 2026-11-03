@@ -1,25 +1,27 @@
-// SCR-16 설정: 일반 · 편집기 · 단축키 · 파일·링크 · 프리셋 · AI · 플러그인 · 히스토리 · 정보.
+// SCR-16 설정: 일반 · 편집기 · 단축키 · 파일·링크 · 프리셋 · AI · 플러그인 · 히스토리 · 백업 · 정보.
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { allCommands, keysFromEvent, keysOf, onCommandsChanged, type Command } from "../commands";
-import { api, errorMessage, type AppSettings, type HistoryStats, type VaultConfig } from "../api";
+import { api, errorMessage, type AppSettings, type BackupStatus, type HistoryStats, type VaultConfig } from "../api";
 import { useApp } from "../store";
 import { useAi } from "../aiStore";
 import { forgetApiModels, ProviderFix } from "./AiPanel";
 import { grantCovers, PERMISSION_LABEL, usePlugins } from "../plugins";
 
-type Tab = "general" | "editor" | "keys" | "files" | "preset" | "ai" | "plugins" | "history" | "about";
+import { getLang, setLang, dateLocale, tx, type Lang } from "../i18n";
+type Tab = "general" | "editor" | "keys" | "files" | "preset" | "ai" | "plugins" | "history" | "backup" | "about";
 const TABS: [Tab, string][] = [
-  ["general", "일반"],
-  ["editor", "편집기"],
-  ["keys", "단축키"],
-  ["files", "파일·링크"],
-  ["preset", "프리셋"],
+  ["general", tx("일반")],
+  ["editor", tx("편집기")],
+  ["keys", tx("단축키")],
+  ["files", tx("파일·링크")],
+  ["preset", tx("프리셋")],
   ["ai", "AI"],
-  ["plugins", "플러그인"],
-  ["history", "히스토리"],
-  ["about", "정보"],
+  ["plugins", tx("플러그인")],
+  ["history", tx("히스토리")],
+  ["backup", tx("백업")],
+  ["about", tx("정보")],
 ];
 
 export function Settings() {
@@ -46,8 +48,8 @@ function SettingsDialog({ close }: { close: () => void }) {
     <div className="modal-backdrop" onMouseDown={close} onKeyDown={(e) => e.key === "Escape" && close()}>
       <div className="modal settings" tabIndex={-1} onMouseDown={(e) => e.stopPropagation()}>
         <div className="vv-head">
-          <h2>설정</h2>
-          <button className="icon-btn" title="닫기 (Esc)" onClick={close}>
+          <h2>{tx("설정")}</h2>
+          <button className="icon-btn" title={tx("닫기 (Esc)")} onClick={close}>
             ×
           </button>
         </div>
@@ -62,25 +64,34 @@ function SettingsDialog({ close }: { close: () => void }) {
           <div className="settings-pane">
             {tab === "general" && (
               <>
-                <Row label="테마">
+                <Row label={tx("테마")}>
                   <select value={config.theme} onChange={(e) => set("theme", e.target.value as VaultConfig["theme"])}>
-                    <option value="system">시스템 설정 따르기</option>
-                    <option value="light">라이트</option>
-                    <option value="dark">다크</option>
+                    <option value="system">{tx("시스템 설정 따르기")}</option>
+                    <option value="light">{tx("라이트")}</option>
+                    <option value="dark">{tx("다크")}</option>
                   </select>
                 </Row>
-                <Row label="언어" hint="영어 화면은 v0.2에서 지원합니다">
-                  <select value="ko" disabled>
+                <Row label={tx("언어")} hint={tx("바꾸면 창을 다시 불러옵니다. 노트 내용·폴더 이름·사용자 매뉴얼은 그대로입니다")}>
+                  <select
+                    value={getLang()}
+                    onChange={async (e) => {
+                      const lang = e.target.value as Lang;
+                      await useApp.getState().flushEditor();
+                      await saveConfig({ ...config, language: lang });
+                      setLang(lang);
+                    }}
+                  >
                     <option value="ko">한국어</option>
+                    <option value="en">English</option>
                   </select>
                 </Row>
-                <Row label="시작할 때" hint="앱을 켜면 마지막 노트 폴더와 노트를 다시 엽니다">
-                  <span className="muted small">마지막 노트 폴더 열기 (항상)</span>
+                <Row label={tx("시작할 때")} hint={tx("앱을 켜면 마지막 노트 폴더와 노트를 다시 엽니다")}>
+                  <span className="muted small">{tx("마지막 노트 폴더 열기 (항상)")}</span>
                 </Row>
                 <TraySettings />
                 <Row
-                  label="사용자 CSS"
-                  hint="이 노트 폴더의 .app/custom.css로 색·글꼴·크기를 바꿉니다. 파일을 저장하고 Notevine 창으로 돌아오면 바로 반영됩니다"
+                  label={tx("사용자 CSS")}
+                  hint={tx("이 노트 폴더의 .app/custom.css로 색·글꼴·크기를 바꿉니다. 파일을 저장하고 Notevine 창으로 돌아오면 바로 반영됩니다")}
                 >
                   <input type="checkbox" checked={config.custom_css} onChange={(e) => set("custom_css", e.target.checked)} />
                   <button
@@ -95,24 +106,24 @@ function SettingsDialog({ close }: { close: () => void }) {
                       }
                     }}
                   >
-                    파일 열기
+                    {tx("파일 열기")}
                   </button>
                 </Row>
               </>
             )}
             {tab === "editor" && (
               <>
-                <Row label="링크 이동" hint="노트 링크를 눌렀을 때 이동하는 방법">
+                <Row label={tx("링크 이동")} hint={tx("노트 링크를 눌렀을 때 이동하는 방법")}>
                   <select value={config.link_click} onChange={(e) => set("link_click", e.target.value as VaultConfig["link_click"])}>
-                    <option value="ctrl">Ctrl+클릭</option>
-                    <option value="click">클릭</option>
+                    <option value="ctrl">{tx("Ctrl+클릭")}</option>
+                    <option value="click">{tx("클릭")}</option>
                   </select>
                 </Row>
-                <Row label="자동 저장" hint="입력을 멈추고 저장하기까지 기다리는 시간">
+                <Row label={tx("자동 저장")} hint={tx("입력을 멈추고 저장하기까지 기다리는 시간")}>
                   <select value={config.autosave_ms} onChange={(e) => set("autosave_ms", Number(e.target.value))}>
                     {[500, 1000, 2000, 5000].map((ms) => (
                       <option key={ms} value={ms}>
-                        {ms / 1000}초
+                        {tx("{0}초", ms / 1000)}
                       </option>
                     ))}
                   </select>
@@ -121,10 +132,11 @@ function SettingsDialog({ close }: { close: () => void }) {
             )}
             {tab === "keys" && <ShortcutSettings />}
             {tab === "plugins" && <PluginSettings />}
+            {tab === "backup" && <BackupSettings />}
             {tab === "files" && (
               <>
-                <TextRow label="첨부 폴더" value={config.attachment_folder} onCommit={(v) => set("attachment_folder", v)} />
-                <Row label="링크 자동 갱신" hint="노트 이름을 바꾸거나 옮길 때 그 노트를 가리키는 링크를 고칩니다">
+                <TextRow label={tx("첨부 폴더")} value={config.attachment_folder} onCommit={(v) => set("attachment_folder", v)} />
+                <Row label={tx("링크 자동 갱신")} hint={tx("노트 이름을 바꾸거나 옮길 때 그 노트를 가리키는 링크를 고칩니다")}>
                   <input
                     type="checkbox"
                     checked={config.update_links_on_rename}
@@ -136,8 +148,8 @@ function SettingsDialog({ close }: { close: () => void }) {
             {tab === "preset" && (
               <>
                 <Row
-                  label="기본 구조 (PARA)"
-                  hint="켜면 프로젝트·영역·자료·보관 폴더와 템플릿 5종을 만들고 오늘 업무일지·아이디어 보드를 씁니다. 끄면 이 기능만 숨기고 기존 노트·폴더는 그대로입니다"
+                  label={tx("기본 구조 (PARA)")}
+                  hint={tx("켜면 프로젝트·영역·자료·보관 폴더와 템플릿 5종을 만들고 오늘 업무일지·아이디어 보드를 씁니다. 끄면 이 기능만 숨기고 기존 노트·폴더는 그대로입니다")}
                 >
                   <input
                     type="checkbox"
@@ -145,24 +157,24 @@ function SettingsDialog({ close }: { close: () => void }) {
                     onChange={(e) => (e.target.checked ? void applyPreset() : set("preset_enabled", false))}
                   />
                 </Row>
-                <TextRow label="Inbox 폴더" value={config.inbox_folder} onCommit={(v) => set("inbox_folder", v)} />
-                <TextRow label="프로젝트 폴더" value={config.project_folder} onCommit={(v) => set("project_folder", v)} />
-                <TextRow label="영역 폴더" value={config.area_folder} onCommit={(v) => set("area_folder", v)} />
-                <TextRow label="자료 폴더" value={config.resource_folder} onCommit={(v) => set("resource_folder", v)} />
-                <TextRow label="보관 폴더" value={config.archive_folder} onCommit={(v) => set("archive_folder", v)} />
-                <TextRow label="업무일지 폴더" value={config.journal_folder} onCommit={(v) => set("journal_folder", v)} />
-                <TextRow label="아이디어 폴더" value={config.idea_folder} onCommit={(v) => set("idea_folder", v)} />
-                <TextRow label="조사자료 폴더" value={config.research_folder} onCommit={(v) => set("research_folder", v)} />
-                <TextRow label="템플릿 폴더" value={config.template_folder} onCommit={(v) => set("template_folder", v)} />
+                <TextRow label={tx("Inbox 폴더")} value={config.inbox_folder} onCommit={(v) => set("inbox_folder", v)} />
+                <TextRow label={tx("프로젝트 폴더")} value={config.project_folder} onCommit={(v) => set("project_folder", v)} />
+                <TextRow label={tx("영역 폴더")} value={config.area_folder} onCommit={(v) => set("area_folder", v)} />
+                <TextRow label={tx("자료 폴더")} value={config.resource_folder} onCommit={(v) => set("resource_folder", v)} />
+                <TextRow label={tx("보관 폴더")} value={config.archive_folder} onCommit={(v) => set("archive_folder", v)} />
+                <TextRow label={tx("업무일지 폴더")} value={config.journal_folder} onCommit={(v) => set("journal_folder", v)} />
+                <TextRow label={tx("아이디어 폴더")} value={config.idea_folder} onCommit={(v) => set("idea_folder", v)} />
+                <TextRow label={tx("조사자료 폴더")} value={config.research_folder} onCommit={(v) => set("research_folder", v)} />
+                <TextRow label={tx("템플릿 폴더")} value={config.template_folder} onCommit={(v) => set("template_folder", v)} />
                 <TextRow
-                  label="업무일지 경로"
-                  hint="{{YYYY}} {{MM}} {{DD}} {{YYYY-MM-DD}}를 쓸 수 있습니다"
+                  label={tx("업무일지 경로")}
+                  hint={tx("{{YYYY}} {{MM}} {{DD}} {{YYYY-MM-DD}}를 쓸 수 있습니다")}
                   value={config.journal_path}
                   onCommit={(v) => set("journal_path", v)}
                 />
                 <TextRow
-                  label="아이디어 상태"
-                  hint="쉼표로 구분, 순서대로 보드에 표시됩니다"
+                  label={tx("아이디어 상태")}
+                  hint={tx("쉼표로 구분, 순서대로 보드에 표시됩니다")}
                   value={config.idea_statuses.join(", ")}
                   onCommit={(v) =>
                     set(
@@ -180,10 +192,10 @@ function SettingsDialog({ close }: { close: () => void }) {
             {tab === "history" && (
               <>
                 <HistoryUsage />
-                <Row label="묶음 간격" hint="같은 노트를 이어서 저장하면 5분 단위로 한 버전으로 묶습니다">
-                  <span>5분</span>
+                <Row label={tx("묶음 간격")} hint={tx("같은 노트를 이어서 저장하면 5분 단위로 한 버전으로 묶습니다")}>
+                  <span>{tx("5분")}</span>
                 </Row>
-                <Row label="저장 위치" hint="다시 만들 수 없는 파일이니 노트 폴더와 함께 백업하세요">
+                <Row label={tx("저장 위치")} hint={tx("다시 만들 수 없는 파일이니 노트 폴더와 함께 백업하세요")}>
                   <span className="mono small">.app/history.db</span>
                   <button
                     className="btn small"
@@ -191,48 +203,48 @@ function SettingsDialog({ close }: { close: () => void }) {
                       vault && void revealItemInDir(`${vault.root}\\.app\\history.db`).catch((e) => toast(errorMessage(e), "error"))
                     }
                   >
-                    폴더 열기
+                    {tx("폴더 열기")}
                   </button>
                 </Row>
-                <Row label="삭제된 노트" hint="지운 노트도 히스토리에서 되살릴 수 있습니다">
+                <Row label={tx("삭제된 노트")} hint={tx("지운 노트도 히스토리에서 되살릴 수 있습니다")}>
                   <button className="btn small" onClick={() => useApp.getState().setModal("deleted")}>
-                    삭제된 노트 히스토리
+                    {tx("삭제된 노트 히스토리")}
                   </button>
                 </Row>
               </>
             )}
             {tab === "about" && (
               <>
-                <Row label="버전">
+                <Row label={tx("버전")}>
                   <span>Notevine {version}</span>
                 </Row>
-                <Row label="사용자 매뉴얼" hint="기능별 사용법과 단축키 (Shift+F1)">
+                <Row label={tx("사용자 매뉴얼")} hint={tx("기능별 사용법과 단축키 (Shift+F1)")}>
                   <button className="btn small" onClick={() => useApp.getState().setModal("manual")}>
-                    매뉴얼 열기
+                    {tx("매뉴얼 열기")}
                   </button>
                 </Row>
-                <Row label="라이선스">
+                <Row label={tx("라이선스")}>
                   <span>MIT</span>
                 </Row>
-                <Row label="소스 코드">
+                <Row label={tx("소스 코드")}>
                   <button className="btn small" onClick={() => void openUrl("https://github.com/jinkyoin/notevine")}>
-                    GitHub 열기
+                    {tx("GitHub 열기")}
                   </button>
                 </Row>
-                <Row label="검색 인덱스" hint="검색이 이상하면 인덱스를 처음부터 다시 만듭니다. 노트는 바뀌지 않습니다">
+                <Row label={tx("검색 인덱스")} hint={tx("검색이 이상하면 인덱스를 처음부터 다시 만듭니다. 노트는 바뀌지 않습니다")}>
                   <button
                     className="btn small"
                     onClick={async () => {
                       try {
                         const n = await api.rebuildIndex();
-                        toast(`인덱스를 다시 만들었습니다 · 노트 ${n}개`);
+                        toast(tx("인덱스를 다시 만들었습니다 · 노트 {0}개", n));
                         await useApp.getState().refreshTree();
                       } catch (e) {
                         toast(errorMessage(e), "error");
                       }
                     }}
                   >
-                    인덱스 다시 만들기
+                    {tx("인덱스 다시 만들기")}
                   </button>
                 </Row>
               </>
@@ -252,7 +264,7 @@ function formatBytes(n: number): string {
 
 const THIN_DAYS = [0, 7, 30, 90, 365];
 const DELETE_DAYS = [0, 90, 180, 365, 730];
-const daysLabel = (d: number) => (d === 0 ? "끄기 (모두 보관)" : d % 365 === 0 ? `${d / 365}년` : `${d}일`);
+const daysLabel = (d: number) => (d === 0 ? tx("끄기 (모두 보관)") : d % 365 === 0 ? tx("{0}년", d / 365) : tx("{0}일", d));
 
 /** History usage and how long to keep versions (FR-HIS-08). */
 function HistoryUsage() {
@@ -269,15 +281,15 @@ function HistoryUsage() {
     try {
       const n = await api.pruneHistory(true);
       if (n === 0) {
-        toast("지금 정리할 오래된 버전이 없습니다");
+        toast(tx("지금 정리할 오래된 버전이 없습니다"));
         return;
       }
-      if (!(await ask("오래된 버전 정리", `버전 ${n.toLocaleString()}개를 지웁니다. 지운 버전은 되살릴 수 없습니다.`, "정리"))) return;
+      if (!(await ask(tx("오래된 버전 정리"), tx("버전 {0}개를 지웁니다. 지운 버전은 되살릴 수 없습니다.", n.toLocaleString()), tx("정리")))) return;
       const before = stats?.file_bytes ?? 0;
       await api.pruneHistory(false);
       const after = await api.historyStats();
       setStats(after);
-      toast(`버전 ${n.toLocaleString()}개를 정리했습니다 · ${formatBytes(Math.max(0, before - after.file_bytes))} 줄어듦`);
+      toast(tx("버전 {0}개를 정리했습니다 · {1} 줄어듦", n.toLocaleString(), formatBytes(Math.max(0, before - after.file_bytes))));
     } catch (e) {
       toast(errorMessage(e), "error");
     } finally {
@@ -287,15 +299,15 @@ function HistoryUsage() {
 
   return (
     <>
-      <Row label="사용량" hint="노트 내용은 압축해서 저장합니다">
+      <Row label={tx("사용량")} hint={tx("노트 내용은 압축해서 저장합니다")}>
         <span className="small">
           {stats
-            ? `노트 ${stats.notes.toLocaleString()}개 · 버전 ${stats.versions.toLocaleString()}개 · ${formatBytes(stats.file_bytes)}` +
-              (stats.oldest ? ` · ${new Date(stats.oldest).toLocaleDateString("ko-KR")}부터` : "")
+            ? tx("노트 {0}개 · 버전 {1}개 · {2}", stats.notes.toLocaleString(), stats.versions.toLocaleString(), formatBytes(stats.file_bytes)) +
+              (stats.oldest ? tx(" · {0}부터", new Date(stats.oldest).toLocaleDateString(dateLocale())) : "")
             : "…"}
         </span>
       </Row>
-      <Row label="오래된 버전 줄이기" hint="이보다 오래된 버전은 노트마다 하루에 하나(그날 마지막)만 남깁니다">
+      <Row label={tx("오래된 버전 줄이기")} hint={tx("이보다 오래된 버전은 노트마다 하루에 하나(그날 마지막)만 남깁니다")}>
         <select value={config.history_thin_days} onChange={(e) => void saveConfig({ ...config, history_thin_days: Number(e.target.value) })}>
           {THIN_DAYS.map((d) => (
             <option key={d} value={d}>
@@ -304,7 +316,7 @@ function HistoryUsage() {
           ))}
         </select>
       </Row>
-      <Row label="오래된 버전 지우기" hint="이보다 오래된 버전은 지웁니다. 노트마다 가장 최근 버전 하나는 늘 남깁니다">
+      <Row label={tx("오래된 버전 지우기")} hint={tx("이보다 오래된 버전은 지웁니다. 노트마다 가장 최근 버전 하나는 늘 남깁니다")}>
         <select
           value={config.history_delete_days}
           onChange={(e) => void saveConfig({ ...config, history_delete_days: Number(e.target.value) })}
@@ -316,9 +328,9 @@ function HistoryUsage() {
           ))}
         </select>
       </Row>
-      <Row label="정리" hint="위 규칙은 노트 폴더를 열 때마다 자동으로 적용됩니다. 지금 바로 정리하고 파일 크기를 줄일 수도 있습니다">
+      <Row label={tx("정리")} hint={tx("위 규칙은 노트 폴더를 열 때마다 자동으로 적용됩니다. 지금 바로 정리하고 파일 크기를 줄일 수도 있습니다")}>
         <button className="btn small" disabled={off || busy} onClick={() => void prune()}>
-          {busy ? "정리 중…" : "지금 정리"}
+          {busy ? tx("정리 중…") : tx("지금 정리")}
         </button>
       </Row>
     </>
@@ -343,12 +355,12 @@ function TraySettings() {
   return (
     <>
       <Row
-        label="닫으면 트레이로"
-        hint="창을 닫아도 작업 표시줄 오른쪽 아이콘으로 계속 실행되어, Ctrl+Alt+N 빠른 메모를 쓸 수 있습니다. 끝내려면 아이콘 메뉴의 [종료]"
+        label={tx("닫으면 트레이로")}
+        hint={tx("창을 닫아도 작업 표시줄 오른쪽 아이콘으로 계속 실행되어, Ctrl+Alt+N 빠른 메모를 쓸 수 있습니다. 끝내려면 아이콘 메뉴의 [종료]")}
       >
         <input type="checkbox" checked={s.tray} onChange={(e) => void change(() => api.setTray(e.target.checked))} />
       </Row>
-      <Row label="Windows 시작 시 실행" hint="로그인하면 Notevine을 트레이에 띄워 둡니다 (닫으면 트레이로를 켰을 때만)">
+      <Row label={tx("Windows 시작 시 실행")} hint={tx("로그인하면 Notevine을 트레이에 띄워 둡니다 (닫으면 트레이로를 켰을 때만)")}>
         <input
           type="checkbox"
           disabled={!s.tray}
@@ -411,19 +423,17 @@ function ShortcutSettings() {
   return (
     <>
       <p className="muted small pad">
-        단추를 누르고 새 단축키를 누르세요. Backspace는 단축키 없애기, Esc는 취소입니다. 다른 명령이 쓰던 단축키를 고르면 그
-        명령의 단축키는 없어집니다. 편집기 안의 서식 단축키(Ctrl+B 등)와 다른 프로그램에서 쓰는 빠른 메모(Ctrl+Alt+N)는
-        바꿀 수 없습니다.
+        {tx("단추를 누르고 새 단축키를 누르세요. Backspace는 단축키 없애기, Esc는 취소입니다. 다른 명령이 쓰던 단축키를 고르면 그 명령의 단축키는 없어집니다. 편집기 안의 서식 단축키(Ctrl+B 등)와 다른 프로그램에서 쓰는 빠른 메모(Ctrl+Alt+N)는 바꿀 수 없습니다.")}
       </p>
       <div className="keys-tools">
-        <input placeholder="명령 찾기" value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <input placeholder={tx("명령 찾기")} value={filter} onChange={(e) => setFilter(e.target.value)} />
         <button
           className="btn small"
           disabled={!Object.keys(config.keybindings).length}
           onClick={() => save({})}
-          title="바꾼 단축키를 모두 처음대로"
+          title={tx("바꾼 단축키를 모두 처음대로")}
         >
-          모두 기본값
+          {tx("모두 기본값")}
         </button>
       </div>
       {shown.map((c) => {
@@ -433,19 +443,19 @@ function ShortcutSettings() {
           <div key={c.id} className="set-row keys-row">
             <div>
               <div>{c.title}</div>
-              {changed && <div className="muted small">기본: {c.keys ?? "없음"}</div>}
+              {changed && <div className="muted small">{tx("기본: {0}", c.keys ?? tx("없음"))}</div>}
             </div>
             <div className="set-ctl">
               <button
                 className={`btn small keys-btn ${capturing === c.id ? "capturing" : ""}`}
                 onClick={() => setCapturing(capturing === c.id ? null : c.id)}
               >
-                {capturing === c.id ? "키를 누르세요…" : keys ? <kbd>{keys}</kbd> : <span className="muted">없음</span>}
+                {capturing === c.id ? tx("키를 누르세요…") : keys ? <kbd>{keys}</kbd> : <span className="muted">{tx("없음")}</span>}
               </button>
               {changed && (
                 <button
                   className="btn ghost small"
-                  title="기본값으로"
+                  title={tx("기본값으로")}
                   onClick={() => {
                     const map = { ...config.keybindings };
                     delete map[c.id];
@@ -472,12 +482,12 @@ function AiSettings() {
   const cur = current();
   return (
     <>
-      <Row label="AI 도우미" hint="켜도 질문할 때마다 보낼 노트를 먼저 보여 주고, 확인한 것만 보냅니다">
+      <Row label={tx("AI 도우미")} hint={tx("켜도 질문할 때마다 보낼 노트를 먼저 보여 주고, 확인한 것만 보냅니다")}>
         <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
       </Row>
-      <Row label="연결된 AI" hint="PC에 설치·로그인된 공식 CLI를 그대로 씁니다. Notevine은 로그인 정보를 읽지 않습니다">
+      <Row label={tx("연결된 AI")} hint={tx("PC에 설치·로그인된 공식 CLI를 그대로 씁니다. Notevine은 로그인 정보를 읽지 않습니다")}>
         <button className="btn small" onClick={() => void detect(true)}>
-          다시 찾기
+          {tx("다시 찾기")}
         </button>
       </Row>
       {(providers ?? []).map((p) => {
@@ -491,19 +501,19 @@ function AiSettings() {
               <div className={`small ${usable ? "muted" : "error"}`}>
                 {usable
                   ? p.logged_in
-                    ? "로그인됨 · 사용할 수 있음"
-                    : "설치됨 · 사용할 수 있음 (로그인 안 되어 있으면 질문할 때 안내합니다)"
-                  : (p.detail ?? "사용할 수 없음")}
+                    ? tx("로그인됨 · 사용할 수 있음")
+                    : tx("설치됨 · 사용할 수 있음 (로그인 안 되어 있으면 질문할 때 안내합니다)")
+                  : (p.detail ?? tx("사용할 수 없음"))}
               </div>
               {!usable && <ProviderFix p={p} />}
             </div>
             <div className="set-ctl">
               <input
                 className="model-input"
-                placeholder="모델 (비우면 기본)"
+                placeholder={tx("모델 (비우면 기본)")}
                 key={models[p.id] ?? ""}
                 defaultValue={models[p.id] ?? ""}
-                title="CLI에 넘길 모델 이름(예: opus, sonnet, haiku). 계정에서 쓸 수 없는 모델이면 기본 모델로 다시 보냅니다"
+                title={tx("CLI에 넘길 모델 이름(예: opus, sonnet, haiku). 계정에서 쓸 수 없는 모델이면 기본 모델로 다시 보냅니다")}
                 onBlur={(e) => setModel(p.id, e.target.value)}
               />
               <input
@@ -512,16 +522,15 @@ function AiSettings() {
                 disabled={!usable}
                 checked={cur?.id === p.id}
                 onChange={() => setProvider(p.id)}
-                title="이 AI 사용"
+                title={tx("이 AI 사용")}
               />
             </div>
           </div>
         );
       })}
-      {providers === null && <p className="muted small">AI를 찾는 중…</p>}
+      {providers === null && <p className="muted small">{tx("AI를 찾는 중…")}</p>}
       <p className="muted small pad">
-        Claude Code는 Claude Pro/Max 구독, Codex는 ChatGPT 구독으로 동작합니다. 로그인 버튼을 누르면 각 AI의 공식 로그인
-        창이 열리고, 브라우저에서 로그인을 마치면 자동으로 연결됩니다. 선택: {providerId || "자동"}
+        {tx("Claude Code는 Claude Pro/Max 구독, Codex는 ChatGPT 구독으로 동작합니다. 로그인 버튼을 누르면 각 AI의 공식 로그인 창이 열리고, 브라우저에서 로그인을 마치면 자동으로 연결됩니다. 선택: {0}", providerId || tx("자동"))}
       </p>
       <ApiConnections />
     </>
@@ -544,34 +553,33 @@ function ApiConnections() {
   const saveKey = async (id: string, key: string) => {
     try {
       await api.aiSetKey(id, key);
-      await after(id, key ? "API 키를 저장했습니다" : "API 키를 지웠습니다");
+      await after(id, key ? tx("API 키를 저장했습니다") : tx("API 키를 지웠습니다"));
     } catch (e) {
       toast(errorMessage(e), "error");
     }
   };
   return (
     <>
-      <h3 className="set-sub">API 키 · 내 PC 모델</h3>
+      <h3 className="set-sub">{tx("API 키 · 내 PC 모델")}</h3>
       <p className="muted small">
-        구독 대신 각 회사의 API 키로 쓰거나, 내 PC에서 돌리는 Ollama 모델로 씁니다. 키는 Windows 자격 증명 관리자에 저장되고
-        화면에 다시 보이지 않습니다. API 사용료는 그 회사 계정으로 청구됩니다. 웹 검색은 CLI 연결에서만 됩니다.
+        {tx("구독 대신 각 회사의 API 키로 쓰거나, 내 PC에서 돌리는 Ollama 모델로 씁니다. 키는 Windows 자격 증명 관리자에 저장되고 화면에 다시 보이지 않습니다. API 사용료는 그 회사 계정으로 청구됩니다. 웹 검색은 CLI 연결에서만 됩니다.")}
       </p>
-      <KeyRow label="Claude API 키" id="anthropic" set={has("anthropic")} placeholder="sk-ant-…" onSave={saveKey} />
-      <KeyRow label="OpenAI API 키" id="openai" set={has("openai")} placeholder="sk-…" onSave={saveKey} />
-      <Row label="Ollama 주소" hint={has("ollama") ? "연결됨" : "Ollama를 설치·실행하면 쓸 수 있습니다 (이 PC 주소만)"}>
+      <KeyRow label={tx("Claude API 키")} id="anthropic" set={has("anthropic")} placeholder="sk-ant-…" onSave={saveKey} />
+      <KeyRow label={tx("OpenAI API 키")} id="openai" set={has("openai")} placeholder="sk-…" onSave={saveKey} />
+      <Row label={tx("Ollama 주소")} hint={has("ollama") ? tx("연결됨") : tx("Ollama를 설치·실행하면 쓸 수 있습니다 (이 PC 주소만)")}>
         <input className="api-input" value={ollama} placeholder="http://127.0.0.1:11434" onChange={(e) => setOllama(e.target.value)} />
         <button
           className="btn small"
           onClick={async () => {
             try {
               await api.setOllamaUrl(ollama);
-              await after("ollama", "Ollama 주소를 저장했습니다");
+              await after("ollama", tx("Ollama 주소를 저장했습니다"));
             } catch (e) {
               toast(errorMessage(e), "error");
             }
           }}
         >
-          저장·확인
+          {tx("저장·확인")}
         </button>
       </Row>
     </>
@@ -593,7 +601,7 @@ function KeyRow({
 }) {
   const [key, setKey] = useState("");
   return (
-    <Row label={label} hint={set ? "저장됨 · 바꾸려면 새 키를 넣으세요" : "없음"}>
+    <Row label={label} hint={set ? tx("저장됨 · 바꾸려면 새 키를 넣으세요") : tx("없음")}>
       <input
         className="api-input"
         type="password"
@@ -610,14 +618,112 @@ function KeyRow({
           setKey("");
         }}
       >
-        저장
+        {tx("저장")}
       </button>
       {set && (
         <button className="btn ghost small" onClick={() => void onSave(id, "")}>
-          지우기
+          {tx("지우기")}
         </button>
       )}
     </Row>
+  );
+}
+
+function BackupSettings() {
+  const config = useApp((s) => s.config);
+  const { saveConfig, toast, backupNow } = useApp.getState();
+  const [st, setSt] = useState<BackupStatus | null>(null);
+  const [remote, setRemote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = () =>
+    void api
+      .backupStatus()
+      .then((s) => {
+        setSt(s);
+        setRemote(s.remote ?? "");
+      })
+      .catch((e) => toast(errorMessage(e), "error"));
+  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const run = async (f: () => Promise<unknown>) => {
+    setBusy(true);
+    try {
+      await f();
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    } finally {
+      setBusy(false);
+      load();
+    }
+  };
+
+  if (!st) return <p className="muted small">{tx("확인하는 중…")}</p>;
+  if (!st.git) {
+    return (
+      <p>
+        {tx("Git이 설치되어 있지 않습니다. 백업을 쓰려면 Git을 설치한 뒤 다시 여세요.")}{" "}
+        <button className="link-btn" onClick={() => void openUrl("https://git-scm.com/download/win")}>
+          {tx("Git 받기")}
+        </button>
+      </p>
+    );
+  }
+  return (
+    <>
+      <p className="muted small">
+        {tx("노트 폴더를 Git 저장소로 백업합니다. 백업할 때마다 그 순간의 노트 전체가 남아 언제든 되돌릴 수 있습니다. 원격 저장소(예: GitHub 비공개 저장소)를 넣으면 그곳으로도 보내고, 다른 PC에서 백업한 변경을 받아 와 여러 PC에서 같은 노트를 쓸 수 있습니다. 검색 인덱스·히스토리 DB는 넣지 않습니다.")}
+      </p>
+      {!st.repo ? (
+        <Row label={tx("백업 시작")} hint={tx("이 노트 폴더에 Git 저장소(.git)를 만듭니다. 노트는 바뀌지 않습니다")}>
+          <button className="btn small primary" disabled={busy} onClick={() => void run(api.backupInit)}>
+            {tx("Git 저장소 만들기")}
+          </button>
+        </Row>
+      ) : (
+        <>
+          <Row
+            label={tx("상태")}
+            hint={
+              st.last_at
+                ? tx("마지막 백업 {0} · {1}", new Date(st.last_at).toLocaleString(dateLocale()), st.last_message ?? "")
+                : tx("아직 백업한 적이 없습니다")
+            }
+          >
+            <span className="small">
+              {st.changed ? tx("바뀐 파일 {0}개", st.changed) : tx("모두 백업됨")}
+              {st.ahead ? tx(" · 보낼 백업 {0}개", st.ahead) : ""}
+              {st.behind ? tx(" · 받을 백업 {0}개", st.behind) : ""}
+            </span>
+            <button className="btn small primary" disabled={busy} onClick={() => void run(() => backupNow())}>
+              {busy ? tx("백업하는 중…") : tx("지금 백업")}
+            </button>
+          </Row>
+          <Row label={tx("원격 저장소")} hint={tx("비워 두면 이 PC에만 백업합니다. 넣으면 백업할 때 노트가 그 저장소로 전송됩니다(비공개 저장소를 쓰세요)")}>
+            <input
+              className="api-input"
+              value={remote}
+              placeholder={tx("https://github.com/이름/notes.git")}
+              onChange={(e) => setRemote(e.target.value)}
+            />
+            <button
+              className="btn small"
+              disabled={busy || remote.trim() === (st.remote ?? "")}
+              onClick={() => void run(() => api.backupSetRemote(remote))}
+            >
+              {tx("저장")}
+            </button>
+          </Row>
+          <Row label={tx("자동 백업")} hint={tx("바뀐 것이 있을 때만 정해진 간격으로 백업합니다. 실패하면 알림으로 알려 드립니다")}>
+            <select value={config.backup_minutes} onChange={(e) => void saveConfig({ ...config, backup_minutes: Number(e.target.value) })}>
+              <option value={0}>{tx("끄기 (직접 백업)")}</option>
+              <option value={15}>{tx("15분마다")}</option>
+              <option value={30}>{tx("30분마다")}</option>
+              <option value={60}>{tx("1시간마다")}</option>
+              <option value={180}>{tx("3시간마다")}</option>
+            </select>
+          </Row>
+        </>
+      )}
+    </>
   );
 }
 
@@ -633,11 +739,11 @@ function PluginSettings() {
     if (!info) return;
     const { [id]: _old, ...rest } = granted;
     if (!on) return saveConfig({ ...config, plugins: rest });
-    const perms = info.permissions.length ? info.permissions.map((p) => `· ${PERMISSION_LABEL[p]}`).join("\n") : "· 없음 (명령·패널·알림만)";
+    const perms = info.permissions.length ? info.permissions.map((p) => `· ${PERMISSION_LABEL[p]}`).join("\n") : tx("· 없음 (명령·패널·알림만)");
     const ok = await ask(
-      `플러그인 켜기: ${info.name}`,
-      `이 플러그인이 쓰는 권한입니다.\n\n${perms}\n\n플러그인은 노트 폴더 .app/plugins/${id}의 코드를 실행합니다. 만든 사람을 믿을 수 있을 때만 켜세요.`,
-      "켜기",
+      tx("플러그인 켜기: {0}", info.name),
+      tx("이 플러그인이 쓰는 권한입니다.\n\n{0}\n\n플러그인은 노트 폴더 .app/plugins/{1}의 코드를 실행합니다. 만든 사람을 믿을 수 있을 때만 켜세요.", perms, id),
+      tx("켜기"),
     );
     if (ok) await saveConfig({ ...config, plugins: { ...rest, [id]: info.permissions } });
   };
@@ -645,8 +751,7 @@ function PluginSettings() {
   return (
     <>
       <p className="muted small">
-        플러그인은 명령·패널을 더하는 작은 프로그램입니다. 노트 폴더의 <code>.app/plugins</code> 안에 폴더째 넣고 여기서 켭니다. 플러그인은 앱과
-        떨어진 곳에서 돌고, 켤 때 허락한 일만 할 수 있습니다. 만드는 법은 사용자 매뉴얼(Shift+F1)의 '플러그인' 장을 보세요.
+        {tx("플러그인은 명령·패널을 더하는 작은 프로그램입니다. 노트 폴더의")}{" "} <code>.app/plugins</code> {" "}{tx("안에 폴더째 넣고 여기서 켭니다. 플러그인은 앱과 떨어진 곳에서 돌고, 켤 때 허락한 일만 할 수 있습니다. 만드는 법은 사용자 매뉴얼(Shift+F1)의 '플러그인' 장을 보세요.")}
       </p>
       <div className="set-actions">
         <button
@@ -658,7 +763,7 @@ function PluginSettings() {
               .catch((e) => toast(errorMessage(e), "error"))
           }
         >
-          플러그인 폴더 열기
+          {tx("플러그인 폴더 열기")}
         </button>
         <button
           className="btn small"
@@ -666,19 +771,19 @@ function PluginSettings() {
             try {
               await api.createSamplePlugin();
               usePlugins.getState().reload();
-              toast("예시 플러그인을 넣었습니다 · 아래에서 켜 보세요");
+              toast(tx("예시 플러그인을 넣었습니다 · 아래에서 켜 보세요"));
             } catch (e) {
               toast(errorMessage(e), "error");
             }
           }}
         >
-          예시 플러그인 넣기
+          {tx("예시 플러그인 넣기")}
         </button>
-        <button className="btn small ghost" onClick={() => usePlugins.getState().reload()} title="플러그인 폴더를 다시 읽고 켜진 플러그인을 다시 시작합니다">
-          다시 읽기
+        <button className="btn small ghost" onClick={() => usePlugins.getState().reload()} title={tx("플러그인 폴더를 다시 읽고 켜진 플러그인을 다시 시작합니다")}>
+          {tx("다시 읽기")}
         </button>
       </div>
-      {!infos.length && <p className="muted small pad">플러그인 폴더에 플러그인이 없습니다.</p>}
+      {!infos.length && <p className="muted small pad">{tx("플러그인 폴더에 플러그인이 없습니다.")}</p>}
       {infos.map((p) => {
         const g = granted[p.id];
         const on = !p.error && grantCovers(p, g);
@@ -692,15 +797,15 @@ function PluginSettings() {
               </div>
               {p.description && <div className="muted small">{p.description}</div>}
               <div className="muted small">
-                권한: {p.permissions.length ? p.permissions.map((x) => PERMISSION_LABEL[x]?.split(" (")[0] ?? x).join(", ") : "없음"}
+                {tx("권한: {0}", p.permissions.length ? p.permissions.map((x) => PERMISSION_LABEL[x]?.split(" (")[0] ?? x).join(", ") : tx("없음"))}
               </div>
-              {p.error && <div className="error-text small">쓸 수 없음: {p.error}</div>}
-              {grew && <div className="error-text small">필요한 권한이 늘었습니다. 다시 켜야 동작합니다</div>}
-              {on && errors[p.id] && <div className="error-text small">오류: {errors[p.id]}</div>}
+              {p.error && <div className="error-text small">{tx("쓸 수 없음: {0}", p.error)}</div>}
+              {grew && <div className="error-text small">{tx("필요한 권한이 늘었습니다. 다시 켜야 동작합니다")}</div>}
+              {on && errors[p.id] && <div className="error-text small">{tx("오류: {0}", errors[p.id])}</div>}
             </div>
             <div className="set-ctl">
               <label className="switch-label">
-                <input type="checkbox" disabled={!!p.error} checked={on} onChange={(e) => void turn(p.id, e.target.checked)} /> {on ? "켜짐" : "꺼짐"}
+                <input type="checkbox" disabled={!!p.error} checked={on} onChange={(e) => void turn(p.id, e.target.checked)} /> {on ? tx("켜짐") : tx("꺼짐")}
               </label>
             </div>
           </div>

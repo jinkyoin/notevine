@@ -3,6 +3,7 @@ import { useApp } from "../store";
 import { noteTitle } from "../lib/tree";
 import { Editor } from "./Editor";
 
+import { tx } from "../i18n";
 export function SplitPane({ path }: { path: string }) {
   const openPath = useApp((s) => s.openPath);
   const tableView = useApp((s) => s.tableView);
@@ -18,8 +19,8 @@ export function SplitPane({ path }: { path: string }) {
         </span>
         <button
           className="icon-btn"
-          title="왼쪽(지금 탭)에서 열기"
-          aria-label="왼쪽에서 열기"
+          title={tx("왼쪽(지금 탭)에서 열기")}
+          aria-label={tx("왼쪽에서 열기")}
           onClick={() => {
             closeSplit();
             openNote(path);
@@ -27,15 +28,15 @@ export function SplitPane({ path }: { path: string }) {
         >
           ⇤
         </button>
-        <button className="icon-btn" title="나란히 보기 닫기" aria-label="나란히 보기 닫기" onClick={closeSplit}>
+        <button className="icon-btn" title={tx("나란히 보기 닫기")} aria-label={tx("나란히 보기 닫기")} onClick={closeSplit}>
           ×
         </button>
       </div>
       {sameNote ? (
         <div className="empty">
-          <p>왼쪽에 같은 노트가 열려 있어 여기서는 편집하지 않습니다.</p>
+          <p>{tx("왼쪽에 같은 노트가 열려 있어 여기서는 편집하지 않습니다.")}</p>
           <button className="btn" onClick={closeSplit}>
-            나란히 보기 닫기
+            {tx("나란히 보기 닫기")}
           </button>
         </div>
       ) : (

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useApp, type OpenOpts } from "../store";
 import { noteTitle } from "../lib/tree";
 
+import { tx } from "../i18n";
 /**
  * Click handlers for anything that opens a note: a plain click opens it in the current
  * tab, Ctrl+click or a middle click in a new tab (as in a browser).
@@ -77,8 +78,8 @@ export function TabBar() {
           <span className="tab-label">{noteTitle(t.path)}</span>
           <button
             className="tab-close"
-            aria-label={`${noteTitle(t.path)} 탭 닫기`}
-            title="탭 닫기 (Ctrl+W)"
+            aria-label={tx("{0} 탭 닫기", noteTitle(t.path))}
+            title={tx("탭 닫기 (Ctrl+W)")}
             onClick={(e) => {
               e.stopPropagation();
               closeTab(t.path);
@@ -92,11 +93,11 @@ export function TabBar() {
         <ul className="menu" style={{ left: menu.x, top: menu.y }} onClick={(e) => e.stopPropagation()}>
           {(
             [
-              ["탭 닫기", () => closeTab(menu.path)],
-              ["다른 탭 모두 닫기", () => closeOtherTabs(menu.path)],
+              [tx("탭 닫기"), () => closeTab(menu.path)],
+              [tx("다른 탭 모두 닫기"), () => closeOtherTabs(menu.path)],
               // The note on screen can't also be edited on the right.
               ...(menu.path !== active
-                ? ([["오른쪽에 나란히 열기", () => useApp.getState().openSplit(menu.path)]] as [string, () => void][])
+                ? ([[tx("오른쪽에 나란히 열기"), () => useApp.getState().openSplit(menu.path)]] as [string, () => void][])
                 : []),
             ] as [string, () => void][]
           ).map(([label, run]) => (

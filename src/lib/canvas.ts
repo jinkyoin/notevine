@@ -1,5 +1,6 @@
 // 캔버스(.canvas) 데이터: JSON Canvas 형식(https://jsoncanvas.org)의 카드와 연결선.
 // 화면과 상관없는 계산만 여기에 두고, 그리기와 마우스 조작은 CanvasView가 맡는다.
+import { tx } from "../i18n";
 
 export type Side = "top" | "right" | "bottom" | "left";
 
@@ -222,12 +223,12 @@ export function fitView(box: Rect | null, w: number, h: number): { zoom: number;
 }
 
 export const CANVAS_COLORS: [string, string][] = [
-  ["1", "빨강"],
-  ["2", "주황"],
-  ["3", "노랑"],
-  ["4", "초록"],
-  ["5", "청록"],
-  ["6", "보라"],
+  ["1", tx("빨강")],
+  ["2", tx("주황")],
+  ["3", tx("노랑")],
+  ["4", tx("초록")],
+  ["5", tx("청록")],
+  ["6", tx("보라")],
 ];
 
 const PRESET: Record<string, string> = { "1": "#e5484d", "2": "#f76b15", "3": "#e2b203", "4": "#30a46c", "5": "#12a594", "6": "#8e4ec6" };

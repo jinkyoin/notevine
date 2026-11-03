@@ -67,6 +67,8 @@ pub struct VaultConfig {
     pub custom_css: bool,
     /// Plugin id → permissions the user granted when turning it on (FR-EXT-02).
     pub plugins: BTreeMap<String, Vec<String>>,
+    /// Back up to Git every this many minutes when something changed; 0 = only by hand.
+    pub backup_minutes: u32,
 }
 
 /// A search kept under a name: the search box text plus the conditions added below it.
@@ -118,6 +120,7 @@ impl Default for VaultConfig {
             keybindings: BTreeMap::new(),
             custom_css: false,
             plugins: BTreeMap::new(),
+            backup_minutes: 0,
         }
     }
 }

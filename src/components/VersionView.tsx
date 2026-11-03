@@ -6,6 +6,7 @@ import { useApp } from "../store";
 import { findNode, noteTitle } from "../lib/tree";
 import { ORIGIN_LABEL, sizeDelta, useVersions } from "./HistoryPanel";
 
+import { dateLocale, tx } from "../i18n";
 type Mode = "only" | "current" | "previous";
 
 export function VersionView() {
@@ -47,21 +48,21 @@ function Viewer({ path, initial, close }: { path: string; initial: number | null
 
   const restore = async () => {
     if (id === null) return;
-    const ok = await ask("현재 내용은 새 버전으로 저장된 뒤 복원됩니다. 복원할까요?", { title: "이 버전으로 복원", kind: "warning" });
+    const ok = await ask(tx("현재 내용은 새 버전으로 저장된 뒤 복원됩니다. 복원할까요?"), { title: tx("이 버전으로 복원"), kind: "warning" });
     if (!ok) return;
     const st = useApp.getState();
     await st.flushEditor(true);
     try {
       await api.restoreVersion(path, id);
     } catch (e) {
-      return st.toast(`복원하지 못했습니다: ${errorMessage(e)}`, "error");
+      return st.toast(tx("복원하지 못했습니다: {0}", errorMessage(e)), "error");
     }
     await st.refreshTree();
     // The restore is the app's own write, so the watcher stays quiet: tell the editor directly.
     useApp.setState({ externalSeq: st.externalSeq + 1, externalPaths: [path] });
     st.noteSaved();
     if (st.openPath !== path) st.openNote(path);
-    st.toast("복원했습니다 · 복원 전 내용은 히스토리에 남아 있습니다");
+    st.toast(tx("복원했습니다 · 복원 전 내용은 히스토리에 남아 있습니다"));
     close();
   };
 
@@ -69,7 +70,7 @@ function Viewer({ path, initial, close }: { path: string; initial: number | null
     if (id === null) return;
     const text = mode === "only" ? content : await api.versionContent(id);
     await navigator.clipboard.writeText(text);
-    useApp.getState().toast("버전 내용을 복사했습니다");
+    useApp.getState().toast(tx("버전 내용을 복사했습니다"));
   };
 
   return (
@@ -87,9 +88,9 @@ function Viewer({ path, initial, close }: { path: string; initial: number | null
       <div className="modal version-view" tabIndex={-1} ref={(el) => el?.focus()} onMouseDown={(e) => e.stopPropagation()}>
         <div className="vv-head">
           <h2>
-            {noteTitle(path)} <span className="muted small">{exists ? "히스토리" : "삭제된 노트 히스토리"}</span>
+            {noteTitle(path)} <span className="muted small">{exists ? tx("히스토리") : tx("삭제된 노트 히스토리")}</span>
           </h2>
-          <button className="icon-btn" title="닫기 (Esc)" onClick={close}>
+          <button className="icon-btn" title={tx("닫기 (Esc)")} onClick={close}>
             ×
           </button>
         </div>
@@ -97,9 +98,9 @@ function Viewer({ path, initial, close }: { path: string; initial: number | null
           <ul className="vv-list">
             {versions.map((v, i) => (
               <li key={v.id} className={v.id === id ? "sel" : ""} onClick={() => setId(v.id)}>
-                <div>{new Date(v.saved_at).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
+                <div>{new Date(v.saved_at).toLocaleString(dateLocale(), { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</div>
                 <div className="muted small">
-                  {i === versions.length - 1 ? "처음 생성" : ORIGIN_LABEL[v.origin]} · {sizeDelta(v.size, versions[i + 1]?.size)}
+                  {i === versions.length - 1 ? tx("처음 생성") : ORIGIN_LABEL[v.origin]} · {sizeDelta(v.size, versions[i + 1]?.size)}
                 </div>
               </li>
             ))}
@@ -108,9 +109,9 @@ function Viewer({ path, initial, close }: { path: string; initial: number | null
             <div className="vv-modes">
               {(
                 [
-                  ["only", "이 버전"],
-                  ["current", "현재와 비교"],
-                  ["previous", "이전 버전과 비교"],
+                  ["only", tx("이 버전")],
+                  ["current", tx("현재와 비교")],
+                  ["previous", tx("이전 버전과 비교")],
                 ] as [Mode, string][]
               ).map(([m, label]) => (
                 <button key={m} className={mode === m ? "on" : ""} onClick={() => setMode(m)}>
@@ -122,10 +123,10 @@ function Viewer({ path, initial, close }: { path: string; initial: number | null
             {mode === "only" ? (
               <pre className="vv-content">{content}</pre>
             ) : mode === "previous" && prevId === null ? (
-              <p className="muted pad">처음 버전이라 비교할 이전 버전이 없습니다.</p>
+              <p className="muted pad">{tx("처음 버전이라 비교할 이전 버전이 없습니다.")}</p>
             ) : (
               <div className="vv-diff">
-                {diff.every((d) => d.kind === "same") && <p className="muted small pad">차이가 없습니다.</p>}
+                {diff.every((d) => d.kind === "same") && <p className="muted small pad">{tx("차이가 없습니다.")}</p>}
                 {diff.map((d, i) => (
                   <div key={i} className={`dl ${d.kind}`}>
                     <span className="ln">{d.old_no ?? ""}</span>
@@ -140,10 +141,10 @@ function Viewer({ path, initial, close }: { path: string; initial: number | null
         </div>
         <div className="modal-actions">
           <button className="btn" onClick={() => void copy()} disabled={id === null}>
-            내용 복사
+            {tx("내용 복사")}
           </button>
           <button className="btn primary" onClick={() => void restore()} disabled={id === null}>
-            {exists ? "이 버전으로 복원" : "이 버전으로 노트 되살리기"}
+            {exists ? tx("이 버전으로 복원") : tx("이 버전으로 노트 되살리기")}
           </button>
         </div>
       </div>

@@ -509,6 +509,10 @@ impl Vault {
         for (path, text, _) in plan {
             self.write_tracked(&path, &text)?;
         }
+        if update_links {
+            // Canvas cards follow the note too; a board that can't be read is left as it is.
+            let _ = crate::canvas::retarget(self, from, to);
+        }
         Ok(to.to_string())
     }
 

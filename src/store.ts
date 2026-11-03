@@ -35,6 +35,7 @@ import {
   type Tabs,
 } from "./lib/tabs";
 
+import { dateLocale, tx } from "./i18n";
 export type ToastKind = "info" | "error";
 
 export interface Toast {
@@ -95,6 +96,7 @@ export const DEFAULT_CONFIG: VaultConfig = {
   keybindings: {},
   custom_css: false,
   plugins: {},
+  backup_minutes: 0,
 };
 
 /** Applies the theme setting (FR-UI-02) to the document. */
@@ -236,6 +238,8 @@ interface AppStore {
   openJournalOn(date: string): Promise<void>;
   /** Collects the week or month around `date` into a review note and opens it (an existing one is just opened). */
   createReview(kind: ReviewKind, date?: Date): Promise<void>;
+  /** Backs the vault up to Git now (and syncs with its remote); `quiet` only reports problems. */
+  backupNow(quiet?: boolean): Promise<boolean>;
   /** Saves a web page's article as a note in the Inbox and opens it (FR-ATT-03); false if it failed. */
   clipWebPage(url: string): Promise<boolean>;
   /** Folder new notes go to: the open note's folder, else the vault root. */
@@ -274,6 +278,7 @@ interface AppStore {
 }
 
 let toastSeq = 0;
+let backingUp = false;
 
 function parentOf(p: string) {
   const i = p.lastIndexOf("/");
@@ -477,7 +482,7 @@ export const useApp = create<AppStore>((set, get) => {
       set({ tree });
       const canvas = get().canvasView;
       if (canvas && !findNode(tree, canvas)) set({ canvasView: null });
-      if (dropMissing((p) => !!findNode(tree, p))) get().toast("열려 있던 노트가 다른 프로그램에서 삭제되거나 이동되었습니다");
+      if (dropMissing((p) => !!findNode(tree, p))) get().toast(tx("열려 있던 노트가 다른 프로그램에서 삭제되거나 이동되었습니다"));
     },
 
     toggleFolder(path, open) {
@@ -575,7 +580,7 @@ export const useApp = create<AppStore>((set, get) => {
       const path = annotationPath(pdfPath);
       const entry = annotationEntry(pdfPath, page, quote, memo);
       if (findNode(get().tree, path)) {
-        return get().editNote(path, (t) => t.replace(/\s*$/, "\n") + entry, "주석을 넣지 못했습니다");
+        return get().editNote(path, (t) => t.replace(/\s*$/, "\n") + entry, tx("주석을 넣지 못했습니다"));
       }
       const slash = path.lastIndexOf("/");
       const created = await attempt(() =>
@@ -591,8 +596,8 @@ export const useApp = create<AppStore>((set, get) => {
       const rel = await api.resolveAttachment(target, get().openPath ?? "").catch(() => null);
       const folder = get().config.attachment_folder;
       if (!rel) {
-        get().toast(`첨부 파일을 찾을 수 없음: ${target}`, "error", {
-          label: "폴더 열기",
+        get().toast(tx("첨부 파일을 찾을 수 없음: {0}", target), "error", {
+          label: tx("폴더 열기"),
           run: () => {
             const root = get().vault?.root;
             if (root) void revealItemInDir(`${root}\\${folder.replace(/\//g, "\\")}`).catch(() => {});
@@ -605,7 +610,7 @@ export const useApp = create<AppStore>((set, get) => {
       try {
         await openWithOs(await api.attachmentPath(rel));
       } catch (e) {
-        get().toast(`파일을 열지 못했습니다: ${errorMessage(e)}`, "error");
+        get().toast(tx("파일을 열지 못했습니다: {0}", errorMessage(e)), "error");
       }
     },
 
@@ -625,7 +630,7 @@ export const useApp = create<AppStore>((set, get) => {
         // [[노트#^id]] points at a block, [[노트#제목]] at a heading.
         const block = heading.startsWith("^");
         const line = text === undefined ? null : block ? findBlockLine(text, heading) : findHeadingLine(text, heading);
-        if (line === null) get().toast(`'${heading}' ${block ? "블록" : "제목"}을 찾지 못해 노트 처음을 엽니다`);
+        if (line === null) get().toast((block ? tx("'{0}' 블록을 찾지 못해 노트 처음을 엽니다", heading) : tx("'{0}' 제목을 찾지 못해 노트 처음을 엽니다", heading)));
         return get().openNote(found, line ?? undefined, line === null ? undefined : heading, opts);
       }
       if (found) return get().openNote(found, undefined, undefined, opts);
@@ -697,7 +702,7 @@ export const useApp = create<AppStore>((set, get) => {
     },
 
     async setNoteProperty(path, key, value) {
-      await get().editNote(path, (t) => setProperty(t, key, value), "속성 YAML에 오류가 있어 속성을 바꾸지 못했습니다");
+      await get().editNote(path, (t) => setProperty(t, key, value), tx("속성 YAML에 오류가 있어 속성을 바꾸지 못했습니다"));
     },
 
     async editNote(path, fn, failed) {
@@ -715,11 +720,11 @@ export const useApp = create<AppStore>((set, get) => {
           return false;
         }
         const out = await api.writeNote(path, next, true);
-        if (out.conflict) get().toast(`다른 프로그램이 동시에 고쳐서 "${out.conflict}"로 따로 저장했습니다`, "error");
+        if (out.conflict) get().toast(tx("다른 프로그램이 동시에 고쳐서 \"{0}\"로 따로 저장했습니다", out.conflict), "error");
         get().noteSaved();
         return true;
       } catch (e) {
-        get().toast(`노트를 고치지 못했습니다: ${errorMessage(e)}`, "error");
+        get().toast(tx("노트를 고치지 못했습니다: {0}", errorMessage(e)), "error");
         return false;
       }
     },
@@ -784,20 +789,20 @@ export const useApp = create<AppStore>((set, get) => {
       const c = get().config;
       // PARA (Projects·Areas·Resources·Archives), the app's folders inside them, then the rest.
       const folders = [
-        `${c.inbox_folder}  — 정리 전 메모`,
-        `${c.project_folder}  — 프로젝트: 끝과 목표가 있는 일`,
-        `${c.area_folder}  — 영역: 계속 맡아 챙기는 일`,
-        `${c.resource_folder}  — 자료: 관심 주제·참고 자료`,
+        tx("{0}  — 정리 전 메모", c.inbox_folder),
+        tx("{0}  — 프로젝트: 끝과 목표가 있는 일", c.project_folder),
+        tx("{0}  — 영역: 계속 맡아 챙기는 일", c.area_folder),
+        tx("{0}  — 자료: 관심 주제·참고 자료", c.resource_folder),
         `   ${c.idea_folder}`,
         `   ${c.research_folder}`,
-        `${c.archive_folder}  — 보관: 끝났거나 쉬는 것`,
+        tx("{0}  — 보관: 끝났거나 쉬는 것", c.archive_folder),
         c.template_folder,
         c.attachment_folder,
       ];
       const ok = await get().ask(
-        "기본 구조 만들기 (PARA)",
-        `노트 폴더에 PARA 방식의 폴더와 템플릿 5개(프로젝트·업무일지·회의록·아이디어·자료)를 만듭니다.\n\n${folders.join("\n")}\n\n이미 있는 폴더와 노트는 바꾸지 않습니다.`,
-        "켜기",
+        tx("기본 구조 만들기 (PARA)"),
+        tx("노트 폴더에 PARA 방식의 폴더와 템플릿 5개(프로젝트·업무일지·회의록·아이디어·자료)를 만듭니다.\n\n{0}\n\n이미 있는 폴더와 노트는 바꾸지 않습니다.", folders.join("\n")),
+        tx("켜기"),
       );
       if (!ok) return;
       const r = await attempt(() => api.applyPreset());
@@ -808,8 +813,8 @@ export const useApp = create<AppStore>((set, get) => {
       const made = r.created_folders.length + r.created_templates.length;
       get().toast(
         made
-          ? `기본 구조를 만들었습니다 · 폴더 ${r.created_folders.length}개, 템플릿 ${r.created_templates.length}개`
-          : "기본 구조를 켰습니다 · 이미 있는 폴더와 템플릿은 그대로 두었습니다",
+          ? tx("기본 구조를 만들었습니다 · 폴더 {0}개, 템플릿 {1}개", r.created_folders.length, r.created_templates.length)
+          : tx("기본 구조를 켰습니다 · 이미 있는 폴더와 템플릿은 그대로 두었습니다"),
       );
     },
 
@@ -833,7 +838,7 @@ export const useApp = create<AppStore>((set, get) => {
       const path = `${folder}/${name}.md`;
       if (get().notes.some((n) => n.path.toLowerCase() === path.toLowerCase())) {
         get().openNote(path);
-        get().toast(`이미 만든 회고를 엽니다 · 다시 만들려면 이 노트를 지우고 실행하세요`);
+        get().toast(tx("이미 만든 회고를 엽니다 · 다시 만들려면 이 노트를 지우고 실행하세요"));
         return;
       }
       const table = await attempt(() => api.folderTable(""));
@@ -843,6 +848,30 @@ export const useApp = create<AppStore>((set, get) => {
       if (!created) return;
       await get().refreshTree();
       get().openNote(created);
+    },
+
+    async backupNow(quiet = false) {
+      if (backingUp) return false;
+      backingUp = true;
+      try {
+        await get().flushEditor();
+        const r = await api.backupNow(tx("Notevine 백업 {0}", new Date().toLocaleString(dateLocale())));
+        if (r.pulled) await get().refreshTree();
+        if (!quiet || r.pulled) {
+          const parts = [
+            r.committed ? tx("노트 {0}개 변경을 저장", r.files) : tx("바뀐 노트 없음"),
+            ...(r.pulled ? [tx("다른 PC의 변경을 받음")] : []),
+            ...(r.pushed ? [tx("원격 저장소로 보냄")] : []),
+          ];
+          get().toast(tx("백업했습니다 · {0}", parts.join(" · ")));
+        }
+        return true;
+      } catch (e) {
+        get().toast(tx("백업하지 못했습니다: {0}", errorMessage(e)), "error");
+        return false;
+      } finally {
+        backingUp = false;
+      }
     },
 
     async clipWebPage(url) {
@@ -856,7 +885,7 @@ export const useApp = create<AppStore>((set, get) => {
       }
       const clip = clipPage(page.html, page.url);
       if (!clip) {
-        get().toast("이 페이지에서 본문을 찾지 못했습니다", "error");
+        get().toast(tx("이 페이지에서 본문을 찾지 못했습니다"), "error");
         return false;
       }
       const folder = config.preset_enabled ? config.inbox_folder : "";
@@ -868,7 +897,7 @@ export const useApp = create<AppStore>((set, get) => {
           const created = await api.createNote(folder, n === 1 ? base : `${base} ${n}`, content);
           await get().refreshTree();
           get().openNote(created);
-          get().toast(`웹 페이지를 노트로 저장했습니다 · ${created}`);
+          get().toast(tx("웹 페이지를 노트로 저장했습니다 · {0}", created));
           return true;
         } catch (e) {
           if ((e as AppError)?.code !== "already_exists") {
@@ -877,7 +906,7 @@ export const useApp = create<AppStore>((set, get) => {
           }
         }
       }
-      get().toast("같은 이름의 노트가 너무 많습니다", "error");
+      get().toast(tx("같은 이름의 노트가 너무 많습니다"), "error");
       return false;
     },
 
@@ -974,7 +1003,7 @@ export const useApp = create<AppStore>((set, get) => {
       dropMissing((p) => remapPath(p, path, "\0") === p);
       await recolor((p) => (remapPath(p, path, "\0") === p ? p : null));
       await get().refreshTree();
-      get().toast("휴지통으로 옮겼습니다");
+      get().toast(tx("휴지통으로 옮겼습니다"));
     },
 
     setFlushEditor(fn, side) {

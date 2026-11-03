@@ -5,6 +5,7 @@ import {
   aiPrefs,
   chatPrompt,
   journalNotesInRange,
+  localizeProvider,
   needsLogin,
   pickProvider,
   qaSystem,
@@ -24,6 +25,7 @@ import { appendText, applyChanges, editSystem, parseEdits, planEdit, type Planne
 import { day } from "./lib/folderTable";
 import type { TreeNode } from "./api";
 
+import { tx } from "./i18n";
 export interface ChatMessage {
   role: "user" | "ai";
   text: string;
@@ -165,8 +167,8 @@ export const useAi = create<AiState>((set, get) => {
   /** Common gate: AI on and a usable CLI found; otherwise explain and point to settings. */
   async function ready(): Promise<AiProvider | null> {
     if (!get().enabled) {
-      app().toast("AI 도우미가 꺼져 있습니다. 설정 → AI에서 켜 주세요", "error", {
-        label: "설정 열기",
+      app().toast(tx("AI 도우미가 꺼져 있습니다. 설정 → AI에서 켜 주세요"), "error", {
+        label: tx("설정 열기"),
         run: () => app().setModal("settings"),
       });
       return null;
@@ -176,13 +178,13 @@ export const useAi = create<AiState>((set, get) => {
     if (!p) {
       const loggedOut = (get().providers ?? []).find(needsLogin);
       if (loggedOut) {
-        app().toast(`${loggedOut.name}에 로그인되어 있지 않습니다`, "error", {
-          label: "로그인",
+        app().toast(tx("{0}에 로그인되어 있지 않습니다", loggedOut.name), "error", {
+          label: tx("로그인"),
           run: () => void get().login(loggedOut.id),
         });
       } else {
-        app().toast("사용할 수 있는 AI가 없습니다. Claude Code나 Codex CLI를 설치하고 로그인해 주세요", "error", {
-          label: "설정 열기",
+        app().toast(tx("사용할 수 있는 AI가 없습니다. Claude Code나 Codex CLI를 설치하고 로그인해 주세요"), "error", {
+          label: tx("설정 열기"),
           run: () => app().setModal("settings"),
         });
       }
@@ -206,7 +208,7 @@ export const useAi = create<AiState>((set, get) => {
       if (isPrivate) excluded.add(open);
       else {
         const text = await api.readNote(open).catch(() => "");
-        notes.push({ path: open, title: noteTitle(open), snippet: "(지금 열려 있는 노트)", chars: [...text].length });
+        notes.push({ path: open, title: noteTitle(open), snippet: tx("(지금 열려 있는 노트)"), chars: [...text].length });
       }
     }
     return { notes, checked: found.map((n) => n.path), privateExcluded: excluded.size };
@@ -239,7 +241,7 @@ export const useAi = create<AiState>((set, get) => {
       // The open note is usually the one to work on: offer it checked.
       const open = app().openPath;
       const checked = open && related.notes.some((n) => n.path === open) ? [...new Set([...related.checked, open])] : related.checked;
-      const paths = await get().confirmSend({ provider, title: "노트 작업 보내기", ...related, checked, extra: { label: "요청", text: q } });
+      const paths = await get().confirmSend({ provider, title: tx("노트 작업 보내기"), ...related, checked, extra: { label: tx("요청"), text: q } });
       if (paths === null) return;
       await app().flushEditor();
       const cfg = app().config;
@@ -248,7 +250,7 @@ export const useAi = create<AiState>((set, get) => {
         const cur = get().edits;
         if (cur?.handle === handle) set({ edits: { ...cur, ...patch } });
       };
-      const handle = runAi(provider.id, system, `요청: ${q}`, paths, (raw) => update({ raw }));
+      const handle = runAi(provider.id, system, tx("요청: {0}", q), paths, (raw) => update({ raw }));
       set({
         running: handle,
         edits: { request: q, raw: "", streaming: true, error: null, message: "", items: [], sources: paths, applying: false, handle },
@@ -318,7 +320,7 @@ export const useAi = create<AiState>((set, get) => {
             const r = applyChanges(t, e.changes);
             return "error" in r ? null : r.text;
           },
-          `${it.path}: 그사이 노트가 바뀌어 적용하지 못했습니다`,
+          tx("{0}: 그사이 노트가 바뀌어 적용하지 못했습니다", it.path),
         );
         if (ok) done++;
         else failed.push(it.path);
@@ -329,12 +331,12 @@ export const useAi = create<AiState>((set, get) => {
       if (done) {
         const open = created;
         app().toast(
-          `노트 ${done}개에 적용했습니다 · 히스토리에서 되돌릴 수 있습니다`,
+          tx("노트 {0}개에 적용했습니다 · 히스토리에서 되돌릴 수 있습니다", done),
           "info",
-          open ? { label: "새 노트 열기", run: () => app().openNote(open) } : undefined,
+          open ? { label: tx("새 노트 열기"), run: () => app().openNote(open) } : undefined,
         );
       }
-      if (failed.length) app().toast(`적용하지 못한 것: ${failed.join(", ")}`, "error");
+      if (failed.length) app().toast(tx("적용하지 못한 것: {0}", failed.join(", ")), "error");
     },
 
     closeEdits() {
@@ -351,29 +353,29 @@ export const useAi = create<AiState>((set, get) => {
 
     async detect(refresh = false) {
       const providers = await api.aiProviders(refresh).catch(() => [] as AiProvider[]);
-      set({ providers });
+      set({ providers: providers.map(localizeProvider) });
     },
 
     async login(id) {
-      if (get().loggingIn) return app().toast("이미 로그인 창이 열려 있습니다. 그 창에서 로그인을 마쳐 주세요", "error");
+      if (get().loggingIn) return app().toast(tx("이미 로그인 창이 열려 있습니다. 그 창에서 로그인을 마쳐 주세요"), "error");
       const name = get().providers?.find((p) => p.id === id)?.name ?? id;
       set({ loggingIn: id });
-      app().toast(`${name} 로그인 창을 열었습니다. 브라우저에서 로그인을 마치면 자동으로 연결됩니다`);
+      app().toast(tx("{0} 로그인 창을 열었습니다. 브라우저에서 로그인을 마치면 자동으로 연결됩니다", name));
       try {
         const p = await api.aiLogin(id);
-        set({ providers: (get().providers ?? []).map((x) => (x.id === p.id ? p : x)) });
+        set({ providers: (get().providers ?? []).map((x) => (x.id === p.id ? localizeProvider(p) : x)) });
         if (p.logged_in === false) {
-          app().toast(`${name} 로그인이 끝나지 않았습니다. 다시 시도해 주세요`, "error", {
-            label: "다시 로그인",
+          app().toast(tx("{0} 로그인이 끝나지 않았습니다. 다시 시도해 주세요", name), "error", {
+            label: tx("다시 로그인"),
             run: () => void get().login(id),
           });
         } else {
           if (get().current()?.id !== id) get().setProvider(id);
           // The "not logged in" notices no longer apply.
           app()
-            .toasts.filter((t) => t.message.includes("로그인되어 있지 않습니다"))
+            .toasts.filter((t) => t.message.includes(tx("{0}에 로그인되어 있지 않습니다", "\u0000").split("\u0000").pop()!))
             .forEach((t) => app().dismissToast(t.id));
-          app().toast(`${name}에 연결했습니다`);
+          app().toast(tx("{0}에 연결했습니다", name));
         }
       } catch (e) {
         app().toast(errorMessage(e), "error");
@@ -414,9 +416,9 @@ export const useAi = create<AiState>((set, get) => {
       const related = await relatedNotes(q);
       const paths = await get().confirmSend({
         provider,
-        title: "질문 보내기",
+        title: tx("질문 보내기"),
         ...related,
-        extra: { label: "질문", text: q },
+        extra: { label: tx("질문"), text: q },
         web: true,
       });
       if (paths === null) return;
@@ -468,27 +470,27 @@ export const useAi = create<AiState>((set, get) => {
       // An answer researched on the web goes with the research notes.
       const usedWeb = (m.progress?.length ?? 0) > 0;
       const dir = cfg.preset_enabled ? (usedWeb ? cfg.research_folder : cfg.inbox_folder) : "";
-      const sources = (m.sources ?? []).map((p) => `- [[${noteTitle(p)}]]`).join("\n") || "- (없음)";
-      const body = `# 질문\n\n${m.question ?? ""}\n\n# 답변\n\n${m.text}\n\n## 참고한 노트\n\n${sources}\n`;
+      const sources = (m.sources ?? []).map((p) => `- [[${noteTitle(p)}]]`).join("\n") || tx("- (없음)");
+      const body = tx("# 질문\n\n{0}\n\n# 답변\n\n{1}\n\n## 참고한 노트\n\n{2}\n", m.question ?? "", m.text, sources);
       try {
-        const path = await api.createNote(dir, `AI 답변 ${stamp()}`, body);
+        const path = await api.createNote(dir, tx("AI 답변 {0}", stamp()), body);
         await app().refreshTree();
-        app().toast("답변을 노트로 저장했습니다", "info", { label: "열기", run: () => app().openNote(path) });
+        app().toast(tx("답변을 노트로 저장했습니다"), "info", { label: tx("열기"), run: () => app().openNote(path) });
       } catch (e) {
-        app().toast(`저장하지 못했습니다: ${errorMessage(e)}`, "error");
+        app().toast(tx("저장하지 못했습니다: {0}", errorMessage(e)), "error");
       }
     },
 
     async write(task) {
       const editor = app().editorApi;
       const path = app().openPath;
-      if (!editor || !path) return app().toast("먼저 노트를 열고 글을 선택하세요", "error");
+      if (!editor || !path) return app().toast(tx("먼저 노트를 열고 글을 선택하세요"), "error");
       // Private first: the open note may carry the tag in text not saved yet, so check the editor text too.
       const privateNow = /(^|\s)#비공개(\/|\s|$)/m.test(app().docText ?? "");
       const privateSaved = (await api.aiPrivateNotes([path]).catch(() => [path])).length > 0;
-      if (privateNow || privateSaved) return app().toast("#비공개 태그가 있는 노트라 AI로 보내지 않습니다", "error");
+      if (privateNow || privateSaved) return app().toast(tx("#비공개 태그가 있는 노트라 AI로 보내지 않습니다"), "error");
       const sel = editor.selection();
-      if (!sel.text.trim()) return app().toast("AI에 보낼 글이 없습니다. 글을 선택하거나 문단 안에 커서를 두세요", "error");
+      if (!sel.text.trim()) return app().toast(tx("AI에 보낼 글이 없습니다. 글을 선택하거나 문단 안에 커서를 두세요"), "error");
       const provider = await ready();
       if (!provider) return;
       const title = noteTitle(path);
@@ -497,7 +499,7 @@ export const useAi = create<AiState>((set, get) => {
         title: `AI ${WRITE_LABEL[task]}`,
         notes: [],
         checked: [],
-        extra: { label: sel.whole ? "현재 문단" : "선택한 글", text: sel.text },
+        extra: { label: sel.whole ? tx("현재 문단") : tx("선택한 글"), text: sel.text },
       });
       if (ok === null) return;
       const handle = runAi(provider.id, WRITE_SYSTEM, writePrompt(task, title, sel.text), [], (text) =>
@@ -533,12 +535,12 @@ export const useAi = create<AiState>((set, get) => {
         from,
         to,
       );
-      if (!paths.length) return app().toast(`이번 주(${from} ~ ${to}) 업무일지가 없습니다`, "error");
+      if (!paths.length) return app().toast(tx("이번 주({0} ~ {1}) 업무일지가 없습니다", from, to), "error");
       const provider = await ready();
       if (!provider) return;
       const privatePaths = new Set(await api.aiPrivateNotes(paths).catch(() => paths));
       const shareable = paths.filter((p) => !privatePaths.has(p));
-      if (!shareable.length) return app().toast("이번 주 업무일지가 모두 #비공개라 보낼 수 없습니다", "error");
+      if (!shareable.length) return app().toast(tx("이번 주 업무일지가 모두 #비공개라 보낼 수 없습니다"), "error");
       const notes: ContextNote[] = await Promise.all(
         shareable.map(async (p) => {
           const text = await api.readNote(p).catch(() => "");
@@ -547,19 +549,19 @@ export const useAi = create<AiState>((set, get) => {
       );
       const send = await get().confirmSend({
         provider,
-        title: `주간 회고 만들기 (${from} ~ ${to})`,
+        title: tx("주간 회고 만들기 ({0} ~ {1})", from, to),
         notes,
         checked: shareable,
         privateExcluded: privatePaths.size,
       });
       if (send === null) return;
-      if (!send.length) return app().toast("보낼 업무일지를 하나 이상 고르세요", "error");
+      if (!send.length) return app().toast(tx("보낼 업무일지를 하나 이상 고르세요"), "error");
       const handle = runAi(provider.id, REVIEW_SYSTEM, reviewPrompt(`${from} ~ ${to}`), send, (text) =>
         set({ preview: get().preview && { ...get().preview!, result: text } }),
       );
       set({
         preview: {
-          title: `주간 회고 ${label}`,
+          title: tx("주간 회고 {0}", label),
           mode: "note",
           original: "",
           result: "",
@@ -567,7 +569,7 @@ export const useAi = create<AiState>((set, get) => {
           error: null,
           from: 0,
           to: 0,
-          noteName: `주간 회고 ${label}`,
+          noteName: tx("주간 회고 {0}", label),
           noteDir: cfg.journal_folder,
           handle,
         },
@@ -603,15 +605,15 @@ export const useAi = create<AiState>((set, get) => {
           await app().refreshTree();
           app().openNote(path);
         } catch (e) {
-          app().toast(`노트를 만들지 못했습니다: ${errorMessage(e)}`, "error");
+          app().toast(tx("노트를 만들지 못했습니다: {0}", errorMessage(e)), "error");
         }
         return;
       }
       const editor = app().editorApi;
-      if (!editor) return app().toast("노트가 닫혀 적용하지 못했습니다", "error");
+      if (!editor) return app().toast(tx("노트가 닫혀 적용하지 못했습니다"), "error");
       const ok =
         how === "replace" ? editor.replace(p.from, p.to, text, p.original) : editor.replace(p.to, p.to, `\n\n${text}`, "");
-      if (!ok) return app().toast("그사이 글이 바뀌어 적용하지 못했습니다. 다시 실행해 주세요", "error");
+      if (!ok) return app().toast(tx("그사이 글이 바뀌어 적용하지 못했습니다. 다시 실행해 주세요"), "error");
       set({ preview: null });
     },
   };

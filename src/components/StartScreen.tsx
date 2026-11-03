@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { api, type RecentVault } from "../api";
 import { useApp } from "../store";
 
+import { tx } from "../i18n";
 // Reopen the last vault only when the app starts, not after "노트 폴더 바꾸기" (FR-VLT-02).
 let autoOpenTried = false;
 
@@ -44,27 +45,27 @@ export function StartScreen() {
           <span className="logo-mark" aria-hidden />
           <h1>Notevine</h1>
         </div>
-        <p className="muted">내 컴퓨터의 마크다운 폴더에 기록하고, 연결하고, 다시 찾습니다.</p>
+        <p className="muted">{tx("내 컴퓨터의 마크다운 폴더에 기록하고, 연결하고, 다시 찾습니다.")}</p>
 
         <div className="start-actions">
-          <button className="btn primary" onClick={() => pick("열 노트 폴더 선택")}>
-            노트 폴더 열기
+          <button className="btn primary" onClick={() => pick(tx("열 노트 폴더 선택"))}>
+            {tx("노트 폴더 열기")}
           </button>
-          <button className="btn" onClick={() => pick("새 노트 폴더로 쓸 폴더 선택 (빈 폴더 권장)")}>
-            새 노트 폴더 만들기
+          <button className="btn" onClick={() => pick(tx("새 노트 폴더로 쓸 폴더 선택 (빈 폴더 권장)"))}>
+            {tx("새 노트 폴더 만들기")}
           </button>
         </div>
 
-        <h2 className="section-label">최근 노트 폴더</h2>
+        <h2 className="section-label">{tx("최근 노트 폴더")}</h2>
         {recent.length === 0 ? (
-          <p className="muted small">아직 연 노트 폴더가 없습니다.</p>
+          <p className="muted small">{tx("아직 연 노트 폴더가 없습니다.")}</p>
         ) : (
           <ul className="recent-list">
             {recent.map((v) => (
               <li
                 key={v.path}
                 className={v.exists ? "" : "missing"}
-                title={v.exists ? v.path : "찾을 수 없음 · 우클릭해 목록에서 제거"}
+                title={v.exists ? v.path : tx("찾을 수 없음 · 우클릭해 목록에서 제거")}
                 onClick={() => v.exists && openVault(v.path)}
                 onContextMenu={(e) => {
                   e.preventDefault();
@@ -72,12 +73,12 @@ export function StartScreen() {
                 }}
               >
                 <span className="recent-name">{v.name}</span>
-                <span className="recent-path">{v.exists ? v.path : "찾을 수 없음"}</span>
+                <span className="recent-path">{v.exists ? v.path : tx("찾을 수 없음")}</span>
               </li>
             ))}
           </ul>
         )}
-        <p className="muted small">우클릭하면 목록에서 제거합니다.</p>
+        <p className="muted small">{tx("우클릭하면 목록에서 제거합니다.")}</p>
       </div>
     </div>
   );

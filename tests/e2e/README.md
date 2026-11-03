@@ -2,6 +2,14 @@
 
 실제 앱 창을 Playwright로 조작해 확인한다. 앱의 WebView2에 원격 디버깅 포트를 열고 붙는다.
 
+개발용(디버그) 빌드는 설치한 앱과 설정을 나눠 쓴다: 설정 폴더 `%APPDATA%\net.notevine.app.dev`(최근 노트 폴더·트레이 등), WebView2 저장소 `%LOCALAPPDATA%\net.notevine.app.dev\EBWebView`, API 키 이름 "Notevine AI (dev)". Windows 시작 프로그램 등록도 하지 않는다. 그래서 테스트가 임시 노트 폴더를 열어도 설치한 앱의 최근 목록은 바뀌지 않는다. `perf.cjs`만은 릴리스 exe를 띄우므로 설치한 앱의 최근 목록에 측정용 노트 폴더가 남는다.
+
+```bash
+node tests/e2e/plugins-canvas.cjs [스크린샷 폴더]  # 플러그인 샌드박스·권한, 캔버스
+node tests/e2e/ai-edits.cjs [폴더] [모델]          # AI 노트 작업 (이 PC의 Ollama로 실제 제안, 노트는 PC 밖으로 안 나감)
+node tests/e2e/english-backup.cjs [폴더]            # 영어 화면, Git 백업
+```
+
 ## 기능 시나리오 (day4~6)
 
 ```bash

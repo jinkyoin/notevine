@@ -12,6 +12,7 @@ import { safeStyle } from "../editor/colors";
 import { headingKey, noteBlock, noteSection } from "../lib/headings";
 import { drawRichBlocks } from "../lib/richBlocks";
 
+import { tx } from "../i18n";
 // Text/background colors (SCR-04) are the only styles kept; anything else, urls
 // included, is dropped so the page can't load from the network.
 DOMPurify.addHook("uponSanitizeAttribute", (_node, data) => {
@@ -53,7 +54,7 @@ function fillImages(root: HTMLElement, from: string, live: () => boolean) {
       .then((url) => {
         if (!live()) return;
         if (url) img.src = url;
-        else img.replaceWith(Object.assign(document.createElement("span"), { className: "missing", textContent: `첨부 없음: ${target}` }));
+        else img.replaceWith(Object.assign(document.createElement("span"), { className: "missing", textContent: tx("첨부 없음: {0}", target) }));
       });
   });
 }
@@ -79,7 +80,7 @@ async function fillEmbeds(
       if (!ctx.live() || !found) return;
       const key = `${found}#${heading ?? ""}`;
       if (chain.includes(key) || chain.length > MAX_EMBED_DEPTH) {
-        span.append(embedNote(chain.includes(key) ? "이미 위에서 보여주고 있는 노트라 링크로만 둡니다" : "임베드가 너무 깊어 링크로만 둡니다"));
+        span.append(embedNote(chain.includes(key) ? tx("이미 위에서 보여주고 있는 노트라 링크로만 둡니다") : tx("임베드가 너무 깊어 링크로만 둡니다")));
         return;
       }
       const text = found === ctx.openPath ? ctx.openText : await api.readNote(found).catch(() => null);
@@ -87,7 +88,7 @@ async function fillEmbeds(
       const block = !!heading?.startsWith("^");
       const part = heading ? (block ? noteBlock(text, heading) : noteSection(text, heading)) : text;
       if (part === null) {
-        span.append(embedNote(`'${heading}' ${block ? "블록" : "제목"}을 찾지 못했습니다`));
+        span.append(embedNote(block ? tx("'{0}' 블록을 찾지 못했습니다", heading) : tx("'{0}' 제목을 찾지 못했습니다", heading)));
         return;
       }
       const body = document.createElement("div");

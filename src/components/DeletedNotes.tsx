@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { api, type DeletedNote } from "../api";
 import { useApp } from "../store";
 
+import { dateLocale, tx } from "../i18n";
 export function DeletedNotes() {
   const modal = useApp((s) => s.modal);
   const setModal = useApp((s) => s.setModal);
@@ -20,11 +21,11 @@ export function DeletedNotes() {
   return (
     <div className="modal-backdrop" onMouseDown={close} onKeyDown={(e) => e.key === "Escape" && close()}>
       <div className="modal" tabIndex={-1} ref={(el) => el?.focus()} onMouseDown={(e) => e.stopPropagation()}>
-        <h2>삭제된 노트 히스토리</h2>
-        <p className="muted small">삭제했거나 다른 프로그램에서 지운 노트도 히스토리가 남아 있으면 되살릴 수 있습니다.</p>
+        <h2>{tx("삭제된 노트 히스토리")}</h2>
+        <p className="muted small">{tx("삭제했거나 다른 프로그램에서 지운 노트도 히스토리가 남아 있으면 되살릴 수 있습니다.")}</p>
         <ul className="change-list deleted-list">
-          {items === null && <li className="muted">불러오는 중…</li>}
-          {items?.length === 0 && <li className="muted">삭제된 노트가 없습니다.</li>}
+          {items === null && <li className="muted">{tx("불러오는 중…")}</li>}
+          {items?.length === 0 && <li className="muted">{tx("삭제된 노트가 없습니다.")}</li>}
           {items?.map((d) => (
             <li
               key={d.path}
@@ -36,14 +37,14 @@ export function DeletedNotes() {
             >
               <span>{d.title}</span>
               <span className="muted small">
-                {new Date(d.last_saved_at).toLocaleDateString("ko-KR")} · 버전 {d.versions}개
+                {tx("{0} · 버전 {1}개", new Date(d.last_saved_at).toLocaleDateString(dateLocale()), d.versions)}
               </span>
             </li>
           ))}
         </ul>
         <div className="modal-actions">
           <button className="btn" onClick={close}>
-            닫기
+            {tx("닫기")}
           </button>
         </div>
       </div>

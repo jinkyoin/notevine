@@ -6,6 +6,7 @@ import { API_DEFAULT_LABEL, API_PROVIDERS, INSTALL_COMMAND, isLoginError, MODEL_
 import { api, type AiProvider } from "../api";
 import { useApp } from "../store";
 
+import { tx } from "../i18n";
 /** Answer text: [[links]] are clickable, **bold** and "# heading" lines are styled; the rest stays plain. */
 function AnswerText({ text }: { text: string }) {
   const followLink = useApp((s) => s.followLink);
@@ -52,7 +53,7 @@ export function ProviderFix({ p }: { p: AiProvider }) {
   if (needsLogin(p)) {
     return (
       <button className="btn primary small" disabled={!!loggingIn} onClick={() => void login(p.id)}>
-        {loggingIn === p.id ? "로그인 창에서 진행 중…" : "로그인"}
+        {loggingIn === p.id ? tx("로그인 창에서 진행 중…") : tx("로그인")}
       </button>
     );
   }
@@ -60,11 +61,11 @@ export function ProviderFix({ p }: { p: AiProvider }) {
   if (p.version === null && cmd) {
     return (
       <div className="ai-install">
-        <span className="muted small">PowerShell에서 설치한 뒤 다시 찾기를 누르세요</span>
+        <span className="muted small">{tx("PowerShell에서 설치한 뒤 다시 찾기를 누르세요")}</span>
         <div className="ai-install-row">
           <code>{cmd}</code>
           <button className="btn ghost small" onClick={() => void navigator.clipboard.writeText(cmd)}>
-            복사
+            {tx("복사")}
           </button>
         </div>
       </div>
@@ -112,8 +113,8 @@ function ModelPicker({
 }) {
   const listed = useApiModels(provider);
   const options = listed
-    ? [{ value: "", label: API_DEFAULT_LABEL[provider] ?? "기본" }, ...listed.map((m) => ({ value: m, label: m }))]
-    : (MODEL_OPTIONS[provider] ?? [{ value: "", label: "기본" }]);
+    ? [{ value: "", label: API_DEFAULT_LABEL[provider] ?? tx("기본") }, ...listed.map((m) => ({ value: m, label: m }))]
+    : (MODEL_OPTIONS[provider] ?? [{ value: "", label: tx("기본") }]);
   const known = options.some((o) => o.value === value);
   if (custom || !known) {
     return (
@@ -121,8 +122,8 @@ function ModelPicker({
         className="ai-model-input"
         autoFocus={custom}
         defaultValue={value}
-        placeholder="모델 이름"
-        title="CLI에 넘길 모델 이름. Enter로 정하고, 비우면 목록으로 돌아갑니다"
+        placeholder={tx("모델 이름")}
+        title={tx("CLI에 넘길 모델 이름. Enter로 정하고, 비우면 목록으로 돌아갑니다")}
         onKeyDown={(e) => {
           if (e.key === "Enter") e.currentTarget.blur();
           if (e.key === "Escape") {
@@ -140,7 +141,7 @@ function ModelPicker({
   return (
     <select
       value={value}
-      title="모델"
+      title={tx("모델")}
       onChange={(e) => {
         if (e.target.value === "__custom") setCustom(true);
         else onChange(e.target.value);
@@ -151,7 +152,7 @@ function ModelPicker({
           {o.label}
         </option>
       ))}
-      <option value="__custom">직접 입력…</option>
+      <option value="__custom">{tx("직접 입력…")}</option>
     </select>
   );
 }
@@ -177,18 +178,16 @@ export function AiPanel() {
   if (!enabled) {
     return (
       <section className="panel-section ai-off">
-        <h3 className="panel-heading">AI 도우미</h3>
+        <h3 className="panel-heading">{tx("AI 도우미")}</h3>
         <p className="small pad">
-          노트에 질문하고, 글을 요약·다듬고, 주간 회고를 만듭니다. PC에 로그인된 <b>Claude Code</b>나 <b>Codex CLI</b>를
-          그대로 씁니다.
+          {tx("노트에 질문하고, 글을 요약·다듬고, 주간 회고를 만듭니다. PC에 로그인된")}{" "} <b>Claude Code</b>{tx("나")}{" "} <b>Codex CLI</b>{tx("를 그대로 씁니다.")}
         </p>
         <p className="muted small pad">
-          켜면 질문할 때마다 보낼 노트를 먼저 보여 드리고, 확인한 것만 해당 AI 서비스(Anthropic·OpenAI)로 보냅니다.
-          #비공개 태그가 있는 노트는 보내지 않습니다.
+          {tx("켜면 질문할 때마다 보낼 노트를 먼저 보여 드리고, 확인한 것만 해당 AI 서비스(Anthropic·OpenAI)로 보냅니다. #비공개 태그가 있는 노트는 보내지 않습니다.")}
         </p>
         <div className="pad">
           <button className="btn primary small" onClick={() => setEnabled(true)}>
-            AI 도우미 켜기
+            {tx("AI 도우미 켜기")}
           </button>
         </div>
       </section>
@@ -201,19 +200,19 @@ export function AiPanel() {
   return (
     <section className="ai-panel">
       <div className="ai-title-row">
-        <span className="panel-heading ai-title">AI 도우미</span>
+        <span className="panel-heading ai-title">{tx("AI 도우미")}</span>
         <span className="spacer" />
         <button className="btn ghost small" onClick={newChat} disabled={!!running || chat.length === 0}>
-          새 대화
+          {tx("새 대화")}
         </button>
       </div>
       <div className="ai-head">
         {providers === null ? (
-          <span className="muted small">AI 찾는 중…</span>
+          <span className="muted small">{tx("AI 찾는 중…")}</span>
         ) : usable.length === 0 ? (
-          <span className="error small">사용할 수 있는 AI가 없습니다</span>
+          <span className="error small">{tx("사용할 수 있는 AI가 없습니다")}</span>
         ) : (
-          <select value={cur?.id ?? providerId} onChange={(e) => setProvider(e.target.value)} title="사용할 AI">
+          <select value={cur?.id ?? providerId} onChange={(e) => setProvider(e.target.value)} title={tx("사용할 AI")}>
             {usable.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -229,14 +228,14 @@ export function AiPanel() {
           {(providers ?? []).map((p) => (
             <div key={p.id} className="ai-connect-item">
               <div>
-                <b>{p.name}</b>: {p.detail ?? "사용할 수 없습니다"}
+                <b>{p.name}</b>: {p.detail ?? tx("사용할 수 없습니다")}
               </div>
               <ProviderFix p={p} />
             </div>
           ))}
-          <p className="muted small">로그인은 각 AI의 공식 로그인 창에서 합니다. Notevine은 로그인 정보를 보지 않습니다.</p>
+          <p className="muted small">{tx("로그인은 각 AI의 공식 로그인 창에서 합니다. Notevine은 로그인 정보를 보지 않습니다.")}</p>
           <button className="btn small" onClick={() => void detect(true)}>
-            다시 찾기
+            {tx("다시 찾기")}
           </button>
         </div>
       )}
@@ -244,14 +243,12 @@ export function AiPanel() {
       <div className="ai-chat">
         {chat.length === 0 && usable.length > 0 && mode === "edit" && (
           <p className="muted small pad">
-            예: "이 회의록의 결정사항을 새 노트로 정리해 줘", "할 일에 담당자를 채워 줘", "이 노트들에 #제안서 태그를 달아 줘". AI는 노트를
-            직접 바꾸지 않고 바꿀 안을 냅니다. 노트별로 바뀌는 부분을 보고 고른 것만 적용하며, 히스토리로 되돌릴 수 있습니다.
+            {tx("예: \"이 회의록의 결정사항을 새 노트로 정리해 줘\", \"할 일에 담당자를 채워 줘\", \"이 노트들에 #제안서 태그를 달아 줘\". AI는 노트를 직접 바꾸지 않고 바꿀 안을 냅니다. 노트별로 바뀌는 부분을 보고 고른 것만 적용하며, 히스토리로 되돌릴 수 있습니다.")}
           </p>
         )}
         {chat.length === 0 && usable.length > 0 && mode === "ask" && (
           <p className="muted small pad">
-            예: "지난주 회의에서 결정한 것 정리해 줘", "Tauri 2 자동 업데이트 방법 조사해 줘". 관련 노트를 찾아 보내기 전에
-            보여 드리고, 노트로 부족하면 웹에서도 찾아봅니다. 답은 [새 노트로 저장]으로 남길 수 있습니다.
+            {tx("예: \"지난주 회의에서 결정한 것 정리해 줘\", \"Tauri 2 자동 업데이트 방법 조사해 줘\". 관련 노트를 찾아 보내기 전에 보여 드리고, 노트로 부족하면 웹에서도 찾아봅니다. 답은 [새 노트로 저장]으로 남길 수 있습니다.")}
           </p>
         )}
         {chat.map((m, i) => (
@@ -260,7 +257,7 @@ export function AiPanel() {
               <div className="ai-text">{m.text}</div>
             ) : (
               <>
-                {m.text ? <AnswerText text={m.text} /> : m.streaming && <div className="muted small">답을 기다리는 중…</div>}
+                {m.text ? <AnswerText text={m.text} /> : m.streaming && <div className="muted small">{tx("답을 기다리는 중…")}</div>}
                 {m.streaming && m.progress && m.progress.length > 0 && (
                   <ul className="ai-progress small muted">
                     {m.progress.map((s, j) => (
@@ -276,19 +273,19 @@ export function AiPanel() {
                       disabled={!!loggingIn}
                       onClick={() => void login(m.provider ?? current()?.id ?? "claude")}
                     >
-                      {loggingIn ? "로그인 창에서 진행 중…" : "로그인"}
+                      {loggingIn ? tx("로그인 창에서 진행 중…") : tx("로그인")}
                     </button>
                   </div>
                 )}
                 {!m.streaming && m.text && (
                   <div className="ai-actions">
                     <button className="btn ghost small" onClick={() => void saveAnswer(i)}>
-                      새 노트로 저장
+                      {tx("새 노트로 저장")}
                     </button>
                     <button className="btn ghost small" onClick={() => void navigator.clipboard.writeText(m.text)}>
-                      복사
+                      {tx("복사")}
                     </button>
-                    {m.sources && m.sources.length > 0 && <span className="muted small">참고 노트 {m.sources.length}개</span>}
+                    {m.sources && m.sources.length > 0 && <span className="muted small">{tx("참고 노트 {0}개", m.sources.length)}</span>}
                     {m.model && <span className="muted small">· {m.model}</span>}
                   </div>
                 )}
@@ -299,18 +296,18 @@ export function AiPanel() {
         <div ref={bottom} />
       </div>
 
-      <div className="ai-mode" role="tablist" aria-label="AI에 맡길 일">
-        <button type="button" role="tab" className={mode === "ask" ? "on" : ""} onClick={() => setMode("ask")} title="노트와 웹을 바탕으로 답을 받습니다">
-          질문
+      <div className="ai-mode" role="tablist" aria-label={tx("AI에 맡길 일")}>
+        <button type="button" role="tab" className={mode === "ask" ? "on" : ""} onClick={() => setMode("ask")} title={tx("노트와 웹을 바탕으로 답을 받습니다")}>
+          {tx("질문")}
         </button>
         <button
           type="button"
           role="tab"
           className={mode === "edit" ? "on" : ""}
           onClick={() => setMode("edit")}
-          title="AI가 노트를 새로 만들거나 고치는 안을 내고, 확인한 것만 적용합니다"
+          title={tx("AI가 노트를 새로 만들거나 고치는 안을 내고, 확인한 것만 적용합니다")}
         >
-          노트 작업
+          {tx("노트 작업")}
         </button>
       </div>
       <form
@@ -327,10 +324,10 @@ export function AiPanel() {
           rows={2}
           placeholder={
             !usable.length
-              ? "AI를 연결하면 질문할 수 있습니다"
+              ? tx("AI를 연결하면 질문할 수 있습니다")
               : mode === "edit"
-                ? "만들거나 고칠 내용을 쓰세요 (Enter 보내기)"
-                : "질문하거나 조사할 것을 쓰세요 (Enter 보내기, Shift+Enter 줄바꿈)"
+                ? tx("만들거나 고칠 내용을 쓰세요 (Enter 보내기)")
+                : tx("질문하거나 조사할 것을 쓰세요 (Enter 보내기, Shift+Enter 줄바꿈)")
           }
           disabled={!usable.length}
           onChange={(e) => setQ(e.target.value)}
@@ -342,7 +339,7 @@ export function AiPanel() {
           }}
         />
         {running ? (
-          <button type="button" className="btn small ai-send" title="중지" aria-label="중지" onClick={stop}>
+          <button type="button" className="btn small ai-send" title={tx("중지")} aria-label={tx("중지")} onClick={stop}>
             <svg viewBox="0 0 16 16" aria-hidden="true">
               <rect className="ai-stop-icon" x="4" y="4" width="8" height="8" rx="1.5" />
             </svg>
@@ -351,8 +348,8 @@ export function AiPanel() {
           <button
             type="submit"
             className="btn primary small ai-send"
-            title="보내기 (Enter)"
-            aria-label="보내기"
+            title={tx("보내기 (Enter)")}
+            aria-label={tx("보내기")}
             disabled={!q.trim() || !usable.length}
           >
             <svg viewBox="0 0 16 16" aria-hidden="true">

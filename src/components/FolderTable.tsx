@@ -6,6 +6,7 @@ import { cell, MODIFIED, sortRows, TITLE } from "../lib/folderTable";
 import { parentPath } from "../lib/tree";
 import { openProps } from "./TabBar";
 
+import { tx } from "../i18n";
 /** Subfolder a note sits in, relative to `folder`; left out for a project's own overview note ("이사/이사.md"). */
 export function subFolder(folder: string, path: string, title: string): string {
   const sub = parentPath(path).slice(folder ? folder.length + 1 : 0);
@@ -19,7 +20,7 @@ export function FolderTable({ folder, table }: { folder: string; table: Table })
   });
   const rows = useMemo(() => sortRows(table.rows, sort.col, sort.desc), [table, sort]);
   const cols = [TITLE, ...table.columns, MODIFIED];
-  const label = (col: string) => (col === TITLE ? "제목" : col === MODIFIED ? "수정일" : col);
+  const label = (col: string) => (col === TITLE ? tx("제목") : col === MODIFIED ? tx("수정일") : col);
   const { openNote } = useApp.getState();
 
   return (
@@ -36,7 +37,7 @@ export function FolderTable({ folder, table }: { folder: string; table: Table })
                       desc: s.col === col ? !s.desc : col === MODIFIED,
                     }))
                   }
-                  title="눌러서 정렬"
+                  title={tx("눌러서 정렬")}
                 >
                   {label(col)}
                   {sort.col === col && <span className="sort-mark">{sort.desc ? " ▼" : " ▲"}</span>}

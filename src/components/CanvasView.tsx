@@ -35,6 +35,7 @@ import {
   type Side,
 } from "../lib/canvas";
 
+import { tx } from "../i18n";
 const DRAG_TYPE = "application/x-notevine-path";
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|bmp)$/i;
 const ZOOM_MIN = 0.1;
@@ -81,7 +82,7 @@ export function CanvasView({ path }: { path: string }) {
       await api.saveCanvas(path, serializeCanvas(b));
     } catch (e) {
       dirty.current = true;
-      toast(`캔버스를 저장하지 못했습니다: ${errorMessage(e)}`, "error");
+      toast(tx("캔버스를 저장하지 못했습니다: {0}", errorMessage(e)), "error");
     }
   }
 
@@ -202,8 +203,8 @@ export function CanvasView({ path }: { path: string }) {
     const box = bounds(picked);
     const c = center();
     const g: CanvasNode = box
-      ? { id: newId(), type: "group", label: "묶음", x: box.x - 30, y: box.y - 50, width: box.width + 60, height: box.height + 80 }
-      : { id: newId(), type: "group", label: "묶음", x: Math.round(c.x - 200), y: Math.round(c.y - 150), width: 400, height: 300 };
+      ? { id: newId(), type: "group", label: tx("묶음"), x: box.x - 30, y: box.y - 50, width: box.width + 60, height: box.height + 80 }
+      : { id: newId(), type: "group", label: tx("묶음"), x: Math.round(c.x - 200), y: Math.round(c.y - 150), width: 400, height: 300 };
     place(g, true);
   }
 
@@ -322,6 +323,24 @@ export function CanvasView({ path }: { path: string }) {
     e.stopPropagation();
   }
 
+  // A note renamed or moved rewrites this board on disk (its cards follow): take that in,
+  // unless there are changes here still to save.
+  useEffect(() => {
+    if (!savedSeq) return;
+    let live = true;
+    api
+      .readNote(path)
+      .then((text) => {
+        const b = boardRef.current;
+        if (!live || dirty.current || !b || text === serializeCanvas(b)) return;
+        const next = parseCanvas(text);
+        boardRef.current = next;
+        setBoard(next);
+      })
+      .catch(() => {});
+    return () => void (live = false);
+  }, [savedSeq]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ----- note cards: their text, read again after saves -----
   const files = useMemo(() => [...new Set(board?.nodes.flatMap((n) => (n.type === "file" && /\.md$/i.test(n.file) ? [n.file] : [])) ?? [])], [board]);
   const [texts, setTexts] = useState<Record<string, string | null>>({});
@@ -354,7 +373,7 @@ export function CanvasView({ path }: { path: string }) {
     return (
       <div className="canvas-view">
         <CanvasHead name={name} path={path} onClose={closeCanvas} />
-        <p className="pad error-text">캔버스를 열지 못했습니다: {error}</p>
+        <p className="pad error-text">{tx("캔버스를 열지 못했습니다: {0}", error)}</p>
       </div>
     );
   }
@@ -366,35 +385,35 @@ export function CanvasView({ path }: { path: string }) {
     <div className="canvas-view">
       <CanvasHead name={name} path={path} onClose={closeCanvas}>
         <span className="cv-tools">
-          <button className="btn ghost small" title="빈 곳을 두 번 눌러도 됩니다" onClick={() => addText()}>
-            ＋ 글 상자
+          <button className="btn ghost small" title={tx("빈 곳을 두 번 눌러도 됩니다")} onClick={() => addText()}>
+            {tx("＋ 글 상자")}
           </button>
-          <button className="btn ghost small" title="파일 트리에서 노트를 끌어와도 됩니다" onClick={() => setPicker(true)}>
-            ＋ 노트
+          <button className="btn ghost small" title={tx("파일 트리에서 노트를 끌어와도 됩니다")} onClick={() => setPicker(true)}>
+            {tx("＋ 노트")}
           </button>
-          <button className="btn ghost small" title="고른 카드를 묶음으로 감쌉니다" onClick={addGroup}>
-            ＋ 묶음
+          <button className="btn ghost small" title={tx("고른 카드를 묶음으로 감쌉니다")} onClick={addGroup}>
+            {tx("＋ 묶음")}
           </button>
         </span>
         {anySel && (
-          <span className="cv-colors" aria-label="색">
-            <button className="cv-swatch none" title="색 없음" onClick={() => setColor(undefined)} />
+          <span className="cv-colors" aria-label={tx("색")}>
+            <button className="cv-swatch none" title={tx("색 없음")} onClick={() => setColor(undefined)} />
             {CANVAS_COLORS.map(([c, label]) => (
               <button key={c} className="cv-swatch" title={label} style={{ background: colorOf(c) }} onClick={() => setColor(c)} />
             ))}
-            <button className="icon-btn" title="지우기 (Delete)" onClick={removeSelected}>
+            <button className="icon-btn" title={tx("지우기 (Delete)")} onClick={removeSelected}>
               🗑
             </button>
           </span>
         )}
         <span className="pdf-zoom">
-          <button className="icon-btn" title="축소 (Ctrl+휠)" onClick={() => zoomAt(1 / 1.2)}>
+          <button className="icon-btn" title={tx("축소 (Ctrl+휠)")} onClick={() => zoomAt(1 / 1.2)}>
             −
           </button>
-          <button className="btn ghost small" title="모든 카드가 보이게" onClick={fit}>
+          <button className="btn ghost small" title={tx("모든 카드가 보이게")} onClick={fit}>
             {Math.round(view.zoom * 100)}%
           </button>
-          <button className="icon-btn" title="확대 (Ctrl+휠)" onClick={() => zoomAt(1.2)}>
+          <button className="icon-btn" title={tx("확대 (Ctrl+휠)")} onClick={() => zoomAt(1.2)}>
             ＋
           </button>
         </span>
@@ -418,7 +437,7 @@ export function CanvasView({ path }: { path: string }) {
         }}
         style={{ backgroundPosition: `${view.x}px ${view.y}px`, backgroundSize: `${24 * view.zoom}px ${24 * view.zoom}px` }}
       >
-        {board && !board.nodes.length && <p className="cv-empty muted">빈 곳을 두 번 눌러 글 상자를 만들거나, 파일 트리에서 노트를 끌어다 놓으세요.</p>}
+        {board && !board.nodes.length && <p className="cv-empty muted">{tx("빈 곳을 두 번 눌러 글 상자를 만들거나, 파일 트리에서 노트를 끌어다 놓으세요.")}</p>}
         <div className="canvas-world" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})` }}>
           <svg className="cv-edges" width="1" height="1">
             <defs>
@@ -507,7 +526,7 @@ function CanvasHead({ name, path, onClose, children }: { name: string; path: str
         {name}
       </span>
       {children}
-      <button className="icon-btn" title="캔버스 닫기" onClick={onClose}>
+      <button className="icon-btn" title={tx("캔버스 닫기")} onClick={onClose}>
         ×
       </button>
     </div>
@@ -573,7 +592,7 @@ function CardView({
             }}
           />
         ) : (
-          <span className="cv-group-label">{n.label || "묶음"}</span>
+          <span className="cv-group-label">{n.label || tx("묶음")}</span>
         )
       ) : n.type === "text" ? (
         editing ? (
@@ -581,7 +600,7 @@ function CardView({
             className="cv-textarea"
             autoFocus
             defaultValue={n.text}
-            placeholder="마크다운으로 쓰세요 · 다 쓰면 Esc"
+            placeholder={tx("마크다운으로 쓰세요 · 다 쓰면 Esc")}
             onBlur={(e) => {
               if (e.target.value !== n.text) onEdit({ text: e.target.value });
               onDoneEditing();
@@ -589,19 +608,19 @@ function CardView({
             onKeyDown={(e) => e.key === "Escape" && e.currentTarget.blur()}
           />
         ) : (
-          <div className="cv-scroll note-view" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: html || '<p class="muted">두 번 눌러 쓰기</p>' }} />
+          <div className="cv-scroll note-view" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: html || tx("<p class=\"muted\">두 번 눌러 쓰기</p>") }} />
         )
       ) : n.type === "file" ? (
         <FileCard file={n.file} title={title} html={html} exists={exists} onContentClick={onContentClick} />
       ) : (
-        <div className="cv-scroll cv-link" title="두 번 눌러 브라우저로 열기">
+        <div className="cv-scroll cv-link" title={tx("두 번 눌러 브라우저로 열기")}>
           🔗 {n.url}
         </div>
       )}
       {SIDES.map((s) => (
-        <span key={s} className={`cv-dot ${s}`} data-side={s} title="끌어서 다른 카드와 잇기" />
+        <span key={s} className={`cv-dot ${s}`} data-side={s} title={tx("끌어서 다른 카드와 잇기")} />
       ))}
-      {selected && <span className="cv-resize" title="끌어서 크기 바꾸기" />}
+      {selected && <span className="cv-resize" title={tx("끌어서 크기 바꾸기")} />}
     </div>
   );
 }
@@ -620,12 +639,12 @@ function FileCard({ file, title, html, exists, onContentClick }: { file: string;
   }, [file, image, exists]);
 
   const name = file.split("/").pop()!;
-  if (!exists) return <div className="cv-file-title">⚠ 없음: {file}</div>;
+  if (!exists) return <div className="cv-file-title">{tx("⚠ 없음: {0}", file)}</div>;
   if (image) return src ? <img className="cv-image" src={src} alt={name} draggable={false} /> : <div className="cv-file-title">{name}</div>;
-  if (title === undefined) return <div className="cv-file-title" title="두 번 눌러 열기">📄 {name}</div>;
+  if (title === undefined) return <div className="cv-file-title" title={tx("두 번 눌러 열기")}>📄 {name}</div>;
   return (
     <>
-      <div className="cv-file-title" title={`${file}\n두 번 누르면 오른쪽에 열립니다`}>
+      <div className="cv-file-title" title={tx("{0}\n두 번 누르면 오른쪽에 열립니다", file)}>
         {title}
       </div>
       <div className="cv-scroll note-view" onClick={onContentClick} dangerouslySetInnerHTML={{ __html: html }} />
@@ -646,7 +665,7 @@ function NotePicker({ onPick }: { onPick: (path: string | null) => void }) {
         <input
           className="palette-input"
           autoFocus
-          placeholder="캔버스에 놓을 노트 이름"
+          placeholder={tx("캔버스에 놓을 노트 이름")}
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
@@ -669,7 +688,7 @@ function NotePicker({ onPick }: { onPick: (path: string | null) => void }) {
               <span className="muted small">{n.path.includes("/") ? n.path.slice(0, n.path.lastIndexOf("/")) : ""}</span>
             </li>
           ))}
-          {!items.length && <li className="muted">찾는 노트가 없습니다</li>}
+          {!items.length && <li className="muted">{tx("찾는 노트가 없습니다")}</li>}
         </ul>
       </div>
     </div>
