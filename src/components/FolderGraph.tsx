@@ -6,6 +6,8 @@ import { degrees, fitView, initialLayout, stepLayout, type Point } from "../lib/
 
 import { tx } from "../i18n";
 const TICKS = 300;
+/** Name of the guide note the base structure puts in each PARA folder (workspace.rs GUIDE_NOTE). */
+const GUIDE_NOTE = "_안내.md";
 
 type Drag = { kind: "pan"; x: number; y: number; moved: boolean } | { kind: "node"; i: number; moved: boolean };
 
@@ -42,10 +44,18 @@ export function FolderGraph({ folder }: { folder: string }) {
   }, [folder, savedSeq, externalSeq, indexed]);
 
   // Notes and links shown: all, or only the linked ones.
+  const templates = useApp((s) => s.config.template_folder);
   const shown = useMemo(() => {
     if (!graph) return null;
-    const deg = degrees(graph.nodes.length, graph.edges);
-    const keep = graph.nodes.map((_, i) => !hideLonely || deg[i] > 0);
+    // Like the board and calendar, leave out the base structure's "_안내" notes and the templates.
+    const work = graph.nodes.map(
+      (n) => !n.path.endsWith("/" + GUIDE_NOTE) && n.path !== GUIDE_NOTE && (folder === templates || !n.path.startsWith(templates + "/")),
+    );
+    const deg = degrees(
+      graph.nodes.length,
+      graph.edges.filter(([a, b]) => work[a] && work[b]),
+    );
+    const keep = graph.nodes.map((_, i) => work[i] && (!hideLonely || deg[i] > 0));
     const index = new Map<number, number>();
     const nodes: (LinkGraph["nodes"][number] & { deg: number })[] = [];
     graph.nodes.forEach((n, i) => {
@@ -55,7 +65,7 @@ export function FolderGraph({ folder }: { folder: string }) {
     });
     const edges = graph.edges.filter(([a, b]) => keep[a] && keep[b]).map(([a, b]): [number, number] => [index.get(a)!, index.get(b)!]);
     return { nodes, edges };
-  }, [graph, hideLonely]);
+  }, [graph, hideLonely, folder, templates]);
 
   // Lay out again from scratch when the graph changes, a few steps per frame.
   useEffect(() => {
