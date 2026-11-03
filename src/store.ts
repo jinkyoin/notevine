@@ -94,6 +94,7 @@ export const DEFAULT_CONFIG: VaultConfig = {
   history_delete_days: 0,
   keybindings: {},
   custom_css: false,
+  plugins: {},
 };
 
 /** Applies the theme setting (FR-UI-02) to the document. */
@@ -134,6 +135,8 @@ interface AppStore {
   tableView: string | null;
   /** PDF shown in place of the editor (FR-ATT-03): its path and the page to go to. `seq` repeats a jump. */
   pdfView: { path: string; page: number; seq: number } | null;
+  /** Canvas board (.canvas) shown in place of the editor, or null. */
+  canvasView: string | null;
   folderMode: FolderMode;
   /** Note shown beside the current one, in the right pane of the split view (FR-EDT-07), or null. */
   splitPath: string | null;
@@ -188,6 +191,11 @@ interface AppStore {
   /** Shows a PDF in the app at `page` (1-based). */
   openPdf(path: string, page?: number): void;
   closePdf(): void;
+  /** Shows a canvas board in place of the editor. */
+  openCanvas(path: string): void;
+  closeCanvas(): void;
+  /** Makes an empty canvas board in `dir` and opens it. */
+  createCanvas(dir: string): Promise<void>;
   /** Adds an annotation of a PDF to its "<name> 주석.md" note, making the note if needed. */
   annotatePdf(pdfPath: string, page: number, quote: string, memo: string): Promise<boolean>;
   confirmRelocate(updateLinks: boolean | null): Promise<void>;
@@ -325,6 +333,8 @@ export const useApp = create<AppStore>((set, get) => {
     set({ expanded: new Set([...get().expanded].map((p) => remapPath(p, from, to))) });
     const split = get().splitPath;
     if (split) set({ splitPath: remapPath(split, from, to) });
+    const canvas = get().canvasView;
+    if (canvas) set({ canvasView: remapPath(canvas, from, to) });
     await recolor((p) => remapPath(p, from, to));
     await get().refreshTree();
     get().noteSaved();
@@ -339,7 +349,8 @@ export const useApp = create<AppStore>((set, get) => {
     const other = next.active !== get().openPath;
     const tableView = other ? null : get().tableView;
     const pdfView = other ? null : get().pdfView;
-    set({ tabs: next.tabs, openPath: next.active, back: cur?.back ?? [], forward: cur?.forward ?? [], tableView, pdfView, ...extra });
+    const canvasView = other ? null : get().canvasView;
+    set({ tabs: next.tabs, openPath: next.active, back: cur?.back ?? [], forward: cur?.forward ?? [], tableView, pdfView, canvasView, ...extra });
     if (next.active) expandTo(next.active);
     if (get().vault) void api.setWorkspace(next.active, next.tabs.map((t) => t.path)).catch(() => {});
   }
@@ -387,6 +398,7 @@ export const useApp = create<AppStore>((set, get) => {
     versionView: null,
     tableView: null,
     pdfView: null,
+    canvasView: null,
     folderMode: "table",
     splitPath: null,
     leftOpen: true,
@@ -432,7 +444,7 @@ export const useApp = create<AppStore>((set, get) => {
 
       const info = await attempt(() => api.openVault(path));
       if (!info) return;
-      set({ vault: info, tree: [], expanded: new Set(), openPath: null, editing: null, back: [], forward: [], tabs: [], closedTabs: [], tableView: null, pdfView: null, splitPath: null });
+      set({ vault: info, tree: [], expanded: new Set(), openPath: null, editing: null, back: [], forward: [], tabs: [], closedTabs: [], tableView: null, pdfView: null, canvasView: null, splitPath: null });
       const config = await api.getConfig().catch(() => DEFAULT_CONFIG);
       set({ config, sidebarTab: get().sidebarTab === "ideas" && !config.preset_enabled ? "files" : get().sidebarTab });
       applyTheme(config.theme);
@@ -463,6 +475,8 @@ export const useApp = create<AppStore>((set, get) => {
       if (notes) set({ notes });
       if (!tree) return;
       set({ tree });
+      const canvas = get().canvasView;
+      if (canvas && !findNode(tree, canvas)) set({ canvasView: null });
       if (dropMissing((p) => !!findNode(tree, p))) get().toast("열려 있던 노트가 다른 프로그램에서 삭제되거나 이동되었습니다");
     },
 
@@ -479,6 +493,7 @@ export const useApp = create<AppStore>((set, get) => {
       applyTabs(openTab(tabState(), path, !!opts?.newTab), {
         tableView: null,
         pdfView: null,
+        canvasView: null,
         jumpLine: line ?? null,
         jumpHeading: heading ?? null,
         jumpSeq: line ? get().jumpSeq + 1 : get().jumpSeq,
@@ -530,11 +545,30 @@ export const useApp = create<AppStore>((set, get) => {
 
     openPdf(path, page = 1) {
       void get().flushEditor();
-      set({ pdfView: { path, page, seq: (get().pdfView?.seq ?? 0) + 1 }, tableView: null });
+      set({ pdfView: { path, page, seq: (get().pdfView?.seq ?? 0) + 1 }, tableView: null, canvasView: null });
     },
 
     closePdf() {
       set({ pdfView: null });
+    },
+
+    openCanvas(path) {
+      void get().flushEditor();
+      set({ canvasView: path, pdfView: null, tableView: null });
+    },
+
+    closeCanvas() {
+      set({ canvasView: null });
+    },
+
+    async createCanvas(dir) {
+      const path = await attempt(() => api.createCanvas(dir));
+      if (!path) return;
+      await get().refreshTree();
+      expandTo(path);
+      get().openCanvas(path);
+      // Name it inline in the file tree, like a new note.
+      set({ editing: { mode: "rename", path }, sidebarTab: "files", leftOpen: true });
     },
 
     async annotatePdf(pdfPath, page, quote, memo) {
@@ -567,6 +601,7 @@ export const useApp = create<AppStore>((set, get) => {
         return;
       }
       if (/\.pdf$/i.test(rel)) return get().openPdf(rel, page);
+      if (/\.canvas$/i.test(rel)) return get().openCanvas(rel);
       try {
         await openWithOs(await api.attachmentPath(rel));
       } catch (e) {
@@ -658,7 +693,7 @@ export const useApp = create<AppStore>((set, get) => {
 
     setTableView(tableView, mode) {
       if (tableView !== null) void get().flushEditor();
-      set(mode ? { tableView, folderMode: mode, pdfView: null } : { tableView, pdfView: null });
+      set(mode ? { tableView, folderMode: mode, pdfView: null, canvasView: null } : { tableView, pdfView: null, canvasView: null });
     },
 
     async setNoteProperty(path, key, value) {

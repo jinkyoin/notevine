@@ -1,5 +1,6 @@
 mod ai;
 mod ai_api;
+mod canvas;
 mod commands;
 mod error;
 mod extras;
@@ -7,6 +8,7 @@ mod history;
 mod index;
 mod parse;
 mod paths;
+mod plugins;
 mod recent;
 mod rewrite;
 mod search;
@@ -105,6 +107,12 @@ pub fn run() {
             ai_api::ai_set_key,
             ai_api::ai_models,
             web::fetch_page,
+            canvas::create_canvas,
+            canvas::save_canvas,
+            plugins::list_plugins,
+            plugins::plugin_source,
+            plugins::plugins_folder,
+            plugins::create_sample_plugin,
             workspace::apply_preset,
             workspace::list_templates,
             workspace::create_from_template,

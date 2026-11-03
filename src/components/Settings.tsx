@@ -1,4 +1,4 @@
-// SCR-16 설정: 일반 · 편집기 · 파일·링크 · 프리셋 · 히스토리 · 정보.
+// SCR-16 설정: 일반 · 편집기 · 단축키 · 파일·링크 · 프리셋 · AI · 플러그인 · 히스토리 · 정보.
 import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -7,8 +7,9 @@ import { api, errorMessage, type AppSettings, type HistoryStats, type VaultConfi
 import { useApp } from "../store";
 import { useAi } from "../aiStore";
 import { forgetApiModels, ProviderFix } from "./AiPanel";
+import { grantCovers, PERMISSION_LABEL, usePlugins } from "../plugins";
 
-type Tab = "general" | "editor" | "keys" | "files" | "preset" | "ai" | "history" | "about";
+type Tab = "general" | "editor" | "keys" | "files" | "preset" | "ai" | "plugins" | "history" | "about";
 const TABS: [Tab, string][] = [
   ["general", "일반"],
   ["editor", "편집기"],
@@ -16,6 +17,7 @@ const TABS: [Tab, string][] = [
   ["files", "파일·링크"],
   ["preset", "프리셋"],
   ["ai", "AI"],
+  ["plugins", "플러그인"],
   ["history", "히스토리"],
   ["about", "정보"],
 ];
@@ -118,6 +120,7 @@ function SettingsDialog({ close }: { close: () => void }) {
               </>
             )}
             {tab === "keys" && <ShortcutSettings />}
+            {tab === "plugins" && <PluginSettings />}
             {tab === "files" && (
               <>
                 <TextRow label="첨부 폴더" value={config.attachment_folder} onCommit={(v) => set("attachment_folder", v)} />
@@ -556,7 +559,7 @@ function ApiConnections() {
       <KeyRow label="Claude API 키" id="anthropic" set={has("anthropic")} placeholder="sk-ant-…" onSave={saveKey} />
       <KeyRow label="OpenAI API 키" id="openai" set={has("openai")} placeholder="sk-…" onSave={saveKey} />
       <Row label="Ollama 주소" hint={has("ollama") ? "연결됨" : "Ollama를 설치·실행하면 쓸 수 있습니다 (이 PC 주소만)"}>
-        <input className="api-input" value={ollama} placeholder="http://localhost:11434" onChange={(e) => setOllama(e.target.value)} />
+        <input className="api-input" value={ollama} placeholder="http://127.0.0.1:11434" onChange={(e) => setOllama(e.target.value)} />
         <button
           className="btn small"
           onClick={async () => {
@@ -615,6 +618,95 @@ function KeyRow({
         </button>
       )}
     </Row>
+  );
+}
+
+function PluginSettings() {
+  const config = useApp((s) => s.config);
+  const infos = usePlugins((s) => s.infos);
+  const errors = usePlugins((s) => s.errors);
+  const { saveConfig, toast, ask } = useApp.getState();
+  const granted = config.plugins ?? {};
+
+  const turn = async (id: string, on: boolean) => {
+    const info = infos.find((p) => p.id === id);
+    if (!info) return;
+    const { [id]: _old, ...rest } = granted;
+    if (!on) return saveConfig({ ...config, plugins: rest });
+    const perms = info.permissions.length ? info.permissions.map((p) => `· ${PERMISSION_LABEL[p]}`).join("\n") : "· 없음 (명령·패널·알림만)";
+    const ok = await ask(
+      `플러그인 켜기: ${info.name}`,
+      `이 플러그인이 쓰는 권한입니다.\n\n${perms}\n\n플러그인은 노트 폴더 .app/plugins/${id}의 코드를 실행합니다. 만든 사람을 믿을 수 있을 때만 켜세요.`,
+      "켜기",
+    );
+    if (ok) await saveConfig({ ...config, plugins: { ...rest, [id]: info.permissions } });
+  };
+
+  return (
+    <>
+      <p className="muted small">
+        플러그인은 명령·패널을 더하는 작은 프로그램입니다. 노트 폴더의 <code>.app/plugins</code> 안에 폴더째 넣고 여기서 켭니다. 플러그인은 앱과
+        떨어진 곳에서 돌고, 켤 때 허락한 일만 할 수 있습니다. 만드는 법은 사용자 매뉴얼(Shift+F1)의 '플러그인' 장을 보세요.
+      </p>
+      <div className="set-actions">
+        <button
+          className="btn small"
+          onClick={() =>
+            void api
+              .pluginsFolder()
+              .then(openPath)
+              .catch((e) => toast(errorMessage(e), "error"))
+          }
+        >
+          플러그인 폴더 열기
+        </button>
+        <button
+          className="btn small"
+          onClick={async () => {
+            try {
+              await api.createSamplePlugin();
+              usePlugins.getState().reload();
+              toast("예시 플러그인을 넣었습니다 · 아래에서 켜 보세요");
+            } catch (e) {
+              toast(errorMessage(e), "error");
+            }
+          }}
+        >
+          예시 플러그인 넣기
+        </button>
+        <button className="btn small ghost" onClick={() => usePlugins.getState().reload()} title="플러그인 폴더를 다시 읽고 켜진 플러그인을 다시 시작합니다">
+          다시 읽기
+        </button>
+      </div>
+      {!infos.length && <p className="muted small pad">플러그인 폴더에 플러그인이 없습니다.</p>}
+      {infos.map((p) => {
+        const g = granted[p.id];
+        const on = !p.error && grantCovers(p, g);
+        const grew = !!g && !on && !p.error;
+        return (
+          <div className="set-row plugin-row" key={p.id}>
+            <div>
+              <div>
+                {p.name} {p.version && <span className="muted small">v{p.version}</span>}
+                {p.author && <span className="muted small"> · {p.author}</span>}
+              </div>
+              {p.description && <div className="muted small">{p.description}</div>}
+              <div className="muted small">
+                권한: {p.permissions.length ? p.permissions.map((x) => PERMISSION_LABEL[x]?.split(" (")[0] ?? x).join(", ") : "없음"}
+              </div>
+              {p.error && <div className="error-text small">쓸 수 없음: {p.error}</div>}
+              {grew && <div className="error-text small">필요한 권한이 늘었습니다. 다시 켜야 동작합니다</div>}
+              {on && errors[p.id] && <div className="error-text small">오류: {errors[p.id]}</div>}
+            </div>
+            <div className="set-ctl">
+              <label className="switch-label">
+                <input type="checkbox" disabled={!!p.error} checked={on} onChange={(e) => void turn(p.id, e.target.checked)} /> {on ? "켜짐" : "꺼짐"}
+              </label>
+            </div>
+          </div>
+        );
+      })}
+    </>
   );
 }
 

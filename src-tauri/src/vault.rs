@@ -238,6 +238,15 @@ impl Vault {
         Ok(())
     }
 
+    /// Saves a text file the app edits that is not a note (a `.canvas` board):
+    /// written atomically like a note, without history or search index.
+    pub fn save_text(&self, rel: &str, content: &str) -> AppResult<()> {
+        let rel = normalize_rel(rel);
+        self.write_note(&rel, content)?;
+        self.known().insert(rel, content_hash(content));
+        Ok(())
+    }
+
     /// Saves a note from the editor and records a history snapshot (FR-HIS-01·02).
     /// The file write is what matters: if only the snapshot fails, the save still
     /// succeeds and the snapshot error comes back as a warning.
@@ -403,7 +412,14 @@ impl Vault {
         let src = self.existing(&rel)?;
         let old_name = file_name(&rel).to_string();
         let new_name = new_name.trim();
-        let new_name = if src.is_file() && is_note(&old_name) { with_md(new_name) } else { new_name.to_string() };
+        let canvas = |n: &str| n.to_lowercase().ends_with(".canvas");
+        let new_name = if src.is_file() && is_note(&old_name) {
+            with_md(new_name)
+        } else if src.is_file() && canvas(&old_name) && !canvas(new_name) {
+            format!("{new_name}.canvas") // boards keep their extension like notes
+        } else {
+            new_name.to_string()
+        };
         validate_name(&new_name)?;
         let dir = parent_rel(&rel).to_string();
         if self.sibling_exists(&dir, &new_name, Some(&old_name))? {
@@ -643,6 +659,8 @@ mod tests {
         // case-only rename is allowed
         assert_eq!(v.rename("b.md", "B", true).unwrap(), "B.md");
         assert!(v.read_note("B.md").is_ok());
+        v.save_text("보드.canvas", "{}").unwrap();
+        assert_eq!(v.rename("보드.canvas", "계획", true).unwrap(), "계획.canvas");
     }
 
     #[test]

@@ -64,6 +64,13 @@ export function registerAppCommands(): () => void {
       run: () => st().setModal("mdHelp"),
     },
     {
+      id: "canvas.new",
+      title: "새 캔버스",
+      keywords: "캔버스 화이트보드 보드 마인드맵 카드 canvas whiteboard",
+      when: noModal,
+      run: () => st().createCanvas(st().currentDir()),
+    },
+    {
       id: "note.webClip",
       title: "웹 페이지 클립 (주소로 노트 만들기)",
       keywords: "웹 클립 스크랩 저장 url 주소 인터넷 기사 블로그 clip",

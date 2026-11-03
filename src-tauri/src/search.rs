@@ -449,9 +449,9 @@ pub fn all_tags(ix: &Index) -> AppResult<Vec<TagCount>> {
 
 /// Tags of one note (body `#태그` and the `tags` property), in the order they first appear.
 pub fn note_tags(ix: &Index, path: &str) -> AppResult<Vec<String>> {
-    let mut st = ix.conn().prepare(
-        "SELECT t.tag FROM tags t JOIN notes n ON n.id = t.note_id WHERE n.path = ?1 ORDER BY t.rowid",
-    )?;
+    let mut st = ix
+        .conn()
+        .prepare("SELECT t.tag FROM tags t JOIN notes n ON n.id = t.note_id WHERE n.path = ?1 ORDER BY t.rowid")?;
     let rows = st.query_map(params![path], |r| r.get(0))?;
     Ok(rows.collect::<Result<_, _>>()?)
 }
@@ -569,10 +569,10 @@ pub fn link_graph(ix: &Index, folder: &str) -> AppResult<LinkGraph> {
         } else {
             by_name.get(&key).map(|(_, _, p)| p.clone())
         };
-        if let Some(&b) = target.and_then(|t| pos.get(&t)) {
-            if a != b {
-                edges.insert((a.min(b), a.max(b)));
-            }
+        if let Some(&b) = target.and_then(|t| pos.get(&t))
+            && a != b
+        {
+            edges.insert((a.min(b), a.max(b)));
         }
     }
     let mut edges: Vec<_> = edges.into_iter().collect();

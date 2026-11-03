@@ -33,19 +33,17 @@ pub fn check_web_url(url: &str) -> AppResult<()> {
 /// Text of an HTML page in the charset its header or `<meta>` names (EUC-KR pages
 /// are common in Korea), UTF-8 otherwise.
 pub fn decode_html(bytes: &[u8], content_type: Option<&str>) -> String {
-    let label = content_type
-        .and_then(charset_in)
-        .or_else(|| {
-            // <meta charset="euc-kr"> or <meta http-equiv=… content="text/html; charset=euc-kr">
-            let head = String::from_utf8_lossy(&bytes[..bytes.len().min(4096)]).to_ascii_lowercase();
-            head.find("charset=").map(|i| {
-                head[i + 8..]
-                    .trim_start_matches(['"', '\''])
-                    .chars()
-                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
-                    .collect::<String>()
-            })
-        });
+    let label = content_type.and_then(charset_in).or_else(|| {
+        // <meta charset="euc-kr"> or <meta http-equiv=… content="text/html; charset=euc-kr">
+        let head = String::from_utf8_lossy(&bytes[..bytes.len().min(4096)]).to_ascii_lowercase();
+        head.find("charset=").map(|i| {
+            head[i + 8..]
+                .trim_start_matches(['"', '\''])
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+                .collect::<String>()
+        })
+    });
     let enc = label.and_then(|l| encoding_rs::Encoding::for_label(l.as_bytes())).unwrap_or(encoding_rs::UTF_8);
     enc.decode(bytes).0.into_owned()
 }

@@ -22,6 +22,9 @@ import { MarkdownHelp } from "./MarkdownHelp";
 import { UserManual } from "./UserManual";
 import { WebClip } from "./WebClip";
 import { PdfView } from "./PdfView";
+import { CanvasView } from "./CanvasView";
+import { PluginPanels } from "./PluginPanels";
+import { usePluginHost } from "../plugins";
 import { IdeaBoard } from "./IdeaBoard";
 import { CommandPalette } from "./CommandPalette";
 import { QuickMemo } from "./QuickMemo";
@@ -98,6 +101,7 @@ export function MainLayout() {
   const openPath = useApp((s) => s.openPath);
   const tableView = useApp((s) => s.tableView);
   const pdfView = useApp((s) => s.pdfView);
+  const canvasView = useApp((s) => s.canvasView);
   const splitPath = useApp((s) => s.splitPath);
   const sidebarTab = useApp((s) => s.sidebarTab);
   const preset = useApp((s) => s.config.preset_enabled);
@@ -138,6 +142,9 @@ export function MainLayout() {
     });
     return () => void off.then((f) => f());
   }, []);
+
+  // Plugins of this vault (FR-EXT-02), run while it is open.
+  usePluginHost();
 
   const crumbs = openPath ? openPath.split("/") : [];
 
@@ -220,7 +227,9 @@ export function MainLayout() {
         <main className="center">
           <div className="pane">
             <TabBar />
-            {pdfView ? (
+            {canvasView ? (
+              <CanvasView key={canvasView} path={canvasView} />
+            ) : pdfView ? (
               <PdfView key={pdfView.path} path={pdfView.path} page={pdfView.page} seq={pdfView.seq} />
             ) : tableView !== null ? (
               <FolderView key={tableView} folder={tableView} />
@@ -252,6 +261,7 @@ export function MainLayout() {
               {openPath && <PropertiesPanel />}
               <Backlinks />
               <HistoryPanel />
+              <PluginPanels />
             </div>
             <div className="ai-dock">
               <AiPanel />

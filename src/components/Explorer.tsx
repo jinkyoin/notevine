@@ -75,7 +75,7 @@ function Row({ node, depth, onMenu, color }: { node: TreeNode; depth: number; on
   const own = useApp((s) => (node.kind === "folder" ? s.config.folder_colors?.[node.path] : undefined));
   const shown = own ?? color;
   const expanded = useApp((s) => s.expanded.has(node.path));
-  const openPath = useApp((s) => s.openPath);
+  const openPath = useApp((s) => s.canvasView ?? s.openPath);
   const editing = useApp((s) => s.editing);
   const toggleFolder = useApp((s) => s.toggleFolder);
   const openNote = useApp((s) => s.openNote);
@@ -121,7 +121,9 @@ function Row({ node, depth, onMenu, color }: { node: TreeNode; depth: number; on
           : openProps((o) =>
               node.kind === "note"
                 ? openNote(node.path, undefined, undefined, o)
-                : /\.pdf$/i.test(node.path) && useApp.getState().openPdf(node.path),
+                : /\.pdf$/i.test(node.path)
+                  ? useApp.getState().openPdf(node.path)
+                  : /\.canvas$/i.test(node.path) && useApp.getState().openCanvas(node.path),
             ))}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -185,7 +187,7 @@ function NameInput({ initial, onCommit }: { initial: string; onCommit: (name: st
 function RenameInput({ node }: { node: TreeNode }) {
   const rename = useApp((s) => s.rename);
   const setEditing = useApp((s) => s.setEditing);
-  const initial = node.kind === "note" ? noteTitle(node.path) : node.name;
+  const initial = node.kind === "note" ? noteTitle(node.path) : node.name.replace(/\.canvas$/i, "");
   return (
     <NameInput
       initial={initial}
@@ -236,6 +238,7 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
 
   const items: [string, () => void][] = [
     ["새 노트", () => createNote(dir)],
+    ["새 캔버스", () => void useApp.getState().createCanvas(dir)],
     [
       "새 폴더",
       () => {

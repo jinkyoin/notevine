@@ -143,13 +143,28 @@ export interface VaultConfig {
   keybindings: Record<string, string>;
   /** Apply `.app/custom.css` on top of the app's styles (FR-UI-05). */
   custom_css: boolean;
+  /** Plugin id → permissions the user granted when turning it on (FR-EXT-02). */
+  plugins: Record<string, PluginPermission[]>;
+}
+
+export type PluginPermission = "read" | "write" | "network";
+
+/** A folder in `.app/plugins`; `error` says why it can't be used. */
+export interface PluginInfo {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  author: string;
+  permissions: PluginPermission[];
+  error: string | null;
 }
 
 /** App-wide settings (not per vault). */
 export interface AppSettings {
   /** Closing the window keeps Notevine in the tray. */
   tray: boolean;
-  /** Ollama's address on this PC; "" = http://localhost:11434. */
+  /** Ollama's address on this PC; "" = http://127.0.0.1:11434. */
   ollama_url: string;
   /** Windows starts Notevine (into the tray) at sign-in. */
   autostart: boolean;
@@ -337,6 +352,15 @@ export const api = {
     return invoke<void>("ai_run", { requestId, provider, system, prompt, notes, model, web, onEvent: ch });
   },
   aiCancel: (requestId: string) => invoke<boolean>("ai_cancel", { requestId }),
+  /** Makes an empty `.canvas` board in `dir`; returns its path. */
+  createCanvas: (dir: string, name?: string) => invoke<string>("create_canvas", { dir, name: name ?? null }),
+  saveCanvas: (path: string, content: string) => invoke<void>("save_canvas", { path, content }),
+  listPlugins: () => invoke<PluginInfo[]>("list_plugins"),
+  pluginSource: (id: string) => invoke<string>("plugin_source", { id }),
+  /** `.app/plugins` as an absolute path (made if missing). */
+  pluginsFolder: () => invoke<string>("plugins_folder"),
+  /** Puts the sample plugin in `.app/plugins`; returns its id. */
+  createSamplePlugin: () => invoke<string>("create_sample_plugin"),
   deleteEntry: (path: string) => invoke<void>("delete_entry", { path }),
   revealEntry: (path: string) => invoke<string>("reveal_entry", { path }),
 };

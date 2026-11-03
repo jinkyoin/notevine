@@ -310,7 +310,9 @@ pub fn ai_run(
                 sink(AiEvent::Notice { message });
             }
             if web == Some(true) {
-                sink(AiEvent::Notice { message: "API 키·Ollama 연결에서는 웹 검색 없이 노트로만 답합니다".into() });
+                sink(AiEvent::Notice {
+                    message: "API 키·Ollama 연결에서는 웹 검색 없이 노트로만 답합니다".into()
+                });
             }
             let model = model.map(|m| m.trim().to_string()).filter(|m| !m.is_empty());
             crate::ai_api::run(api, &system, &input, model.as_deref(), &ollama, &cancel, &sink);

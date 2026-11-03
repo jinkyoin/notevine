@@ -28,7 +28,9 @@ const ANTHROPIC_VERSION: &str = "2026-10-21";
 const ANTHROPIC_DEFAULT_MODEL: &str = "claude-opus-5-5";
 /// Room for long answers; streaming, so no HTTP timeout concern.
 const MAX_TOKENS: u32 = 64_000;
-pub const OLLAMA_DEFAULT_URL: &str = "http://localhost:11434";
+// 127.0.0.1, not localhost: Ollama listens on IPv4 only, and Windows takes about two
+// seconds to give up on "localhost" as ::1 first.
+pub const OLLAMA_DEFAULT_URL: &str = "http://127.0.0.1:11434";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Api {
@@ -95,7 +97,7 @@ pub fn providers(ollama_url: &str) -> Vec<AiProvider> {
         }
     };
     let url = ollama_base(ollama_url);
-    let up = agent(Duration::from_millis(1500)).get(&format!("{url}/api/tags")).call().is_ok();
+    let up = agent(Duration::from_secs(3)).get(&format!("{url}/api/tags")).call().is_ok();
     vec![
         keyed(Api::Anthropic),
         keyed(Api::OpenAi),
@@ -115,7 +117,11 @@ pub fn ollama_base(url: &str) -> String {
     let u = url.trim().trim_end_matches('/');
     let u = if u.is_empty() { OLLAMA_DEFAULT_URL } else { u };
     let host = u.split("://").nth(1).unwrap_or("").split(['/', ':']).next().unwrap_or("");
-    if matches!(host, "localhost" | "127.0.0.1" | "[::1]") { u.to_string() } else { OLLAMA_DEFAULT_URL.to_string() }
+    match host {
+        "localhost" => u.replacen("localhost", "127.0.0.1", 1),
+        "127.0.0.1" | "[::1]" => u.to_string(),
+        _ => OLLAMA_DEFAULT_URL.to_string(),
+    }
 }
 
 // ---------- requests ----------
@@ -151,7 +157,9 @@ pub fn models(api: Api, ollama_url: &str) -> AppResult<Vec<String>> {
             .set("x-api-key", &need_key()?)
             .set("anthropic-version", ANTHROPIC_VERSION)
             .call(),
-        Api::OpenAi => a.get("https://api.openai.com/v1/models").set("Authorization", &format!("Bearer {}", need_key()?)).call(),
+        Api::OpenAi => {
+            a.get("https://api.openai.com/v1/models").set("Authorization", &format!("Bearer {}", need_key()?)).call()
+        }
         Api::Ollama => a.get(&format!("{}/api/tags", ollama_base(ollama_url))).call(),
     }
     .map_err(|e| sys(http_error(api, e)))?
@@ -174,11 +182,18 @@ fn model_ids(api: Api, v: &Value) -> Vec<String> {
             Some((id, created))
         })
         // OpenAI lists embedding, audio and image models too; keep the chat ones.
-        .filter(|(id, _)| api != Api::OpenAi || (id.starts_with("gpt-") || id.starts_with("o") || id.starts_with("chatgpt")))
-        .filter(|(id, _)| api != Api::OpenAi || !["audio", "realtime", "tts", "transcribe", "image", "embedding", "search"].iter().any(|w| id.contains(w)))
+        .filter(|(id, _)| {
+            api != Api::OpenAi || (id.starts_with("gpt-") || id.starts_with("o") || id.starts_with("chatgpt"))
+        })
+        .filter(|(id, _)| {
+            api != Api::OpenAi
+                || !["audio", "realtime", "tts", "transcribe", "image", "embedding", "search"]
+                    .iter()
+                    .any(|w| id.contains(w))
+        })
         .collect();
     if api == Api::OpenAi {
-        items.sort_by(|a, b| b.1.cmp(&a.1));
+        items.sort_by_key(|a| std::cmp::Reverse(a.1));
     }
     items.into_iter().map(|(id, _)| id).collect()
 }
@@ -255,7 +270,15 @@ fn parse_line(api: Api, line: &str) -> Vec<Piece> {
 }
 
 /// Runs one question; events go to `sink`, ending with one `done` or `error`.
-pub fn run(api: Api, system: &str, input: &str, model: Option<&str>, ollama_url: &str, cancel: &Arc<AtomicBool>, sink: &dyn Fn(AiEvent)) {
+pub fn run(
+    api: Api,
+    system: &str,
+    input: &str,
+    model: Option<&str>,
+    ollama_url: &str,
+    cancel: &Arc<AtomicBool>,
+    sink: &dyn Fn(AiEvent),
+) {
     let result = (|| -> Result<String, String> {
         let a = agent(RUN_TIMEOUT);
         let model = match model {
@@ -292,11 +315,13 @@ pub fn run(api: Api, system: &str, input: &str, model: Option<&str>, ollama_url:
             }
             Api::OpenAi => {
                 let k = key(api).ok_or("OpenAI API 키가 없습니다. 설정 → AI에서 넣으세요")?;
-                a.post("https://api.openai.com/v1/chat/completions").set("Authorization", &format!("Bearer {k}")).send_json(json!({
-                    "model": model,
-                    "stream": true,
-                    "messages": [{ "role": "system", "content": system }, { "role": "user", "content": input }],
-                }))
+                a.post("https://api.openai.com/v1/chat/completions")
+                    .set("Authorization", &format!("Bearer {k}"))
+                    .send_json(json!({
+                        "model": model,
+                        "stream": true,
+                        "messages": [{ "role": "system", "content": system }, { "role": "user", "content": input }],
+                    }))
             }
             Api::Ollama => a.post(&format!("{}/api/chat", ollama_base(ollama_url))).send_json(json!({
                 "model": model,
@@ -402,11 +427,18 @@ mod tests {
         .iter()
         .flat_map(|l| parse_line(Api::OpenAi, l))
         .collect();
-        assert_eq!(o, [Piece::Model("gpt-x".into()), Piece::Text("하나".into()), Piece::Model("gpt-x".into()), Piece::End]);
-        let l: Vec<Piece> = [r#"{"message":{"content":"둘"},"done":false}"#, r#"{"message":{"content":""},"done":true}"#, r#"{"error":"model not found"}"#]
-            .iter()
-            .flat_map(|l| parse_line(Api::Ollama, l))
-            .collect();
+        assert_eq!(
+            o,
+            [Piece::Model("gpt-x".into()), Piece::Text("하나".into()), Piece::Model("gpt-x".into()), Piece::End]
+        );
+        let l: Vec<Piece> = [
+            r#"{"message":{"content":"둘"},"done":false}"#,
+            r#"{"message":{"content":""},"done":true}"#,
+            r#"{"error":"model not found"}"#,
+        ]
+        .iter()
+        .flat_map(|l| parse_line(Api::Ollama, l))
+        .collect();
         assert_eq!(l, [Piece::Text("둘".into()), Piece::End, Piece::Error("model not found".into())]);
     }
 
@@ -428,5 +460,6 @@ mod tests {
         assert_eq!(ollama_base("http://127.0.0.1:11500/"), "http://127.0.0.1:11500");
         assert_eq!(ollama_base("http://evil.example.com:11434"), OLLAMA_DEFAULT_URL);
         assert_eq!(ollama_base("http://localhost.evil.com"), OLLAMA_DEFAULT_URL);
+        assert_eq!(ollama_base("http://localhost:11434"), "http://127.0.0.1:11434");
     }
 }

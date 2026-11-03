@@ -65,6 +65,8 @@ pub struct VaultConfig {
     pub keybindings: BTreeMap<String, String>,
     /// Apply `.app/custom.css` on top of the app's styles (FR-UI-05).
     pub custom_css: bool,
+    /// Plugin id → permissions the user granted when turning it on (FR-EXT-02).
+    pub plugins: BTreeMap<String, Vec<String>>,
 }
 
 /// A search kept under a name: the search box text plus the conditions added below it.
@@ -115,6 +117,7 @@ impl Default for VaultConfig {
             history_delete_days: 0,
             keybindings: BTreeMap::new(),
             custom_css: false,
+            plugins: BTreeMap::new(),
         }
     }
 }
@@ -695,8 +698,7 @@ pub fn open_today_journal(state: State<AppState>) -> AppResult<String> {
 /// Opens or creates the journal of a day given as YYYY-MM-DD, from the calendar view.
 #[tauri::command]
 pub fn open_journal_on(state: State<AppState>, date: String) -> AppResult<String> {
-    let day = chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d")
-        .map_err(|_| AppError::InvalidName(date.clone()))?;
+    let day = chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d").map_err(|_| AppError::InvalidName(date.clone()))?;
     let at = day.and_hms_opt(12, 0, 0).and_then(|t| t.and_local_timezone(Local).earliest());
     let at = at.ok_or_else(|| AppError::InvalidName(date.clone()))?;
     with_vault(&state, |v| open_journal_at(v, at))

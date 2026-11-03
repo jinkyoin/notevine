@@ -2857,3 +2857,294 @@ kbd {
 .vault-menu .menu button:hover {
   background: var(--bg-hover);
 }
+
+/* 플러그인 (FR-EXT-02) */
+.plugin-frames {
+  position: fixed;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+.plugin-frames iframe {
+  width: 0;
+  height: 0;
+  border: 0;
+}
+.plugin-body {
+  padding: 4px 12px 10px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.plugin-body p {
+  margin: 4px 0;
+}
+.plugin-body button {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+.plugin-body button:hover {
+  background: var(--bg-hover);
+}
+.plugin-body input,
+.plugin-body textarea,
+.plugin-body select {
+  font: inherit;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+}
+.set-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+.error-text {
+  color: var(--danger);
+}
+.switch-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* 캔버스 */
+.canvas-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.canvas-head {
+  flex-wrap: wrap;
+}
+.cv-tools,
+.cv-colors {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cv-swatch {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.cv-swatch.none {
+  background: linear-gradient(135deg, var(--bg) 45%, var(--danger) 45%, var(--danger) 55%, var(--bg) 55%);
+}
+.canvas-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  outline: none;
+  cursor: grab;
+  touch-action: none;
+  background-color: var(--bg-sidebar);
+  background-image: radial-gradient(circle, var(--border) 1px, transparent 1.2px);
+}
+.canvas-stage:active {
+  cursor: grabbing;
+}
+.cv-empty {
+  position: absolute;
+  inset: 40% 0 auto;
+  text-align: center;
+  pointer-events: none;
+}
+.canvas-world {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+.cv-edges {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+}
+.cv-edge {
+  color: var(--muted);
+}
+.cv-edge.on {
+  color: var(--accent);
+}
+.cv-edge-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  pointer-events: none;
+}
+.cv-edge.on .cv-edge-line {
+  stroke-width: 3;
+}
+.cv-edge-line.drawing {
+  stroke: var(--accent);
+  stroke-dasharray: 6 4;
+}
+.cv-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  cursor: pointer;
+}
+.cv-edge-label {
+  font-size: 13px;
+  fill: var(--text);
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: var(--bg-sidebar);
+  stroke-width: 4px;
+}
+.cv-node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 2px solid var(--cv-color, var(--border));
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  cursor: default;
+}
+.cv-node.colored {
+  background: color-mix(in srgb, var(--cv-color) 8%, var(--bg));
+}
+.cv-node.on {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.cv-node.group {
+  background: color-mix(in srgb, var(--cv-color, var(--muted)) 6%, transparent);
+  border-style: dashed;
+  box-shadow: none;
+}
+.cv-node.missing {
+  border-style: dashed;
+  opacity: 0.7;
+}
+.cv-group-label,
+.cv-group-input {
+  position: absolute;
+  top: -28px;
+  left: 0;
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.cv-group-input {
+  font: inherit;
+  font-weight: 600;
+  padding: 1px 4px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+}
+.cv-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+.cv-scroll.note-view > :first-child {
+  margin-top: 0;
+}
+.cv-scroll.note-view > :last-child {
+  margin-bottom: 0;
+}
+.cv-textarea {
+  flex: 1;
+  resize: none;
+  border: 0;
+  outline: none;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 14px;
+  background: transparent;
+  color: var(--text);
+}
+.cv-file-title {
+  padding: 6px 12px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cv-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+  pointer-events: none;
+}
+.cv-link {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+.cv-dot {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 2px solid var(--accent);
+  cursor: crosshair;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.cv-node:hover > .cv-dot,
+.cv-node.on > .cv-dot {
+  opacity: 1;
+}
+.cv-node.group > .cv-dot {
+  display: none;
+}
+.cv-dot.top {
+  top: -8px;
+  left: calc(50% - 7px);
+}
+.cv-dot.bottom {
+  bottom: -8px;
+  left: calc(50% - 7px);
+}
+.cv-dot.left {
+  left: -8px;
+  top: calc(50% - 7px);
+}
+.cv-dot.right {
+  right: -8px;
+  top: calc(50% - 7px);
+}
+.cv-resize {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 12px;
+  height: 12px;
+  background: var(--accent);
+  border-radius: 3px;
+  cursor: nwse-resize;
+}
+.canvas-stage {
+  user-select: none;
+}
+.canvas-stage textarea,
+.canvas-stage input {
+  user-select: text;
+}

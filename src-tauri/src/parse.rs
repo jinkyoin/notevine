@@ -758,7 +758,9 @@ meta:\n  a: 1\n  b: [x, y]\n\
 
     #[test]
     fn colors_in_html_are_not_tags() {
-        let p = parse("<span style=\"color: #1c7ed6\">2026. 11. 30</span> #진짜 <mark style='background:#fff3bf'>x</mark> a < #b <!-- #주석 -->");
+        let p = parse(
+            "<span style=\"color: #1c7ed6\">2026. 11. 30</span> #진짜 <mark style='background:#fff3bf'>x</mark> a < #b <!-- #주석 -->",
+        );
         assert_eq!(p.tags, ["진짜", "b"]);
     }
 }
