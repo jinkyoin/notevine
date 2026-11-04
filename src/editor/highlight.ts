@@ -4,7 +4,7 @@ import { tags as t } from "@lezer/highlight";
 
 export const noteHighlight = HighlightStyle.define([
   // markdown
-  { tag: t.heading, fontWeight: "700" },
+  { tag: t.heading, fontWeight: "650" },
   { tag: t.processingInstruction, color: "var(--muted)" }, // # * ` > marks shown on the cursor line
   { tag: t.url, color: "var(--muted)" },
   { tag: t.link, color: "var(--accent)" },

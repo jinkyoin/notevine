@@ -1,4 +1,5 @@
 // SCR-01 시작 화면: 노트 폴더 열기·만들기, 최근 노트 폴더 목록.
+import logo from "../../src-tauri/app-icon.svg?url";
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api, type RecentVault } from "../api";
@@ -42,7 +43,7 @@ export function StartScreen() {
     <div className="start">
       <div className="start-card">
         <div className="start-brand">
-          <span className="logo-mark" aria-hidden />
+          <img className="logo-mark" src={logo} alt="" />
           <h1>Notevine</h1>
         </div>
         <p className="muted">{tx("내 컴퓨터의 마크다운 폴더에 기록하고, 연결하고, 다시 찾습니다.")}</p>

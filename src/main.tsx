@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { useApp } from "./store";
 import { useAi } from "./aiStore";
+import "pretendard/dist/web/variable/pretendardvariable.css";
 import { api } from "./api";
 
 // Dev builds expose the stores so automated UI tests can drive actions that go

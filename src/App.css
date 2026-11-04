@@ -1,18 +1,20 @@
 /* 화면설계서 공통 규칙(SCR 공통)의 색 토큰과 크기 */
 :root {
   --bg: #ffffff;
-  --bg-sidebar: #f4f6f3;
-  --bg-hover: #e8eee6;
-  --bg-active: #dcebdf;
-  --text: #1f2a1f;
-  --muted: #6b766a;
-  --selection: rgba(47, 133, 90, 0.22);
-  --border: #dde3db;
-  --accent: #2f855a;
+  --bg-sidebar: #f8f8f9;
+  --bg-hover: #f0f0f2;
+  --bg-active: #ece8f6;
+  --text: #1c1c1f;
+  --muted: #73737c;
+  --selection: rgba(90, 58, 148, 0.18);
+  --border: #e8e8eb;
+  --accent: #5a3a94;
   --accent-text: #ffffff;
-  --danger: #c0392b;
+  --danger: #c4342b;
   --danger-bg: #fdecea;
-  --font: "Pretendard", "Malgun Gothic", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --scroll: rgba(28, 28, 31, 0.2);
+  --shadow: 0 12px 40px rgba(20, 20, 28, 0.14);
+  --font: "Pretendard Variable", "Pretendard", "Malgun Gothic", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "D2Coding", "JetBrains Mono", Consolas, monospace;
   --sidebar-w: 260px;
   --right-w: 300px;
@@ -22,35 +24,39 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --selection: rgba(104, 211, 145, 0.28);
-    --bg: #1b1f1b;
-    --bg-sidebar: #232823;
-    --bg-hover: #2c332c;
-    --bg-active: #2f3d31;
-    --text: #e6ece5;
-    --muted: #97a396;
-    --border: #343c34;
-    --accent: #68d391;
-    --accent-text: #10251a;
+    --selection: rgba(184, 161, 232, 0.28);
+    --bg: #18181b;
+    --bg-sidebar: #1e1e21;
+    --bg-hover: #2a2a2e;
+    --bg-active: #322b44;
+    --text: #ececef;
+    --muted: #9a9aa3;
+    --border: #2c2c30;
+    --accent: #b8a1e8;
+    --accent-text: #1b1330;
     --danger: #f07167;
     --danger-bg: #3a2322;
+    --scroll: rgba(236, 236, 239, 0.22);
+    --shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
     color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
-    --selection: rgba(104, 211, 145, 0.28);
-    --bg: #1b1f1b;
-    --bg-sidebar: #232823;
-    --bg-hover: #2c332c;
-    --bg-active: #2f3d31;
-    --text: #e6ece5;
-    --muted: #97a396;
-    --border: #343c34;
-    --accent: #68d391;
-    --accent-text: #10251a;
+    --selection: rgba(184, 161, 232, 0.28);
+    --bg: #18181b;
+    --bg-sidebar: #1e1e21;
+    --bg-hover: #2a2a2e;
+    --bg-active: #322b44;
+    --text: #ececef;
+    --muted: #9a9aa3;
+    --border: #2c2c30;
+    --accent: #b8a1e8;
+    --accent-text: #1b1330;
     --danger: #f07167;
     --danger-bg: #3a2322;
+    --scroll: rgba(236, 236, 239, 0.22);
+    --shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
     color-scheme: dark;
   }
 
@@ -99,8 +105,9 @@ button {
 .btn {
   border: 1px solid var(--border);
   background: var(--bg);
-  border-radius: 6px;
-  padding: 8px 14px;
+  border-radius: 7px;
+  padding: 7px 14px;
+  font-weight: 500;
   cursor: pointer;
 }
 .btn:hover {
@@ -110,10 +117,9 @@ button {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-text);
-  font-weight: 600;
 }
 .btn.primary:hover {
-  filter: brightness(1.05);
+  opacity: 0.9;
 }
 .btn.ghost {
   border-color: transparent;
@@ -127,9 +133,9 @@ button {
 .icon-btn {
   border: none;
   background: transparent;
-  border-radius: 4px;
-  width: 26px;
-  height: 26px;
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
   cursor: pointer;
   color: var(--muted);
 }
@@ -177,10 +183,9 @@ button {
   font-size: 26px;
 }
 .logo-mark {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, #97bc62, var(--accent));
+  width: 40px;
+  height: 40px;
+  
 }
 .start-actions {
   display: flex;
@@ -1849,7 +1854,7 @@ kbd {
   text-align: center;
 }
 .dl.add {
-  background: rgba(47, 133, 90, 0.14);
+  background: var(--selection);
 }
 .dl.add .sign {
   color: var(--accent);
@@ -3427,4 +3432,232 @@ body.resizing iframe {
 }
 .folder-table-head h2 {
   white-space: nowrap;
+}
+
+/* ---------- 심플한 화면: 흰 바탕, 회색, 강조색은 보라 하나. 위 규칙 중 모양만 덮어쓴다 ---------- */
+body {
+  font-size: 13.5px;
+  letter-spacing: -0.005em;
+  font-feature-settings: "ss06" 1;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: 8px;
+}
+:hover::-webkit-scrollbar-thumb {
+  background-color: var(--scroll);
+}
+
+/* 입력칸. :where는 우선순위가 0이라 칸마다 정한 테두리(이름 바꾸기 등)를 덮지 않는다 */
+:where(select, input:not([type="checkbox"]):not([type="radio"]), textarea) {
+  border-color: var(--border);
+  border-radius: 6px;
+}
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent);
+}
+
+/* 상단바, 탭 */
+.topbar {
+  height: 44px;
+  padding: 0 10px;
+  background: var(--bg);
+}
+.vault-name {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.crumbs {
+  font-size: 12.5px;
+}
+.crumbs .sep {
+  opacity: 0.5;
+}
+.tabbar {
+  gap: 2px;
+  padding: 6px 10px;
+  background: var(--bg);
+  scrollbar-width: none;
+}
+.tab {
+  padding: 5px 6px 5px 11px;
+  border: none;
+  border-radius: 6px;
+}
+.tab.on {
+  background: var(--bg-hover);
+}
+
+/* 왼쪽 사이드바 */
+.side-tabs {
+  gap: 2px;
+  padding: 8px 10px 4px;
+}
+.side-tabs button {
+  padding: 5px 0;
+  border-radius: 6px;
+  font-weight: 500;
+  font-size: 12.5px;
+}
+.side-tabs button.on {
+  color: var(--text);
+  background: var(--bg-hover);
+  box-shadow: none;
+}
+.tree-row {
+  height: 28px;
+  margin: 0 8px;
+  border-radius: 6px;
+}
+.tree-row.active {
+  color: var(--accent);
+  font-weight: 500;
+}
+.tree-row.folder .tree-label {
+  font-weight: 500;
+}
+.tree-count {
+  opacity: 0.7;
+}
+
+/* 오른쪽 패널: 사이드바와 달리 바탕을 칠하지 않는다 */
+.rightpanel {
+  background: var(--bg);
+}
+.panel-heading {
+  font-weight: 500;
+}
+.prop-value input:not([type="checkbox"]),
+.prop-add input {
+  border-color: transparent;
+  background: transparent;
+}
+.prop-value input:not([type="checkbox"]):hover,
+.prop-add input:hover {
+  background: var(--bg-hover);
+}
+.prop-value input:not([type="checkbox"]):focus,
+.prop-add input:focus {
+  background: var(--bg);
+  border-color: var(--accent);
+}
+
+/* 편집기 */
+.note-title,
+.note-title-input {
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.format-bar {
+  gap: 0 2px;
+  padding: 2px 0 10px;
+  border-bottom: none;
+}
+.fb-group {
+  border: none;
+}
+.fb-btn {
+  color: var(--muted);
+}
+.fb-btn:hover:not(:disabled) {
+  color: var(--text);
+}
+.fb-mode {
+  padding: 2px;
+  gap: 2px;
+  border: none;
+  border-radius: 7px;
+  background: var(--bg-hover);
+}
+.fb-mode button {
+  padding: 3px 9px;
+  border-radius: 5px;
+}
+.fb-mode button.on {
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(20, 20, 28, 0.12);
+}
+.cm-host .cm-content {
+  line-height: 1.75;
+}
+
+/* 떠 있는 것들: 메뉴, 대화상자, 알림 */
+.modal-backdrop {
+  background: rgba(20, 20, 28, 0.28);
+}
+.modal {
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+.menu,
+.palette {
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+.palette-list li.sel {
+  background: var(--bg-hover);
+}
+.toast {
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+.settings-tabs button {
+  border-radius: 6px;
+}
+.settings-tabs button.on {
+  color: var(--text);
+  background: var(--bg-hover);
+  font-weight: 500;
+}
+
+/* 시작 화면: 카드 없이 흰 바탕에 바로 */
+.start {
+  background: var(--bg);
+}
+.start-card {
+  border: none;
+  background: transparent;
+}
+.start-brand h1 {
+  font-size: 28px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+/* 드롭다운: 기본 화살표 대신 얇은 화살표 */
+select {
+  appearance: none;
+  padding-right: 24px;
+  background-color: var(--bg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none' stroke='%238a8a93' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 8px center !important;
+}
+.topbar .btn.ghost {
+  color: var(--muted);
+  font-weight: 400;
+}
+.topbar .btn.ghost:hover {
+  color: var(--text);
+}
+/* 제목을 본문 글자와 같은 선에 맞춘다 */
+.note-title,
+.note-title-input {
+  padding-left: 6px;
 }

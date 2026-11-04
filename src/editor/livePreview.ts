@@ -241,7 +241,7 @@ export const livePreview = ViewPlugin.fromClass(
 );
 
 export const livePreviewTheme = EditorView.baseTheme({
-  ".cm-md-h": { fontWeight: "700", lineHeight: "1.4" },
+  ".cm-md-h": { fontWeight: "650", lineHeight: "1.4", letterSpacing: "-0.015em" },
   ".cm-md-h1": { fontSize: "1.7em", paddingTop: "0.4em" },
   ".cm-md-h2": { fontSize: "1.4em", paddingTop: "0.35em" },
   ".cm-md-h3": { fontSize: "1.2em", paddingTop: "0.3em" },

@@ -86,7 +86,7 @@ export const frontmatterFold: Extension = [
       fontSize: "12px",
       color: "var(--muted)",
       background: "var(--bg-sidebar)",
-      border: "1px solid var(--border)",
+      border: "1px solid transparent",
       borderRadius: "6px",
       padding: "3px 10px",
       margin: "2px 0 8px",
