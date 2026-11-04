@@ -11,11 +11,17 @@ use std::process::Command;
 use serde::Serialize;
 use tauri::State;
 
-use crate::commands::{AppState, with_vault};
+use crate::commands::AppState;
 use crate::error::{AppError, AppResult};
+use crate::trust::vault_root;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+#[cfg(windows)]
+const NO_HOOKS: &str = "core.hooksPath=NUL";
+#[cfg(not(windows))]
+const NO_HOOKS: &str = "core.hooksPath=/dev/null";
 
 const GITIGNORE: &str = "# Notevine: 검색 인덱스·히스토리 DB는 Git에 넣지 않습니다 (계속 바뀌고 합칠 수 없음)
 .app/*.db
@@ -30,6 +36,8 @@ pub struct BackupStatus {
     pub git: bool,
     /// The vault is a Git repository.
     pub repo: bool,
+    /// The user allowed Git to run in it on this PC. Until then nothing else is known.
+    pub trusted: bool,
     pub branch: Option<String>,
     pub remote: Option<String>,
     /// Files changed since the last backup.
@@ -57,6 +65,8 @@ fn git(dir: &Path, args: &[&str]) -> AppResult<String> {
     let mut c = Command::new("git");
     // Korean file names as they are, not as "í…".
     c.args(["-c", "core.quotepath=false"])
+        // A repository's own settings must not run commands (a backup never needs them).
+        .args(["-c", "core.fsmonitor=false", "-c", NO_HOOKS, "-c", "protocol.ext.allow=never"])
         .args(args)
         .current_dir(dir)
         // Never wait for a password typed in a console nobody sees.
@@ -232,34 +242,161 @@ pub fn backup_in(dir: &Path, message: &str) -> AppResult<BackupResult> {
     Ok(r)
 }
 
-fn vault_dir(state: &State<AppState>) -> AppResult<std::path::PathBuf> {
-    with_vault(state, |v| Ok(v.root().to_path_buf()))
+/// A `.git` that was already in the folder may have come with it, and its settings
+/// can run commands in ways `-c` can't all rule out (filter drivers, credential
+/// helpers...). So Git stays out of it until the user allows it on this PC.
+fn require_trust(dir: &Path, trusted: bool) -> AppResult<()> {
+    if is_repo(dir) && !trusted {
+        return Err(AppError::System(
+            "이 노트 폴더의 Git 저장소는 아직 허용하지 않았습니다. 설정 > 백업에서 확인해 주세요".into(),
+        ));
+    }
+    Ok(())
+}
+
+pub fn status_for(dir: &Path, trusted: bool) -> AppResult<BackupStatus> {
+    if is_repo(dir) && !trusted {
+        return Ok(BackupStatus { git: installed(), repo: true, ..Default::default() });
+    }
+    Ok(BackupStatus { trusted, ..status_in(dir)? })
+}
+
+pub fn init_for(dir: &Path, trusted: bool) -> AppResult<()> {
+    require_trust(dir, trusted)?;
+    init_in(dir)
+}
+
+pub fn set_remote_for(dir: &Path, trusted: bool, url: &str) -> AppResult<()> {
+    require_trust(dir, trusted)?;
+    set_remote_in(dir, url)
+}
+
+pub fn backup_for(dir: &Path, trusted: bool, message: &str) -> AppResult<BackupResult> {
+    require_trust(dir, trusted)?;
+    backup_in(dir, message)
+}
+
+fn is_trusted(state: &State<AppState>, dir: &Path) -> bool {
+    state.trust.get(dir).git
+}
+
+/// The repository now is one the app made or was allowed into.
+fn remember_trust(state: &State<AppState>, dir: &Path) -> AppResult<()> {
+    if !is_trusted(state, dir) {
+        state.trust.update(dir, |t| t.git = true)?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn backup_status(state: State<'_, AppState>) -> AppResult<BackupStatus> {
-    status_in(&vault_dir(&state)?)
+    let dir = vault_root(&state)?;
+    status_for(&dir, is_trusted(&state, &dir))
+}
+
+/// The user allows Git in the `.git` that was already in this folder.
+#[tauri::command]
+pub async fn backup_trust(state: State<'_, AppState>) -> AppResult<BackupStatus> {
+    let dir = vault_root(&state)?;
+    remember_trust(&state, &dir)?;
+    status_for(&dir, true)
 }
 
 #[tauri::command]
 pub async fn backup_init(state: State<'_, AppState>) -> AppResult<()> {
-    init_in(&vault_dir(&state)?)
+    let dir = vault_root(&state)?;
+    init_for(&dir, is_trusted(&state, &dir))?;
+    remember_trust(&state, &dir)
 }
 
 #[tauri::command]
 pub async fn backup_set_remote(state: State<'_, AppState>, url: String) -> AppResult<()> {
-    set_remote_in(&vault_dir(&state)?, &url)
+    let dir = vault_root(&state)?;
+    set_remote_for(&dir, is_trusted(&state, &dir), &url)?;
+    remember_trust(&state, &dir)
 }
 
 #[tauri::command]
 pub async fn backup_now(state: State<'_, AppState>, message: String) -> AppResult<BackupResult> {
-    backup_in(&vault_dir(&state)?, &message)
+    let dir = vault_root(&state)?;
+    let r = backup_for(&dir, is_trusted(&state, &dir), &message)?;
+    remember_trust(&state, &dir)?;
+    Ok(r)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
+
+    /// A received folder whose `.git` runs commands: `core.fsmonitor` on any status,
+    /// a pre-commit hook on commit. Each leaves a marker file in the folder if it ran.
+    fn booby_trapped_repo(dir: &Path) {
+        git(dir, &["init", "-q", "-b", "main"]).unwrap();
+        git(dir, &["config", "user.name", "x"]).unwrap();
+        git(dir, &["config", "user.email", "x@x"]).unwrap();
+        fs::write(dir.join("a.md"), "a\n").unwrap();
+        git(dir, &["add", "-A"]).unwrap();
+        git(dir, &["commit", "-q", "-m", "first"]).unwrap();
+        git(dir, &["config", "core.fsmonitor", "echo ran > fsmonitor-ran #"]).unwrap();
+        fs::write(dir.join(".git/hooks/pre-commit"), "#!/bin/sh\necho ran > hook-ran\n").unwrap();
+    }
+
+    #[test]
+    fn a_repository_cannot_run_commands_through_fsmonitor_or_hooks() {
+        if !installed() {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        booby_trapped_repo(tmp.path());
+        fs::write(tmp.path().join("a.md"), "b\n").unwrap();
+        status_in(tmp.path()).unwrap();
+        assert!(!tmp.path().join("fsmonitor-ran").exists(), "core.fsmonitor ran");
+        backup_in(tmp.path(), "백업").unwrap();
+        assert!(!tmp.path().join("hook-ran").exists(), "pre-commit hook ran");
+    }
+
+    #[test]
+    fn an_untrusted_repository_is_not_touched_by_git() {
+        if !installed() {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        booby_trapped_repo(tmp.path());
+        // Someone's own folder config can't be undone by -c alone: filter drivers run too.
+        git(tmp.path(), &["config", "filter.x.clean", "echo ran > filter-ran #"]).unwrap();
+        fs::write(tmp.path().join(".gitattributes"), "*.md filter=x\n").unwrap();
+        fs::write(tmp.path().join("a.md"), "b\n").unwrap();
+
+        let s = status_for(tmp.path(), false).unwrap();
+        assert!(s.repo && !s.trusted);
+        assert_eq!((s.changed, s.branch.clone()), (0, None), "git was not asked");
+        assert!(backup_for(tmp.path(), false, "백업").is_err());
+        assert!(set_remote_for(tmp.path(), false, "https://example.com/x.git").is_err());
+        assert!(!tmp.path().join("filter-ran").exists());
+    }
+
+    #[test]
+    fn a_folder_without_a_repository_can_start_one() {
+        if !installed() {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        let s = status_for(tmp.path(), false).unwrap();
+        assert!(!s.repo && !s.trusted);
+        init_for(tmp.path(), false).unwrap();
+        assert!(status_for(tmp.path(), true).unwrap().trusted);
+    }
+
+    #[test]
+    fn init_does_not_adopt_a_repository_that_was_already_there() {
+        if !installed() {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        booby_trapped_repo(tmp.path());
+        assert!(init_for(tmp.path(), false).is_err());
+    }
 
     #[test]
     fn backs_up_and_syncs_two_pcs_through_a_remote() {

@@ -142,18 +142,24 @@ export interface VaultConfig {
   history_delete_days: number;
   /** Command id → shortcut ("" = none) replacing the built-in one (FR-UI-05). */
   keybindings: Record<string, string>;
-  /** Apply `.app/custom.css` on top of the app's styles (FR-UI-05). */
-  custom_css: boolean;
-  /** Plugin id → permissions the user granted when turning it on (FR-EXT-02). */
-  plugins: Record<string, PluginPermission[]>;
+}
+
+/** What this PC's user allowed the open vault to do; kept outside the vault, which can't grant it. */
+export interface DeviceTrust {
+  /** Git may run in the vault's existing `.git`. */
+  git: boolean;
   /** Back up to Git every this many minutes when something changed; 0 = only by hand. */
   backup_minutes: number;
+  /** Apply `.app/custom.css` on top of the app's styles (FR-UI-05). */
+  custom_css: boolean;
 }
 
 /** The vault as a Git repository (backup). */
 export interface BackupStatus {
   git: boolean;
   repo: boolean;
+  /** The user allowed Git to run in it on this PC; until then the rest stays empty. */
+  trusted: boolean;
   branch: string | null;
   remote: string | null;
   changed: number;
@@ -181,6 +187,10 @@ export interface PluginInfo {
   author: string;
   permissions: PluginPermission[];
   error: string | null;
+  /** The permissions it runs with; null = off. */
+  granted: PluginPermission[] | null;
+  /** It was on, but its code or manifest changed since: needs turning on again. */
+  changed: boolean;
 }
 
 /** App-wide settings (not per vault). */
@@ -191,6 +201,8 @@ export interface AppSettings {
   ollama_url: string;
   /** Windows starts Notevine (into the tray) at sign-in. */
   autostart: boolean;
+  /** Look for a new version at start-up; off until the user turns it on. */
+  update_check: boolean;
 }
 
 export interface HistoryStats {
@@ -320,6 +332,7 @@ export const api = {
   fetchPage: (url: string) => invoke<{ url: string; html: string }>("fetch_page", { url }),
   setTray: (on: boolean) => invoke<void>("set_tray", { on }),
   setAutostart: (on: boolean) => invoke<void>("set_autostart", { on }),
+  setUpdateCheck: (on: boolean) => invoke<void>("set_update_check", { on }),
   customCss: (create: boolean) => invoke<[string, string]>("custom_css", { create }),
   createNote: (dir: string, name?: string, content?: string) =>
     invoke<string>("create_note", { dir, name: name ?? null, content: content ?? null }),
@@ -397,13 +410,20 @@ export const api = {
   /** Makes an empty `.canvas` board in `dir`; returns its path. */
   createCanvas: (dir: string, name?: string) => invoke<string>("create_canvas", { dir, name: name ?? null }),
   saveCanvas: (path: string, content: string) => invoke<void>("save_canvas", { path, content }),
+  deviceTrust: () => invoke<DeviceTrust>("device_trust"),
+  setBackupMinutes: (minutes: number) => invoke<DeviceTrust>("set_backup_minutes", { minutes }),
+  setCustomCss: (on: boolean) => invoke<DeviceTrust>("set_custom_css", { on }),
   backupStatus: () => invoke<BackupStatus>("backup_status"),
+  /** Allows Git in the `.git` that was already in this folder. */
+  backupTrust: () => invoke<BackupStatus>("backup_trust"),
   backupInit: () => invoke<void>("backup_init"),
   /** "" removes the remote. */
   backupSetRemote: (url: string) => invoke<void>("backup_set_remote", { url }),
   backupNow: (message: string) => invoke<BackupResult>("backup_now", { message }),
   listPlugins: () => invoke<PluginInfo[]>("list_plugins"),
   pluginSource: (id: string) => invoke<string>("plugin_source", { id }),
+  /** Turns a plugin on, for its code as it is now, or off. */
+  setPluginGrant: (id: string, on: boolean) => invoke<void>("set_plugin_grant", { id, on }),
   /** `.app/plugins` as an absolute path (made if missing). */
   pluginsFolder: () => invoke<string>("plugins_folder"),
   /** Puts the sample plugin in `.app/plugins`; returns its id. */

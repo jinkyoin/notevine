@@ -63,12 +63,6 @@ pub struct VaultConfig {
     pub history_delete_days: u32,
     /// Command id → shortcut ("" = none) replacing the built-in one (FR-UI-05).
     pub keybindings: BTreeMap<String, String>,
-    /// Apply `.app/custom.css` on top of the app's styles (FR-UI-05).
-    pub custom_css: bool,
-    /// Plugin id → permissions the user granted when turning it on (FR-EXT-02).
-    pub plugins: BTreeMap<String, Vec<String>>,
-    /// Back up to Git every this many minutes when something changed; 0 = only by hand.
-    pub backup_minutes: u32,
 }
 
 /// A search kept under a name: the search box text plus the conditions added below it.
@@ -118,9 +112,6 @@ impl Default for VaultConfig {
             history_thin_days: 0,
             history_delete_days: 0,
             keybindings: BTreeMap::new(),
-            custom_css: false,
-            plugins: BTreeMap::new(),
-            backup_minutes: 0,
         }
     }
 }
@@ -817,7 +808,6 @@ mod tests {
             }],
             history_thin_days: 30,
             keybindings: BTreeMap::from([("note.quickMemo".into(), "Ctrl+M".into())]),
-            custom_css: true,
             ..c
         };
         save_config(&v, &changed).unwrap();

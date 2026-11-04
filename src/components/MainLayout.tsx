@@ -26,6 +26,7 @@ import { CanvasView } from "./CanvasView";
 import { PanelResizer } from "./PanelResizer";
 import { PluginPanels } from "./PluginPanels";
 import { usePluginHost } from "../plugins";
+import { checkForUpdate } from "../updates";
 import { IdeaBoard } from "./IdeaBoard";
 import { CommandPalette } from "./CommandPalette";
 import { QuickMemo } from "./QuickMemo";
@@ -99,6 +100,8 @@ function VaultMenu({ name, root }: { name: string; root: string }) {
   );
 }
 
+let updateChecked = false;
+
 export function MainLayout() {
   const vault = useApp((s) => s.vault);
   const openPath = useApp((s) => s.openPath);
@@ -124,7 +127,7 @@ export function MainLayout() {
   // The user's shortcuts and CSS (FR-UI-05). The CSS is read again whenever the window
   // comes back to the front, so saving it in another editor shows at once.
   const keybindings = useApp((s) => s.config.keybindings);
-  const customCss = useApp((s) => s.config.custom_css);
+  const customCss = useApp((s) => s.trust.custom_css);
   useEffect(() => setKeyOverrides(keybindings), [keybindings]);
   useEffect(() => {
     if (!customCss) return applyUserCss("");
@@ -147,17 +150,27 @@ export function MainLayout() {
   }, []);
 
   // Git backup on a timer (settings → 백업), only when the vault is a repository with changes.
-  const backupMinutes = useApp((s) => s.config.backup_minutes);
+  const backupMinutes = useApp((s) => s.trust.backup_minutes);
   useEffect(() => {
     if (!backupMinutes) return;
     const id = window.setInterval(() => {
       void api
         .backupStatus()
-        .then((s) => s.repo && (s.changed > 0 || s.ahead > 0) && useApp.getState().backupNow(true))
+        .then((s) => s.repo && s.trusted && (s.changed > 0 || s.ahead > 0) && useApp.getState().backupNow(true))
         .catch(() => {});
     }, backupMinutes * 60_000);
     return () => window.clearInterval(id);
   }, [backupMinutes, vault?.root]);
+
+  // A new version, once per run, only for someone who turned this on (settings → 정보).
+  useEffect(() => {
+    if (import.meta.env.DEV || updateChecked) return;
+    updateChecked = true;
+    void api
+      .appSettings()
+      .then((s) => (s.update_check ? checkForUpdate(true) : undefined))
+      .catch(() => {});
+  }, []);
 
   // Plugins of this vault (FR-EXT-02), run while it is open.
   usePluginHost();

@@ -1,7 +1,8 @@
 // 플러그인 실행기 (FR-EXT-02). 노트 폴더 `.app/plugins/<id>/main.js`를 플러그인마다 보이지 않는
 // 샌드박스 프레임에서 돌린다. 프레임은 앱(Tauri)에 직접 닿지 못하고 네트워크도 막혀 있어서,
 // 할 수 있는 일은 postMessage로 부르는 `notevine.*` 함수뿐이다. 그 함수마다 사용자가 켤 때
-// 허락한 권한(read·write·network)을 여기서 확인한다.
+// 허락한 권한(read·write·network)을 여기서 확인한다. 허락은 노트 폴더가 아니라 이 PC에 저장되고
+// (받은 폴더가 스스로 허락할 수 없도록), 그 코드 그대로일 때만 유효하다 (trust.rs).
 import { useEffect } from "react";
 import { create } from "zustand";
 import DOMPurify from "dompurify";
@@ -59,11 +60,6 @@ export const usePlugins = create<PluginState>((set, get) => ({
   reloadSeq: 0,
   reload: () => set({ reloadSeq: get().reloadSeq + 1 }),
 }));
-
-/** A plugin is on when the user granted everything its manifest asks for. */
-export function grantCovers(info: PluginInfo, granted: PluginPermission[] | undefined): boolean {
-  return !!granted && info.permissions.every((p) => granted.includes(p));
-}
 
 // Runs in the frame before the plugin's own code: the `notevine` object.
 const BOOTSTRAP = `
@@ -151,6 +147,8 @@ export function cleanPanelHtml(html: string): string {
   return DOMPurify.sanitize(html, { ALLOWED_TAGS: PANEL_TAGS, ALLOWED_ATTR: PANEL_ATTRS, ALLOW_DATA_ATTR: false });
 }
 
+const PRIVATE_HIDDEN = () => tx("#비공개 노트는 인터넷 접속 권한이 있는 플러그인에 보여 주지 않습니다");
+
 class PluginHost {
   readonly frame: HTMLIFrameElement;
   private perms: Set<PluginPermission>;
@@ -180,8 +178,17 @@ class PluginHost {
     this.frame.contentWindow?.postMessage({ nv: 1, ...msg }, "*");
   }
 
-  emit(event: string, payload: unknown) {
-    if (this.events.has(event)) this.send({ type: "event", event, payload });
+  emit(event: string, path: string | null) {
+    if (!this.events.has(event)) return;
+    void this.hidden(path).then((h) => h || this.send({ type: "event", event, payload: path }));
+  }
+
+  /** What may leave the PC never includes #비공개 notes (as for AI). Judged on what is saved, so a tag just typed counts. */
+  private async hidden(path: string | null): Promise<boolean> {
+    if (!path || !this.perms.has("network")) return false;
+    const app = useApp.getState();
+    if (path === app.openPath) await app.flushEditor();
+    return (await api.aiPrivateNotes([path])).length > 0;
   }
 
   stop() {
@@ -250,19 +257,26 @@ class PluginHost {
         if (!(PLUGIN_EVENTS as readonly string[]).includes(str(0))) throw new Error(tx("알 수 없는 알림: {0} ({1})", str(0), PLUGIN_EVENTS.join(", ")));
         this.events.add(str(0));
         return null;
-      case "notes.list":
-        return app.notes.map((n) => ({ path: n.path, title: n.title }));
+      case "notes.list": {
+        const hide = new Set(this.perms.has("network") ? await api.aiPrivateNotes(app.notes.map((n) => n.path)) : []);
+        return app.notes.filter((n) => !hide.has(n.path)).map((n) => ({ path: n.path, title: n.title }));
+      }
       case "notes.active":
-        return app.openPath;
+        return (await this.hidden(app.openPath)) ? null : app.openPath;
       case "notes.read": {
         const path = str(0);
-        // What may leave the PC never includes #비공개 notes (as for AI).
-        if (this.perms.has("network") && (await api.aiPrivateNotes([path])).length) throw new Error(tx("#비공개 노트는 인터넷 접속 권한이 있는 플러그인에 보여 주지 않습니다"));
+        // Notes only: not `.git/config`, not settings, not another spelling of a #비공개 note's path.
+        if (!app.notes.some((n) => n.path === path)) throw new Error(tx("없는 노트입니다: {0}", path));
+        if (await this.hidden(path)) throw new Error(PRIVATE_HIDDEN());
         if (path === app.openPath) await app.flushEditor();
         return api.readNote(path);
       }
       case "editor.selection": {
-        const sel = app.editorApi?.selection();
+        const path = app.openPath;
+        if (await this.hidden(path)) throw new Error(PRIVATE_HIDDEN());
+        const now = useApp.getState();
+        if (now.openPath !== path) return ""; // another note opened meanwhile
+        const sel = now.editorApi?.selection();
         return sel && !sel.whole ? sel.text : "";
       }
       case "notes.write": {
@@ -313,9 +327,7 @@ function onMessage(e: MessageEvent) {
 /** Starts the vault's plugins that are on, and stops them when the vault or the choices change. */
 export function usePluginHost() {
   const root = useApp((s) => s.vault?.root);
-  const granted = useApp((s) => s.config.plugins);
   const reloadSeq = usePlugins((s) => s.reloadSeq);
-  const key = JSON.stringify(granted ?? {});
 
   useEffect(() => {
     if (!root) return;
@@ -331,12 +343,12 @@ export function usePluginHost() {
       if (!live) return;
       usePlugins.setState({ infos });
       for (const info of infos) {
-        const g = granted?.[info.id];
-        if (info.error || !grantCovers(info, g)) continue;
+        const g = info.granted;
+        if (info.error || !g) continue;
         try {
           const source = await api.pluginSource(info.id);
           if (!live) return;
-          hosts.push(new PluginHost(info, source, g!, holder));
+          hosts.push(new PluginHost(info, source, g, holder));
         } catch (e) {
           usePlugins.setState((s) => ({ errors: { ...s.errors, [info.id]: errorMessage(e) } }));
         }
@@ -349,7 +361,7 @@ export function usePluginHost() {
       holder.remove();
       window.removeEventListener("message", onMessage);
     };
-  }, [root, key, reloadSeq]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [root, reloadSeq]);
 
   // Tell plugins when a note opens or is saved.
   const openPath = useApp((s) => s.openPath);

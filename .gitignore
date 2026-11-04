@@ -23,6 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 
+# Made by scripts/gen-notices.mjs before a release build
+public/THIRD-PARTY-NOTICES.txt
+
 # Notevine vault data created while testing
 .app/
 

@@ -5,7 +5,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { api, errorMessage } from "../api";
 import { useApp } from "../store";
-import { safeHtml } from "./NoteView";
+import { safeHtml } from "../lib/safeHtml";
 import { BackButton } from "./PdfView";
 import { findNode, noteTitle } from "../lib/tree";
 import { rankNotes } from "../lib/fuzzy";

@@ -77,10 +77,7 @@ fs.writeFileSync(path.join(VAULT, "메모.md"), "# 메모\n\n본문\n");
   const [cssPath] = await page.evaluate(() => window.__TAURI_INTERNALS__.invoke("custom_css", { create: true }));
   console.log("3 made:", fs.existsSync(cssPath));
   fs.writeFileSync(cssPath, ".note-title { color: rgb(255, 0, 0) !important; }");
-  await page.evaluate(() => {
-    const st = window.__notevine.getState();
-    return st.saveConfig({ ...st.config, custom_css: true });
-  });
+  await page.evaluate(async () => window.__notevine.getState().setTrust(await window.__notevineApi.setCustomCss(true)));
   await page.waitForTimeout(500);
   const color = () => page.evaluate(() => getComputedStyle(document.querySelector(".note-title")).color);
   console.log("3 applied:", await color());
@@ -88,10 +85,7 @@ fs.writeFileSync(path.join(VAULT, "메모.md"), "# 메모\n\n본문\n");
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await page.waitForTimeout(500);
   console.log("3 reloaded on focus:", await color());
-  await page.evaluate(() => {
-    const st = window.__notevine.getState();
-    return st.saveConfig({ ...st.config, custom_css: false });
-  });
+  await page.evaluate(async () => window.__notevine.getState().setTrust(await window.__notevineApi.setCustomCss(false)));
   await page.waitForTimeout(300);
   console.log("3 off:", await color(), (await page.$("#user-css")) === null);
 

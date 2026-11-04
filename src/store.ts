@@ -11,12 +11,14 @@ import {
   type VaultChanged,
   type VaultConfig,
   type VaultInfo,
+  type DeviceTrust,
 } from "./api";
 import { ancestors, findNode, remapPath } from "./lib/tree";
 import { setProperty, type Prop } from "./lib/frontmatter";
 import { buildReview, period, reviewFolder, reviewName, type ReviewKind } from "./lib/review";
 import { day } from "./lib/folderTable";
 import { clipFileName, clipNote, clipPage } from "./lib/clip";
+import { opensWithoutAsking } from "./lib/openSafety";
 import { annotationEntry, annotationNote, annotationPath } from "./lib/pdfNotes";
 import type { ParaFolder } from "./lib/para";
 import { insertTemplate } from "./editor/template";
@@ -94,10 +96,9 @@ export const DEFAULT_CONFIG: VaultConfig = {
   history_thin_days: 0,
   history_delete_days: 0,
   keybindings: {},
-  custom_css: false,
-  plugins: {},
-  backup_minutes: 0,
 };
+
+const NO_TRUST: DeviceTrust = { git: false, backup_minutes: 0, custom_css: false };
 
 /** Applies the theme setting (FR-UI-02) to the document. */
 export function applyTheme(theme: VaultConfig["theme"]) {
@@ -130,6 +131,9 @@ interface AppStore {
   /** In-app confirmation waiting for an answer (see ConfirmDialog). */
   confirm: { title: string; message: string; okLabel: string; resolve: (ok: boolean) => void } | null;
   config: VaultConfig;
+  /** What this PC's user allowed the open vault to do. */
+  trust: DeviceTrust;
+  setTrust(t: DeviceTrust): void;
   modal: Modal;
   /** Version viewer (SCR-10): the note and the version to select first. */
   versionView: { path: string; id: number | null } | null;
@@ -408,6 +412,10 @@ export const useApp = create<AppStore>((set, get) => {
     editorApi: null,
     confirm: null,
     config: DEFAULT_CONFIG,
+    trust: NO_TRUST,
+    setTrust(trust) {
+      set({ trust });
+    },
     modal: null,
     versionView: null,
     tableView: null,
@@ -458,9 +466,10 @@ export const useApp = create<AppStore>((set, get) => {
 
       const info = await attempt(() => api.openVault(path));
       if (!info) return;
-      set({ vault: info, tree: [], expanded: new Set(), openPath: null, editing: null, back: [], forward: [], tabs: [], closedTabs: [], tableView: null, pdfView: null, canvasView: null, splitPath: null });
+      set({ vault: info, trust: NO_TRUST, tree: [], expanded: new Set(), openPath: null, editing: null, back: [], forward: [], tabs: [], closedTabs: [], tableView: null, pdfView: null, canvasView: null, splitPath: null });
       const config = await api.getConfig().catch(() => DEFAULT_CONFIG);
-      set({ config, sidebarTab: get().sidebarTab === "ideas" && !config.preset_enabled ? "files" : get().sidebarTab });
+      const trust = await api.deviceTrust().catch(() => NO_TRUST);
+      set({ config, trust, sidebarTab: get().sidebarTab === "ideas" && !config.preset_enabled ? "files" : get().sidebarTab });
       applyTheme(config.theme);
       await get().refreshTree();
 
@@ -481,7 +490,7 @@ export const useApp = create<AppStore>((set, get) => {
       unlistenChanges?.();
       unlistenChanges = null;
       await attempt(() => api.closeVault());
-      set({ vault: null, tree: [], openPath: null, editing: null, tabs: [], back: [], forward: [] });
+      set({ vault: null, trust: NO_TRUST, tree: [], openPath: null, editing: null, tabs: [], back: [], forward: [] });
     },
 
     async refreshTree() {
@@ -568,6 +577,17 @@ export const useApp = create<AppStore>((set, get) => {
 
     async openExternal(path) {
       try {
+        // A link's words are the note writer's, so "회의록 보기" may be 회의록.bat.
+        if (
+          !opensWithoutAsking(path) &&
+          !(await get().ask(
+            tx("이 파일을 열까요?"),
+            tx("{0}\n\n이 형식의 파일은 프로그램이 실행될 수 있습니다. 만든 사람을 믿을 수 있을 때만 여세요.", path),
+            tx("열기"),
+          ))
+        ) {
+          return;
+        }
         // Unsaved edits of an open note go to disk before another program reads it.
         if (path === get().openPath || path === get().splitPath) await get().flushEditor();
         await openWithOs(await api.attachmentPath(path));
@@ -626,11 +646,7 @@ export const useApp = create<AppStore>((set, get) => {
       }
       if (/\.pdf$/i.test(rel)) return get().openPdf(rel, page);
       if (/\.canvas$/i.test(rel)) return get().openCanvas(rel);
-      try {
-        await openWithOs(await api.attachmentPath(rel));
-      } catch (e) {
-        get().toast(tx("파일을 열지 못했습니다: {0}", errorMessage(e)), "error");
-      }
+      return get().openExternal(rel);
     },
 
     async followLink(target, heading, opts) {

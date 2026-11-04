@@ -13,7 +13,6 @@ import { noteTitle } from "../lib/tree";
 import { frontmatterEnd, livePreview, livePreviewTheme } from "../editor/livePreview";
 import { frontmatterFold } from "../editor/frontmatterFold";
 import { attachments, dropFilesOn, linkFor, TREE_DRAG_TYPE } from "../editor/attachments";
-import { openPath as openWithOs } from "@tauri-apps/plugin-opener";
 import { noteHighlight } from "../editor/highlight";
 import { refreshLinks, wikiLinks } from "../editor/wikilinks";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -284,7 +283,7 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
                   const node = findNode(st.tree, p);
                   if (node?.kind === "note") st.openNote(p);
                   else if (node && /\.pdf$/i.test(p)) st.openPdf(p);
-                  else if (node) void api.attachmentPath(p).then(openWithOs).catch((e) => st.toast(errorMessage(e), "error"));
+                  else if (node) void st.openExternal(p);
                   else st.toast(tx("첨부 파일을 찾을 수 없음: {0}", p), "error");
                 },
                 openUrl: (url) => void openUrl(url).catch(() => {}),

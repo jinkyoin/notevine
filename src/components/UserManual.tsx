@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "../store";
 import { headingSlug, MANUAL, manualChapters } from "../lib/manual";
 import { drawRichBlocks } from "../lib/richBlocks";
-import { safeHtml } from "./NoteView";
+import { safeHtml } from "../lib/safeHtml";
 
 import { tx } from "../i18n";
 export function UserManual() {

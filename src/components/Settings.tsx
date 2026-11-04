@@ -7,7 +7,8 @@ import { api, errorMessage, type AppSettings, type BackupStatus, type HistorySta
 import { useApp } from "../store";
 import { useAi } from "../aiStore";
 import { forgetApiModels, ProviderFix } from "./AiPanel";
-import { grantCovers, PERMISSION_LABEL, usePlugins } from "../plugins";
+import { PERMISSION_LABEL, usePlugins } from "../plugins";
+import { checkForUpdate } from "../updates";
 
 import { getLang, setLang, dateLocale, tx, type Lang } from "../i18n";
 type Tab = "general" | "editor" | "keys" | "files" | "preset" | "ai" | "plugins" | "history" | "backup" | "about";
@@ -34,8 +35,25 @@ export function Settings() {
 function SettingsDialog({ close }: { close: () => void }) {
   const config = useApp((s) => s.config);
   const vault = useApp((s) => s.vault);
-  const { saveConfig, applyPreset, toast } = useApp.getState();
+  const { saveConfig, applyPreset, toast, ask, setTrust } = useApp.getState();
+  const trust = useApp((s) => s.trust);
   const [tab, setTab] = useState<Tab>("general");
+  const [notices, setNotices] = useState("");
+  const setCss = async (on: boolean) => {
+    const ok =
+      !on ||
+      (await ask(
+        tx("사용자 CSS 켜기"),
+        tx("이 노트 폴더의 .app/custom.css를 앱 화면에 적용합니다. 다른 사람에게서 받은 폴더라면 CSS가 화면을 바꿔 보이게 할 수 있으니, 직접 만든 파일일 때만 켜세요."),
+        tx("켜기"),
+      ));
+    if (!ok) return;
+    try {
+      setTrust(await api.setCustomCss(on));
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    }
+  };
   const [version, setVersion] = useState("");
 
   useEffect(() => {
@@ -93,13 +111,13 @@ function SettingsDialog({ close }: { close: () => void }) {
                   label={tx("사용자 CSS")}
                   hint={tx("이 노트 폴더의 .app/custom.css로 색·글꼴·크기를 바꿉니다. 파일을 저장하고 Notevine 창으로 돌아오면 바로 반영됩니다")}
                 >
-                  <input type="checkbox" checked={config.custom_css} onChange={(e) => set("custom_css", e.target.checked)} />
+                  <input type="checkbox" checked={trust.custom_css} onChange={(e) => void setCss(e.target.checked)} />
                   <button
                     className="btn small"
                     onClick={async () => {
                       try {
                         const [path] = await api.customCss(true);
-                        if (!config.custom_css) set("custom_css", true);
+                        if (!trust.custom_css) await setCss(true);
                         await openPath(path);
                       } catch (e) {
                         toast(errorMessage(e), "error");
@@ -218,6 +236,7 @@ function SettingsDialog({ close }: { close: () => void }) {
                 <Row label={tx("버전")}>
                   <span>Notevine {version}</span>
                 </Row>
+                <UpdateSettings />
                 <Row label={tx("사용자 매뉴얼")} hint={tx("기능별 사용법과 단축키 (Shift+F1)")}>
                   <button className="btn small" onClick={() => useApp.getState().setModal("manual")}>
                     {tx("매뉴얼 열기")}
@@ -231,6 +250,20 @@ function SettingsDialog({ close }: { close: () => void }) {
                     {tx("GitHub 열기")}
                   </button>
                 </Row>
+                <Row label={tx("오픈소스 라이선스")} hint={tx("Notevine은 MIT 라이선스이며, 아래 오픈소스를 포함합니다")}>
+                  <button
+                    className="btn small"
+                    onClick={async () => {
+                      const res = await fetch("/THIRD-PARTY-NOTICES.txt").catch(() => null);
+                      const text = res?.ok ? await res.text() : "";
+                      // A development server answers unknown paths with the app's page.
+                      setNotices(text && !text.startsWith("<") ? text : tx("고지 파일은 릴리스 빌드에 들어 있습니다 (npm run notices로 만듭니다)"));
+                    }}
+                  >
+                    {tx("라이선스 보기")}
+                  </button>
+                </Row>
+                {notices && <pre className="license-text">{notices}</pre>}
                 <Row label={tx("검색 인덱스")} hint={tx("검색이 이상하면 인덱스를 처음부터 다시 만듭니다. 노트는 바뀌지 않습니다")}>
                   <button
                     className="btn small"
@@ -334,6 +367,45 @@ function HistoryUsage() {
         </button>
       </Row>
     </>
+  );
+}
+
+/** Looks for a new version only when asked, or at start-up if turned on (NFR-SEC-02). */
+function UpdateSettings() {
+  const { toast } = useApp.getState();
+  const [auto, setAuto] = useState(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    void api.appSettings().then((s) => setAuto(s.update_check)).catch(() => {});
+  }, []);
+  return (
+    <Row label={tx("업데이트")} hint={tx("GitHub에서 새 버전을 확인합니다. 켜 두면 앱을 시작할 때마다 확인하고, 설치 전에 묻습니다. 끄면 누를 때만 접속합니다")}>
+      <label className="switch-label">
+        <input
+          type="checkbox"
+          checked={auto}
+          onChange={(e) => {
+            const on = e.target.checked;
+            void api
+              .setUpdateCheck(on)
+              .then(() => setAuto(on))
+              .catch((err) => toast(errorMessage(err), "error"));
+          }}
+        />{" "}
+        {tx("시작할 때 확인")}
+      </label>
+      <button
+        className="btn small"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          await checkForUpdate(false);
+          setBusy(false);
+        }}
+      >
+        {busy ? tx("확인하는 중…") : tx("지금 확인")}
+      </button>
+    </Row>
   );
 }
 
@@ -630,8 +702,8 @@ function KeyRow({
 }
 
 function BackupSettings() {
-  const config = useApp((s) => s.config);
-  const { saveConfig, toast, backupNow } = useApp.getState();
+  const trust = useApp((s) => s.trust);
+  const { toast, backupNow, ask, setTrust } = useApp.getState();
   const [st, setSt] = useState<BackupStatus | null>(null);
   const [remote, setRemote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -648,12 +720,21 @@ function BackupSettings() {
     setBusy(true);
     try {
       await f();
+      setTrust(await api.deviceTrust());
     } catch (e) {
       toast(errorMessage(e), "error");
     } finally {
       setBusy(false);
       load();
     }
+  };
+  const allow = async () => {
+    const ok = await ask(
+      tx("이 Git 저장소 허용"),
+      tx("이 노트 폴더에 이미 Git 저장소(.git)가 있습니다. 저장소 설정은 명령을 실행할 수 있으므로, 다른 사람에게서 받은 폴더라면 허용하지 마세요. 직접 만들었거나 내 저장소에서 받은(clone) 폴더일 때만 허용하세요."),
+      tx("허용"),
+    );
+    if (ok) await run(api.backupTrust);
   };
 
   if (!st) return <p className="muted small">{tx("확인하는 중…")}</p>;
@@ -672,7 +753,13 @@ function BackupSettings() {
       <p className="muted small">
         {tx("노트 폴더를 Git 저장소로 백업합니다. 백업할 때마다 그 순간의 노트 전체가 남아 언제든 되돌릴 수 있습니다. 원격 저장소(예: GitHub 비공개 저장소)를 넣으면 그곳으로도 보내고, 다른 PC에서 백업한 변경을 받아 와 여러 PC에서 같은 노트를 쓸 수 있습니다. 검색 인덱스·히스토리 DB는 넣지 않습니다.")}
       </p>
-      {!st.repo ? (
+      {st.repo && !st.trusted ? (
+        <Row label={tx("저장소 확인")} hint={tx("이미 있던 Git 저장소입니다. 허용하기 전에는 이 PC에서 Git을 실행하지 않습니다")}>
+          <button className="btn small primary" disabled={busy} onClick={() => void allow()}>
+            {tx("이 저장소 허용")}
+          </button>
+        </Row>
+      ) : !st.repo ? (
         <Row label={tx("백업 시작")} hint={tx("이 노트 폴더에 Git 저장소(.git)를 만듭니다. 노트는 바뀌지 않습니다")}>
           <button className="btn small primary" disabled={busy} onClick={() => void run(api.backupInit)}>
             {tx("Git 저장소 만들기")}
@@ -713,7 +800,7 @@ function BackupSettings() {
             </button>
           </Row>
           <Row label={tx("자동 백업")} hint={tx("바뀐 것이 있을 때만 정해진 간격으로 백업합니다. 실패하면 알림으로 알려 드립니다")}>
-            <select value={config.backup_minutes} onChange={(e) => void saveConfig({ ...config, backup_minutes: Number(e.target.value) })}>
+            <select value={trust.backup_minutes} onChange={(e) => void run(() => api.setBackupMinutes(Number(e.target.value)))}>
               <option value={0}>{tx("끄기 (직접 백업)")}</option>
               <option value={15}>{tx("15분마다")}</option>
               <option value={30}>{tx("30분마다")}</option>
@@ -728,24 +815,30 @@ function BackupSettings() {
 }
 
 function PluginSettings() {
-  const config = useApp((s) => s.config);
   const infos = usePlugins((s) => s.infos);
   const errors = usePlugins((s) => s.errors);
-  const { saveConfig, toast, ask } = useApp.getState();
-  const granted = config.plugins ?? {};
+  const { toast, ask } = useApp.getState();
+
+  const apply = async (id: string, on: boolean) => {
+    try {
+      await api.setPluginGrant(id, on);
+      usePlugins.getState().reload();
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    }
+  };
 
   const turn = async (id: string, on: boolean) => {
     const info = infos.find((p) => p.id === id);
     if (!info) return;
-    const { [id]: _old, ...rest } = granted;
-    if (!on) return saveConfig({ ...config, plugins: rest });
+    if (!on) return apply(id, false);
     const perms = info.permissions.length ? info.permissions.map((p) => `· ${PERMISSION_LABEL[p]}`).join("\n") : tx("· 없음 (명령·패널·알림만)");
     const ok = await ask(
       tx("플러그인 켜기: {0}", info.name),
       tx("이 플러그인이 쓰는 권한입니다.\n\n{0}\n\n플러그인은 노트 폴더 .app/plugins/{1}의 코드를 실행합니다. 만든 사람을 믿을 수 있을 때만 켜세요.", perms, id),
       tx("켜기"),
     );
-    if (ok) await saveConfig({ ...config, plugins: { ...rest, [id]: info.permissions } });
+    if (ok) await apply(id, true);
   };
 
   return (
@@ -785,9 +878,7 @@ function PluginSettings() {
       </div>
       {!infos.length && <p className="muted small pad">{tx("플러그인 폴더에 플러그인이 없습니다.")}</p>}
       {infos.map((p) => {
-        const g = granted[p.id];
-        const on = !p.error && grantCovers(p, g);
-        const grew = !!g && !on && !p.error;
+        const on = !p.error && !!p.granted;
         return (
           <div className="set-row plugin-row" key={p.id}>
             <div>
@@ -800,7 +891,7 @@ function PluginSettings() {
                 {tx("권한: {0}", p.permissions.length ? p.permissions.map((x) => PERMISSION_LABEL[x]?.split(" (")[0] ?? x).join(", ") : tx("없음"))}
               </div>
               {p.error && <div className="error-text small">{tx("쓸 수 없음: {0}", p.error)}</div>}
-              {grew && <div className="error-text small">{tx("필요한 권한이 늘었습니다. 다시 켜야 동작합니다")}</div>}
+              {p.changed && <div className="error-text small">{tx("코드나 권한이 바뀌었습니다. 내용을 확인한 뒤 다시 켜야 동작합니다")}</div>}
               {on && errors[p.id] && <div className="error-text small">{tx("오류: {0}", errors[p.id])}</div>}
             </div>
             <div className="set-ctl">

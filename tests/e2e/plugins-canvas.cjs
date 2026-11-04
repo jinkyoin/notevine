@@ -115,15 +115,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // ---------- plugins ----------
   await api("createSamplePlugin");
-  const cfg = await st(() => window.__notevine.getState().config);
-  await st(
-    (c) =>
-      window.__notevine.getState().saveConfig({
-        ...c,
-        plugins: { "hello-notevine": ["read", "write"], probe: [], nav: [], netreader: ["read", "network"], grower: ["read"] },
-      }),
-    cfg,
-  );
+  for (const id of ["hello-notevine", "probe", "nav", "netreader", "grower"]) await api("setPluginGrant", id, true);
+  // A new version asks for more: what was granted no longer covers it.
+  plugin("grower", ["read", "write", "network"], `notevine.panel.show("늘어남");`);
+  await page.reload();
+  await page.waitForSelector(".main, .start-card");
+  await page.evaluate((v) => window.__notevine.getState().openVault(v), VAULT);
+  await page.waitForFunction(() => window.__notevine.getState().notes.length >= 2);
   await st(() => window.__notevine.getState().openNote("회의.md"));
   await page.waitForSelector('.plugin-panel[data-plugin="hello-notevine"] .plugin-body b');
   console.log("sample panel:", await page.locator('.plugin-panel[data-plugin="hello-notevine"]').innerText());
@@ -158,7 +156,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await st(() => window.__notevine.getState().setModal(null));
 
   // Turning them off removes their panels and commands.
-  await st((c) => window.__notevine.getState().saveConfig({ ...c, plugins: {} }), cfg);
+  for (const id of ["hello-notevine", "probe", "nav", "netreader", "grower"]) await api("setPluginGrant", id, false);
+  await page.reload();
+  await page.waitForSelector(".main, .start-card");
+  await page.evaluate((v) => window.__notevine.getState().openVault(v), VAULT);
+  await page.waitForFunction(() => window.__notevine.getState().notes.length >= 2);
   await sleep(500);
   console.log("after off: panels", await page.locator(".plugin-panel").count(), "frames", await page.locator(".plugin-frames iframe").count());
   console.log("errors:", errors);

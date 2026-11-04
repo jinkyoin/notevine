@@ -14,6 +14,7 @@ mod recent;
 mod rewrite;
 mod search;
 mod tray;
+mod trust;
 mod vault;
 mod watcher;
 mod web;
@@ -46,6 +47,18 @@ fn config_dir(app: &tauri::App) -> tauri::Result<std::path::PathBuf> {
     })
 }
 
+/// The app window shows the app and nothing else: a page reached from a note would
+/// look like the app, with no address bar to tell them apart.
+fn allowed_navigation(url: &tauri::Url, dev: bool) -> bool {
+    match (url.scheme(), url.host_str()) {
+        ("about", _) => true, // plugin frames (about:srcdoc)
+        ("http" | "https", Some("tauri.localhost")) => true,
+        ("tauri", Some("localhost")) => true,
+        ("http", Some("localhost")) => dev && url.port() == Some(1420),
+        _ => false,
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Before any window exists: a development build gets its own WebView2 profile
@@ -66,8 +79,15 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![tray::TRAY_ARG]),
         ))
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry, ()>::new("stay-in-app")
+                .on_navigation(|_webview, url| allowed_navigation(url, DEV_BUILD))
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -90,6 +110,7 @@ pub fn run() {
                 watcher: Mutex::new(None),
                 recent: RecentStore::new(&config_dir),
                 settings,
+                trust: trust::TrustStore::new(&config_dir),
             });
             if tray_on && let Err(e) = tray::apply_tray(app.handle(), true) {
                 eprintln!("tray icon not shown: {e}");
@@ -131,11 +152,17 @@ pub fn run() {
             tray::set_tray,
             tray::set_autostart,
             tray::set_ollama_url,
+            tray::set_update_check,
             ai_api::ai_set_key,
             ai_api::ai_models,
             web::fetch_page,
             backup::backup_status,
+            backup::backup_trust,
             backup::backup_init,
+            trust::device_trust,
+            trust::set_backup_minutes,
+            trust::set_custom_css,
+            plugins::set_plugin_grant,
             backup::backup_set_remote,
             backup::backup_now,
             canvas::create_canvas,
@@ -180,4 +207,29 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn allowed(url: &str, dev: bool) -> bool {
+        allowed_navigation(&url.parse().unwrap(), dev)
+    }
+
+    #[test]
+    fn the_app_window_stays_on_the_app() {
+        assert!(allowed("http://tauri.localhost/index.html", false));
+        assert!(allowed("about:srcdoc", false));
+        assert!(allowed("http://localhost:1420/", true));
+    }
+
+    #[test]
+    fn the_app_window_does_not_go_elsewhere() {
+        assert!(!allowed("https://evil.example/x", false));
+        assert!(!allowed("https://tauri.localhost.evil.example/", false));
+        assert!(!allowed("http://localhost:1420/", false), "the dev server is for development");
+        assert!(!allowed("http://localhost:8080/", true));
+        assert!(!allowed("file:///C:/x.html", false));
+    }
 }

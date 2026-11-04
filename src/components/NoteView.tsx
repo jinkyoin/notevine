@@ -1,35 +1,16 @@
 // SCR-04 읽기 모드: 서식이 적용된 노트. 링크·태그·체크박스는 눌러서 쓸 수 있다.
 import { useEffect, useMemo, useRef } from "react";
-import DOMPurify from "dompurify";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { api } from "../api";
 import { useApp } from "../store";
 import type { NoteRef } from "../api";
-import { noteToHtml } from "../lib/renderNote";
 import { noteExists, resolveDest } from "../editor/wikilinks";
-import { safeStyle } from "../editor/colors";
+import { safeHtml } from "../lib/safeHtml";
 import { headingKey, noteBlock, noteSection } from "../lib/headings";
 import { drawRichBlocks } from "../lib/richBlocks";
 
 import { tx } from "../i18n";
-// Text/background colors (SCR-04) are the only styles kept; anything else, urls
-// included, is dropped so the page can't load from the network.
-DOMPurify.addHook("uponSanitizeAttribute", (_node, data) => {
-  if (data.attrName !== "style") return;
-  const s = safeStyle(data.attrValue);
-  if (s) data.attrValue = s;
-  else data.keepAttr = false;
-});
-
-/** Sanitized HTML. Nothing in it may load from the network: `src` comes only from us. */
-export function safeHtml(text: string): string {
-  return DOMPurify.sanitize(noteToHtml(text), {
-    FORBID_TAGS: ["style", "iframe", "object", "embed", "form"],
-    FORBID_ATTR: ["src", "srcset", "action", "formaction", "background", "poster"],
-  });
-}
-
 /** Embeds inside embeds go this deep; past that (or in a loop) the link is left as it is. */
 const MAX_EMBED_DEPTH = 3;
 

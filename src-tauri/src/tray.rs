@@ -28,6 +28,8 @@ pub struct AppSettings {
     pub tray: bool,
     /// Where Ollama answers on this PC; empty = its default (FR-AI-07).
     pub ollama_url: String,
+    /// Look for a new version at start-up. Off until the user turns it on (NFR-SEC-02).
+    pub update_check: bool,
     /// Filled when read: whether Windows starts Notevine at sign-in (not stored here).
     #[serde(skip_deserializing)]
     pub autostart: bool,
@@ -145,6 +147,13 @@ pub fn set_ollama_url(state: State<AppState>, url: String) -> AppResult<()> {
 }
 
 #[tauri::command]
+pub fn set_update_check(state: State<AppState>, on: bool) -> AppResult<()> {
+    let mut s = state.settings.load();
+    s.update_check = on;
+    state.settings.save(&s)
+}
+
+#[tauri::command]
 pub fn set_autostart(app: AppHandle, on: bool) -> AppResult<()> {
     if crate::DEV_BUILD {
         return Err(AppError::System("개발용 빌드는 Windows 시작 프로그램에 등록하지 않습니다".into()));
@@ -167,5 +176,14 @@ mod tests {
         let back = store.load();
         assert!(back.tray);
         assert!(!back.autostart, "autostart is read from Windows, not stored");
+    }
+
+    #[test]
+    fn update_check_stays_off_until_the_user_turns_it_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SettingsStore::new(dir.path());
+        assert!(!store.load().update_check, "no network request unless asked (NFR-SEC-02)");
+        store.save(&AppSettings { update_check: true, ..Default::default() }).unwrap();
+        assert!(store.load().update_check);
     }
 }

@@ -2859,6 +2859,18 @@ kbd {
 }
 
 /* 플러그인 (FR-EXT-02) */
+.license-text {
+  max-height: 320px;
+  overflow: auto;
+  margin: 8px 0;
+  padding: 8px;
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--bg-sidebar);
+  border-radius: 6px;
+}
+
 .plugin-frames {
   position: fixed;
   width: 0;

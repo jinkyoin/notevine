@@ -8,6 +8,7 @@
 node tests/e2e/plugins-canvas.cjs [스크린샷 폴더]  # 플러그인 샌드박스·권한, 캔버스
 node tests/e2e/ai-edits.cjs [폴더] [모델]          # AI 노트 작업 (이 PC의 Ollama로 실제 제안, 노트는 PC 밖으로 안 나감)
 node tests/e2e/english-backup.cjs [폴더]            # 영어 화면, Git 백업
+node tests/e2e/vault-trust.cjs                      # 받은 노트 폴더가 스스로 실행하는 것이 없는지 (Git·플러그인·CSS·실행 파일·CSP·창 이동)
 ```
 
 ## 기능 시나리오 (day4~6)

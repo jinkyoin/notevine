@@ -57,6 +57,13 @@ cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets   # 경고 0개
 - 화면을 바꿨다면 스크린샷을 붙이고, 관련 요구사항 ID(예: FR-LNK-05)나 화면 번호(예: SCR-04)를 적어 주세요.
 - 커밋 메시지는 한국어 또는 영어 모두 괜찮습니다.
 
+## 릴리스
+
+- 태그(`v*`)를 푸시하면 GitHub Actions가 설치 파일과 업데이트 파일을 만들어 초안 릴리스를 올린다.
+- 업데이트 파일 서명에 저장소 비밀값 `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`가 필요하다. 비밀키를 잃으면 이미 설치한 사용자에게 업데이트를 보낼 수 없으므로 따로 백업한다. 저장소에는 넣지 않는다.
+- 서명까지 로컬에서 시험하려면 `TAURI_SIGNING_PRIVATE_KEY`에 비밀키 파일 경로를 지정하고 `npm run tauri build -- --config src-tauri/tauri.release.conf.json`을 실행한다. 일반 `npm run tauri build`는 키 없이 된다.
+- 오픈소스 고지(`public/THIRD-PARTY-NOTICES.txt`)는 릴리스 빌드 전에 `scripts/gen-notices.mjs`가 만든다. 앱 아이콘은 `src-tauri/app-icon.svg`에서 `npx tauri icon`으로 만든다.
+
 ## 라이선스
 
 기여한 코드는 MIT 라이선스로 배포됩니다.

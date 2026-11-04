@@ -21,6 +21,7 @@ pub struct AppState {
     pub watcher: Mutex<Option<VaultWatcher>>,
     pub recent: RecentStore,
     pub settings: crate::tray::SettingsStore,
+    pub trust: crate::trust::TrustStore,
 }
 
 pub(crate) fn with_vault<T>(state: &State<AppState>, f: impl FnOnce(&Vault) -> AppResult<T>) -> AppResult<T> {
