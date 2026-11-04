@@ -1,16 +1,2 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <!-- Notevine: a note page with a vine growing along it. `npx tauri icon src-tauri/app-icon.svg` makes icons/. -->
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#1f6f54"/>
-      <stop offset="1" stop-color="#114a39"/>
-    </linearGradient>
-  </defs>
-  <rect x="48" y="48" width="928" height="928" rx="208" fill="url(#bg)"/>
-  <path d="M292 176h336l148 148v484a40 40 0 0 1-40 40H292a40 40 0 0 1-40-40V216a40 40 0 0 1 40-40z" fill="#fbf8ef"/>
-  <path d="M628 176l148 148H668a40 40 0 0 1-40-40z" fill="#d5e4c9"/>
-  <path d="M352 760C352 630 470 640 500 540S446 400 530 340" fill="none" stroke="#1f6f54" stroke-width="44" stroke-linecap="round"/>
-  <path d="M530 340c44-44 104-48 148-28-14 58-68 92-148 28z" fill="#3fa372"/>
-  <path d="M494 560c60-40 128-28 176 12-30 58-108 70-176-12z" fill="#3fa372"/>
-  <path d="M430 650c-58-22-112-2-146 44 40 44 112 40 146-44z" fill="#57b886"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024"><!-- Notevine: a leaf in a note. `npx tauri icon src-tauri/app-icon.svg` makes icons/. -->
+  <rect x="48" y="48" width="928" height="928" rx="208" fill="#5a3a94"/><rect x="212" y="212" width="600" height="600" rx="96" fill="#fbfaf6"/><path d="M340 684C340 480 480 340 684 340C684 544 544 684 340 684Z" fill="#5a3a94"/></svg>
