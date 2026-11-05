@@ -18,7 +18,7 @@
   --mono: "D2Coding", "JetBrains Mono", Consolas, monospace;
   --sidebar-w: 260px;
   --right-w: 300px;
-  --editor-max: 760px;
+  --editor-max: 100%;
   color-scheme: light;
 }
 
@@ -2716,7 +2716,12 @@ kbd {
   accent-color: var(--accent);
   cursor: pointer;
 }
+/* A wide table scrolls by itself, and its cells break only between words. */
 .note-view table {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
   border-collapse: collapse;
   margin: 0.8em 0;
 }
@@ -2724,6 +2729,8 @@ kbd {
 .note-view td {
   border: 1px solid var(--border);
   padding: 4px 10px;
+  word-break: keep-all;
+  overflow-wrap: normal;
 }
 .note-view th {
   background: var(--bg-hover);
