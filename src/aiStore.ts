@@ -3,6 +3,12 @@ import { create } from "zustand";
 import { api, errorMessage, type AiProvider, type ContextNote } from "./api";
 import {
   aiPrefs,
+  asksForTemplate,
+  asksForWeb,
+  matchTemplate,
+  namesWeb,
+  supportsWeb,
+  writeIntent,
   chatPrompt,
   journalNotesInRange,
   localizeProvider,
@@ -21,7 +27,7 @@ import {
 } from "./ai";
 import { useApp } from "./store";
 import { findNode, noteTitle } from "./lib/tree";
-import { appendText, applyChanges, editSystem, parseEdits, planEdit, type Planned } from "./lib/aiEdits";
+import { appendText, applyChanges, editSystem, OPEN_NOTE_ALIAS, parseEdits, planEdit, type Edit, type Planned } from "./lib/aiEdits";
 import { day } from "./lib/folderTable";
 import type { TreeNode } from "./api";
 
@@ -40,6 +46,14 @@ export interface ChatMessage {
   error?: string;
   streaming?: boolean;
   question?: string;
+  /** Asked to write something: the answer is the text itself, saved without the question around it. */
+  written?: boolean;
+  /** Folder for saving, from the template that was followed. */
+  saveDir?: string;
+  /** Proposed note changes not applied yet; can be opened again. */
+  proposal?: EditProposal;
+  /** How many notes the proposal changed once applied. */
+  applied?: number;
 }
 
 export interface SendRequest {
@@ -52,8 +66,10 @@ export interface SendRequest {
   extra?: { label: string; text: string };
   /** Relevant notes left out because they are tagged #비공개. */
   privateExcluded?: number;
-  /** Offer the "also search the web" choice (a question, not a writing task). */
+  /** Offer the "also search the web" choice. */
   web?: boolean;
+  /** Title of the open note the result will be proposed for. */
+  target?: string;
   resolve: (paths: string[] | null) => void;
 }
 
@@ -80,17 +96,12 @@ export interface EditItem extends Planned {
 /** AI note work (create/append/edit proposals) waiting for the user's review. */
 export interface EditProposal {
   request: string;
-  /** The AI's answer so far, while it streams. */
-  raw: string;
-  streaming: boolean;
-  error: string | null;
   /** The AI's explanation outside the blocks. */
   message: string;
   items: EditItem[];
-  /** Notes sent with the request: the only ones it may change. */
-  sources: string[];
   applying: boolean;
-  handle?: RunHandle;
+  /** The chat message this came with. */
+  chatIndex: number;
 }
 
 interface AiState {
@@ -105,12 +116,9 @@ interface AiState {
   preview: Preview | null;
   /** Provider whose login window is open. */
   loggingIn: string | null;
-  /** What the panel's box does: ask a question, or have the AI propose note changes. */
-  mode: "ask" | "edit";
-  setMode(mode: "ask" | "edit"): void;
   edits: EditProposal | null;
-  /** Sends a request for note changes; the proposals open in the review dialog. */
-  proposeEdits(request: string): Promise<void>;
+  /** Opens a message's proposed changes again. */
+  reviewEdits(index: number): void;
   toggleEdit(index: number, on: boolean): void;
   /** Applies the checked proposals (through the editor or the save path, so history keeps them). */
   applyEdits(): Promise<void>;
@@ -129,6 +137,7 @@ interface AiState {
   current(): AiProvider | undefined;
   /** Shows SCR-19; resolves to the note paths to send, or null when cancelled. */
   confirmSend(req: Omit<SendRequest, "resolve">): Promise<string[] | null>;
+  /** The panel's box: answers, or proposes note changes for review, as the request calls for. */
   ask(question: string): Promise<void>;
   stop(): void;
   newChat(): void;
@@ -194,12 +203,14 @@ export const useAi = create<AiState>((set, get) => {
   }
 
   /**
-   * Notes related to `q` to offer for sending: search hits (pre-checked) plus the
-   * open note (unchecked). Private notes are never offered, only counted.
+   * Notes related to `q` to offer for sending: the good search hits are pre-checked, the
+   * rest and the open note are not (the open note is when it is to be written to). Private
+   * notes are never offered, only counted, and templates only when asked for.
    */
-  async function relatedNotes(q: string): Promise<{ notes: ContextNote[]; checked: string[]; privateExcluded: number }> {
+  async function relatedNotes(q: string, checkOpen: boolean): Promise<{ notes: ContextNote[]; checked: string[]; privateExcluded: number }> {
     const ctx = await api.aiContext(q, 8).catch(() => ({ notes: [] as ContextNote[], private_excluded: [] as string[] }));
-    const found = ctx.notes;
+    const templates = app().config.template_folder + "/";
+    const found = ctx.notes.filter((n) => !n.path.startsWith(templates));
     const excluded = new Set(ctx.private_excluded);
     const open = app().openPath;
     const notes = [...found];
@@ -208,10 +219,50 @@ export const useAi = create<AiState>((set, get) => {
       if (isPrivate) excluded.add(open);
       else {
         const text = await api.readNote(open).catch(() => "");
-        notes.push({ path: open, title: noteTitle(open), snippet: tx("(지금 열려 있는 노트)"), chars: [...text].length });
+        notes.push({ path: open, title: noteTitle(open), snippet: tx("(지금 열려 있는 노트)"), chars: [...text].length, relevant: false });
       }
     }
-    return { notes, checked: found.map((n) => n.path), privateExcluded: excluded.size };
+    const checked = found.filter((n) => n.relevant).map((n) => n.path);
+    if (checkOpen && open && notes.some((n) => n.path === open)) checked.push(open);
+    return { notes, checked: [...new Set(checked)], privateExcluded: excluded.size };
+  }
+
+  /** The template the request asks to follow, as a note to send. undefined: none asked for. null: not usable; said why. */
+  async function requestedTemplate(q: string): Promise<(ContextNote & { folder: string | null }) | null | undefined> {
+    if (!asksForTemplate(q)) return undefined;
+    const templates = await api.listTemplates().catch(() => []);
+    const t = matchTemplate(q, templates);
+    if (!t) {
+      const names = templates.map((x) => x.title).join(", ");
+      app().toast(names ? tx("요청한 템플릿을 찾지 못했습니다. 있는 템플릿: {0}", names) : tx("'{0}' 폴더에 템플릿이 없습니다. 이 폴더에 .md 파일을 넣으면 템플릿이 됩니다.", app().config.template_folder), "error");
+      return null;
+    }
+    if ((await api.aiPrivateNotes([t.path]).catch(() => [t.path])).length > 0) {
+      app().toast(tx("#비공개 태그가 있는 노트라 AI로 보내지 않습니다"), "error");
+      return null;
+    }
+    const text = await api.readNote(t.path).catch(() => "");
+    return { path: t.path, title: t.title, snippet: tx("(템플릿: 이 형식으로 작성합니다)"), chars: [...text].length, relevant: true, folder: t.folder };
+  }
+
+  /** The AI's proposals checked against the notes as they are now. `sent`: the only notes it may change. */
+  function planEdits(edits: Edit[], sent: Set<string>, target: string | null): Promise<EditItem[]> {
+    const byLower = new Map(app().notes.map((n) => [n.path.toLowerCase(), n.path]));
+    const actual = (p: string) => byLower.get(p.toLowerCase()) ?? p;
+    return Promise.all(
+      edits.map(async (e) => {
+        const path = target && e.path === OPEN_NOTE_ALIAS ? target : actual(e.path);
+        const plan = await planEdit(
+          { ...e, path },
+          {
+            sent,
+            exists: (p) => byLower.has(p.toLowerCase()) || !!findNode(app().tree, p),
+            read: (p) => api.readNote(actual(p)),
+          },
+        );
+        return { ...plan, path: actual(plan.path), checked: !plan.error };
+      }),
+    );
   }
 
   return {
@@ -225,61 +276,11 @@ export const useAi = create<AiState>((set, get) => {
     preview: null,
     loggingIn: null,
     webSearch: aiPrefs.web(),
-    mode: "ask",
     edits: null,
 
-    setMode(mode) {
-      set({ mode });
-    },
-
-    async proposeEdits(request) {
-      const q = request.trim();
-      if (!q || get().running) return;
-      const provider = await ready();
-      if (!provider) return;
-      const related = await relatedNotes(q);
-      // The open note is usually the one to work on: offer it checked.
-      const open = app().openPath;
-      const checked = open && related.notes.some((n) => n.path === open) ? [...new Set([...related.checked, open])] : related.checked;
-      const paths = await get().confirmSend({ provider, title: tx("노트 작업 보내기"), ...related, checked, extra: { label: tx("요청"), text: q } });
-      if (paths === null) return;
-      await app().flushEditor();
-      const cfg = app().config;
-      const system = editSystem({ folders: folderPaths(app().tree), newNoteDir: cfg.preset_enabled ? cfg.inbox_folder : "", today: day(Date.now()) });
-      const update = (patch: Partial<EditProposal>) => {
-        const cur = get().edits;
-        if (cur?.handle === handle) set({ edits: { ...cur, ...patch } });
-      };
-      const handle = runAi(provider.id, system, tx("요청: {0}", q), paths, (raw) => update({ raw }));
-      set({
-        running: handle,
-        edits: { request: q, raw: "", streaming: true, error: null, message: "", items: [], sources: paths, applying: false, handle },
-      });
-      try {
-        const { text } = await handle.done;
-        const { message, edits } = parseEdits(text);
-        const byLower = new Map(app().notes.map((n) => [n.path.toLowerCase(), n.path]));
-        const actual = (p: string) => byLower.get(p.toLowerCase()) ?? p;
-        const sent = new Set(paths);
-        const items = await Promise.all(
-          edits.map(async (e) => {
-            const plan = await planEdit(
-              { ...e, path: actual(e.path) },
-              {
-                sent,
-                exists: (p) => byLower.has(p.toLowerCase()) || !!findNode(app().tree, p),
-                read: (p) => api.readNote(actual(p)),
-              },
-            );
-            return { ...plan, path: actual(plan.path), checked: !plan.error };
-          }),
-        );
-        update({ raw: text, streaming: false, message: message || (edits.length ? "" : text.trim()), items });
-      } catch (e) {
-        update({ streaming: false, error: errorMessage(e) });
-      } finally {
-        set({ running: null });
-      }
+    reviewEdits(index) {
+      const p = get().chat[index]?.proposal;
+      if (p) set({ edits: p });
     },
 
     toggleEdit(index, on) {
@@ -290,7 +291,7 @@ export const useAi = create<AiState>((set, get) => {
 
     async applyEdits() {
       const p = get().edits;
-      if (!p || p.streaming || p.applying) return;
+      if (!p || p.applying) return;
       const todo = p.items.filter((it) => it.checked && !it.error);
       if (!todo.length) return;
       set({ edits: { ...p, applying: true } });
@@ -327,7 +328,10 @@ export const useAi = create<AiState>((set, get) => {
       }
       await app().refreshTree();
       app().noteSaved();
-      set({ edits: null });
+      set({
+        edits: null,
+        chat: get().chat.map((m, i) => (i === p.chatIndex ? { ...m, proposal: undefined, applied: done } : m)),
+      });
       if (done) {
         const open = created;
         app().toast(
@@ -342,7 +346,6 @@ export const useAi = create<AiState>((set, get) => {
     closeEdits() {
       const p = get().edits;
       if (p?.applying) return;
-      if (p?.streaming) p.handle?.cancel();
       set({ edits: null });
     },
 
@@ -413,29 +416,82 @@ export const useAi = create<AiState>((set, get) => {
       if (!q || get().running) return;
       const provider = await ready();
       if (!provider) return;
-      const related = await relatedNotes(q);
-      const paths = await get().confirmSend({
-        provider,
-        title: tx("질문 보내기"),
-        ...related,
-        extra: { label: tx("질문"), text: q },
-        web: true,
-      });
+      const webOnly = asksForWeb(q);
+      const wantsWeb = webOnly || namesWeb(q);
+      if (wantsWeb && !supportsWeb(provider.id)) {
+        app().toast(tx("{0}은(는) 웹 검색을 할 수 없습니다. AI 도우미에서 Claude Code나 Codex로 바꿔 주세요", provider.name), "error");
+        return;
+      }
+      const template = await requestedTemplate(q);
+      if (template === null) return;
+      await app().flushEditor();
+      const intent = writeIntent(q);
+      // The writing goes to the open note, unless that note is private: its title stays here too.
+      const open = app().openPath;
+      const target = intent === "open" && open && !(await api.aiPrivateNotes([open]).catch(() => [open])).length ? open : null;
+      let paths: string[] | null = [];
+      // Searching the web plainly takes no notes, so there is nothing to confirm (FR-AI-03 is about notes).
+      if (!webOnly || template) {
+        const related = webOnly ? { notes: [] as ContextNote[], checked: [] as string[], privateExcluded: 0 } : await relatedNotes(q, intent === "open");
+        paths = await get().confirmSend({
+          provider,
+          title: tx("AI에 보내기"),
+          notes: [...(template ? [template] : []), ...related.notes.filter((n) => n.path !== template?.path)],
+          checked: [...(template ? [template.path] : []), ...related.checked],
+          privateExcluded: related.privateExcluded,
+          extra: { label: tx("요청"), text: q },
+          web: !wantsWeb,
+          target: target ? noteTitle(target) : undefined,
+        });
+      }
       if (paths === null) return;
-      const web = get().webSearch;
+      const sent = paths;
+      const web = wantsWeb || get().webSearch;
+      const cfg = app().config;
+      const system = [
+        qaSystem(web),
+        editSystem({
+          // Folder names are for placing a new note, and don't go along unconfirmed.
+          folders: intent === "new" && !webOnly ? folderPaths(app().tree) : [],
+          newNoteDir: cfg.preset_enabled ? cfg.inbox_folder : "",
+          today: day(Date.now()),
+          intent,
+          target: target ? noteTitle(target) : null,
+          template: template && sent.includes(template.path) ? template.path : null,
+        }),
+      ].join("\n\n");
       const history = get()
         .chat.filter((m) => !m.error && !m.streaming)
         .map((m) => ({ role: m.role, text: m.text }));
       const idx = get().chat.length + 1;
-      set({ chat: [...get().chat, { role: "user", text: q, sources: paths }, { role: "ai", text: "", streaming: true, question: q, sources: paths, provider: provider.id }] });
-      const update = (patch: Partial<ChatMessage>) =>
-        set({ chat: get().chat.map((m, i) => (i === idx ? { ...m, ...patch } : m)) });
+      set({
+        chat: [
+          ...get().chat,
+          { role: "user", text: q, sources: sent },
+          {
+            role: "ai",
+            text: "",
+            streaming: true,
+            question: q,
+            sources: sent,
+            provider: provider.id,
+            written: intent !== null || !!template,
+            saveDir: template?.folder ?? undefined,
+          },
+        ],
+      });
+      const update = (patch: Partial<ChatMessage>) => set({ chat: get().chat.map((m, i) => (i === idx ? { ...m, ...patch } : m)) });
+      // Proposal blocks aren't for reading as they arrive: the review shows them.
+      const shown = (text: string) => {
+        const r = parseEdits(text);
+        return r.edits.length ? r.message : text;
+      };
       const handle = runAi(
         provider.id,
-        qaSystem(web),
+        system,
         chatPrompt(history, q),
-        paths,
-        (text) => update({ text }),
+        sent,
+        (text) => update({ text: shown(text) }),
         (m) => app().toast(m),
         (model) => update({ model }),
         {
@@ -446,7 +502,18 @@ export const useAi = create<AiState>((set, get) => {
       set({ running: handle });
       try {
         const { text } = await handle.done;
-        update({ text, streaming: false });
+        const { message, edits } = parseEdits(text);
+        if (!edits.length) {
+          update({ text, streaming: false });
+        } else {
+          // A template is only followed, and the open note may also be written to when its text wasn't sent.
+          const allowed = new Set(sent.filter((p) => p !== template?.path));
+          if (target) allowed.add(target);
+          const items = await planEdits(edits, allowed, target);
+          const proposal: EditProposal = { request: q, message, items, applying: false, chatIndex: idx };
+          update({ text: message || tx("노트에 적용할 안을 만들었습니다."), streaming: false, proposal });
+          set({ edits: proposal });
+        }
       } catch (e) {
         update({ streaming: false, error: errorMessage(e) });
       } finally {
@@ -460,7 +527,7 @@ export const useAi = create<AiState>((set, get) => {
 
     newChat() {
       if (get().running) return;
-      set({ chat: [] });
+      set({ chat: [], edits: null });
     },
 
     async saveAnswer(index) {
@@ -469,10 +536,11 @@ export const useAi = create<AiState>((set, get) => {
       const cfg = app().config;
       // An answer researched on the web goes with the research notes.
       const usedWeb = (m.progress?.length ?? 0) > 0;
-      const dir = cfg.preset_enabled ? (usedWeb ? cfg.research_folder : cfg.inbox_folder) : "";
+      const dir = m.saveDir ?? (cfg.preset_enabled ? (usedWeb ? cfg.research_folder : cfg.inbox_folder) : "");
       const sources = (m.sources ?? []).map((p) => `- [[${noteTitle(p)}]]`).join("\n") || tx("- (없음)");
-      const body = tx("# 질문\n\n{0}\n\n# 답변\n\n{1}\n\n## 참고한 노트\n\n{2}\n", m.question ?? "", m.text, sources);
+      const body = m.written ? m.text.replace(/\s*$/, "\n") : tx("# 질문\n\n{0}\n\n# 답변\n\n{1}\n\n## 참고한 노트\n\n{2}\n", m.question ?? "", m.text, sources);
       try {
+        await ensureFolder(dir);
         const path = await api.createNote(dir, tx("AI 답변 {0}", stamp()), body);
         await app().refreshTree();
         app().toast(tx("답변을 노트로 저장했습니다"), "info", { label: tx("열기"), run: () => app().openNote(path) });
@@ -544,7 +612,7 @@ export const useAi = create<AiState>((set, get) => {
       const notes: ContextNote[] = await Promise.all(
         shareable.map(async (p) => {
           const text = await api.readNote(p).catch(() => "");
-          return { path: p, title: noteTitle(p), snippet: text.replace(/\s+/g, " ").slice(0, 120), chars: [...text].length };
+          return { path: p, title: noteTitle(p), snippet: text.replace(/\s+/g, " ").slice(0, 120), chars: [...text].length, relevant: true };
         }),
       );
       const send = await get().confirmSend({

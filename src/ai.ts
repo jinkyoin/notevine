@@ -114,6 +114,63 @@ export const MODEL_OPTIONS: Record<string, { value: string; label: string }[]> =
 
 // ---------- prompts ----------
 
+/** Connections that can search the web: the CLIs have the tools, API keys and Ollama don't here. */
+export function supportsWeb(provider: string): boolean {
+  return provider === "claude" || provider === "codex";
+}
+
+// 사용자가 웹 검색을 분명히 요청했는지. 맞으면 노트를 보내지 않고 바로 검색하므로,
+// 내 노트를 찾는 말("지난주 회의 결정 찾아줘")을 잘못 잡지 않도록 좁게 판단한다.
+// "요약 노트를 만들어 줘"의 노트는 결과물이므로 찾을 대상일 때만 내 노트로 본다.
+const ABOUT_NOTES = /(노트|메모)(에서|에\s|나|와|랑|하고|및|(을|를)?\s*(찾|검색))|(이|내|열린|현재)\s*(노트|메모)|업무|회의|프로젝트|폴더|이 글|선택한 글|내 기록|내 자료/;
+const NAMES_THE_WEB =
+  /(웹|인터넷|온라인|구글|네이버)(에서|으로|로)|(웹|인터넷|구글|네이버)\s*(검색|찾|조사)|\b(search|look up|find)\b.*\b(web|internet|online|google)\b|\b(web|internet|online)\s+search/i;
+const LOOKS_UP = /검색|찾아|조사|알아봐/;
+const FROM_OUTSIDE = /도서|저서|논문|뉴스|기사|영화|(^|[\s'"])책/;
+
+export function asksForWeb(question: string): boolean {
+  if (ABOUT_NOTES.test(question)) return false;
+  return NAMES_THE_WEB.test(question) || (LOOKS_UP.test(question) && FROM_OUTSIDE.test(question));
+}
+
+/** The request says to use the web, possibly along with notes ("노트나 웹에서 찾아서"). */
+export function namesWeb(question: string): boolean {
+  return NAMES_THE_WEB.test(question);
+}
+
+const WANTS_NEW_NOTE = /새\s*(노트|메모|문서)|(노트|메모|문서)(를|로)?\s*(새로\s*)?(만들|생성)|\bnew note\b|\bcreate a note\b/i;
+const WANTS_WRITING =
+  /작성해\s*(줘|주)|작성\s*부탁|써\s*(줘|주세요|넣)|적어\s*(줘|주|넣)|기록해\s*(줘|주)|덧붙|추가해\s*(줘|주)|넣어\s*(줘|주)|고쳐\s*(줘|주)|수정해\s*(줘|주)|바꿔\s*(줘|주)|채워\s*(줘|주)|달아\s*(줘|주)|\b(write|draft|append)\b/i;
+
+/**
+ * What the request wants written, judged from its wording: a new note, something
+ * in the open note, or (null) just an answer. It only sets the defaults; every
+ * change to a note is still shown for review before it is applied.
+ */
+export function writeIntent(question: string): "new" | "open" | null {
+  if (WANTS_NEW_NOTE.test(question)) return "new";
+  return WANTS_WRITING.test(question) ? "open" : null;
+}
+
+const TEMPLATE_WORD = "템플릿|양식|서식|template";
+
+/** The request asks for a template's format ("독서 템플릿에 맞게"), not about the templates folder. */
+export function asksForTemplate(question: string): boolean {
+  return new RegExp(`(${TEMPLATE_WORD})\\s*(에|으로|로|을|를|대로|처럼|형식|맞|따라)`, "i").test(question);
+}
+
+/** The template a request names, by its title with or without the word "템플릿". */
+export function matchTemplate<T extends { title: string }>(question: string, templates: T[]): T | null {
+  const key = (s: string) => s.normalize("NFC").replace(/\s+/g, "").toLowerCase();
+  const word = (title: string) => key(title).replace(/^\d+[.\-_]*/, "").replace(new RegExp(`(${TEMPLATE_WORD})$`), "");
+  const q = key(question);
+  const longest = (list: T[]) => list.sort((a, b) => word(b.title).length - word(a.title).length)[0] ?? null;
+  const exact = templates.filter((t) => word(t.title) && new RegExp(`${word(t.title).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(${TEMPLATE_WORD})`).test(q));
+  if (exact.length) return longest(exact);
+  const named = [...question.normalize("NFC").matchAll(new RegExp(`(\\S+?)\\s*(${TEMPLATE_WORD})`, "gi"))].map((m) => key(m[1])).filter((w) => w.length >= 2);
+  return longest(templates.filter((t) => named.some((w) => word(t.title).includes(w))));
+}
+
 const QA_BASE = [
   "너는 사용자의 개인 업무 노트를 바탕으로 답하는 한국어 도우미다.",
   "근거로 쓴 노트는 해당 문장 끝에 [[노트 제목]] 형식으로 표시한다. 제목은 note 태그의 title 값을 그대로 쓴다.",
@@ -129,7 +186,8 @@ export function qaSystem(web: boolean): string {
     ...QA_BASE,
     ...(web
       ? [
-          "<참고 노트>로 답할 수 있으면 노트를 우선한다. 노트에 없거나 최신·외부 정보가 필요하면 웹을 검색하고 페이지를 읽어 믿을 만한 출처로 확인한다.",
+          "사용자가 검색을 요청했거나 책·인물·제품처럼 노트 밖의 정보를 물으면, 노트가 있어도 반드시 웹을 검색하고 페이지를 읽어 믿을 만한 출처로 확인한다. <참고 노트>가 없어도 거절하지 않는다.",
+          "그 밖에는 <참고 노트>로 답할 수 있으면 노트를 우선하고, 노트에 없거나 최신 정보가 필요하면 웹을 검색한다.",
           "웹에서 확인한 내용은 해당 문장 끝에 [제목](URL) 링크로 출처를 단다. 확인하지 못한 내용은 쓰지 않거나 '확인 필요'라고 밝힌다.",
           "노트의 문장이나 고유한 내용(이름, 수치, 내부 정보)을 검색어에 넣지 말고, 질문의 일반적인 표현으로만 검색한다.",
           "진행 상황 설명 없이 최종 답만 쓴다.",

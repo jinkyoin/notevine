@@ -69,10 +69,7 @@ export function registerAppCommands(): () => void {
       title: tx("AI로 노트 만들기·고치기"),
       keywords: tx("AI 노트 작업 만들기 고치기 정리 수정 생성 편집 edit"),
       when: hasVault,
-      run: () => {
-        useAi.getState().setMode("edit");
-        st().focusAi();
-      },
+      run: () => st().focusAi(),
     },
     {
       id: "backup.now",

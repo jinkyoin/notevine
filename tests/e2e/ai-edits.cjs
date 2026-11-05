@@ -32,8 +32,7 @@ fs.writeFileSync(path.join(VAULT, "비밀.md"), "# 비밀\n\n#비공개\n");
   await page.evaluate(() => window.__notevine.getState().openNote("주간 회의 11-03.md"));
   await page.waitForSelector(".cm-content");
 
-  // Switch the panel to note work and send a request.
-  await page.getByRole("tab", { name: "노트 작업" }).click();
+  // Send a request from the panel's one box.
   await page.locator(".ai-input textarea").fill(
     "이 회의록의 결정사항을 모아 '결정사항 모음' 새 노트를 만들고, 할 일의 '담당: 미정'을 '담당: 김민수'로 바꿔 줘.",
   );
@@ -45,15 +44,14 @@ fs.writeFileSync(path.join(VAULT, "비밀.md"), "# 비밀\n\n#비공개\n");
   await page.locator(".modal .btn.primary").click();
   const t0 = Date.now();
   await page.waitForSelector(".ai-edits");
-  await page.waitForFunction(() => !window.__notevineAi.getState().edits?.streaming, null, { timeout: 280000 });
+  await page.waitForFunction(() => !window.__notevineAi.getState().running, null, { timeout: 280000 });
   console.log("AI seconds:", ((Date.now() - t0) / 1000).toFixed(1));
   const st = await page.evaluate(() => {
     const e = window.__notevineAi.getState().edits;
-    return e && { error: e.error, message: e.message, items: e.items.map((i) => ({ kind: i.edit.kind, path: i.path, error: i.error, checked: i.checked })), raw: e.raw };
+    return e && { message: e.message, items: e.items.map((i) => ({ kind: i.edit.kind, path: i.path, error: i.error, checked: i.checked })) };
   });
   console.log("message:", JSON.stringify(st.message));
   console.log("items:", JSON.stringify(st.items));
-  if (!st.items.length) console.log("raw:", st.raw);
   await page.screenshot({ path: path.join(SHOTS, "ai-edits.png") });
 
   const ready = st.items.filter((i) => !i.error).length;

@@ -101,6 +101,8 @@ pub struct ContextNote {
     pub snippet: String,
     /// Note length in characters.
     pub chars: u32,
+    /// Hit well enough to be offered checked: see [`context_notes`].
+    pub relevant: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -1116,11 +1118,15 @@ struct Scored {
 }
 
 /// Notes matching any keyword of the question, ranked by the number of distinct
-/// keywords hit (a title hit counts double), then by modification time.
+/// keywords hit (a title hit counts double), then by modification time. One keyword
+/// in the body of a note says little about a longer question: such a note is still
+/// listed, but not `relevant`.
 fn context_notes(v: &Vault, question: &str, limit: u32) -> AppResult<ContextResult> {
     let limit = if limit == 0 { DEFAULT_CONTEXT_LIMIT } else { limit.min(MAX_CONTEXT_LIMIT) } as usize;
     let mut scored: HashMap<String, Scored> = HashMap::new();
-    for kw in extract_keywords(question) {
+    let keywords = extract_keywords(question);
+    let single_keyword = keywords.len() == 1;
+    for kw in keywords {
         let q = SearchQuery { text: vec![kw.clone()], limit: Some(HITS_PER_KEYWORD), ..Default::default() };
         for h in search(v.index(), &q)?.hits {
             let weight = if h.title.to_lowercase().contains(&kw) { 2 } else { 1 };
@@ -1148,7 +1154,8 @@ fn context_notes(v: &Vault, question: &str, limit: u32) -> AppResult<ContextResu
             continue;
         }
         let chars = u32::try_from(content.chars().count()).unwrap_or(u32::MAX);
-        notes.push(ContextNote { path: s.path, title: s.title, snippet: s.snippet, chars });
+        let relevant = s.score >= 2 || single_keyword;
+        notes.push(ContextNote { path: s.path, title: s.title, snippet: s.snippet, chars, relevant });
     }
     Ok(ContextResult { notes, private_excluded })
 }
@@ -1836,6 +1843,10 @@ mod tests {
         assert_eq!(got[0].title, "예산 회의");
         assert_eq!(got[0].chars, "회의에서 예산을 정했다.".chars().count() as u32);
         assert!(got[1].snippet.contains("회의"));
+        assert!(got[0].relevant, "both keywords, and in the title");
+        assert!(!got[1].relevant, "one keyword of two, in the body only");
+        assert!(context_notes(&v, "일기", 0).unwrap().notes[0].relevant, "the title");
+        assert!(context_notes(&v, "길었다", 0).unwrap().notes[0].relevant, "the only keyword there is");
         assert!(got.iter().all(|c| c.snippet.chars().count() <= SNIPPET_MAX));
         assert!(context_notes(&v, "뭐 알려줘", 5).unwrap().notes.is_empty());
     }

@@ -273,6 +273,8 @@ export interface ContextNote {
   title: string;
   snippet: string;
   chars: number;
+  /** Matched well enough to be offered checked. */
+  relevant: boolean;
 }
 
 export type AiEvent =

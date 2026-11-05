@@ -1,5 +1,5 @@
 // SCR-19 AI 전송 확인 + SCR-20 AI 작성 결과 미리보기.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAi } from "../aiStore";
 import { isLoginError, PROVIDER_COMPANY } from "../ai";
 
@@ -8,7 +8,11 @@ export function AiSendConfirm() {
   const req = useAi((s) => s.send);
   const webSearch = useAi((s) => s.webSearch);
   const [checked, setChecked] = useState<Set<string>>(new Set());
-  useEffect(() => setChecked(new Set(req?.checked ?? [])), [req]);
+  const openedAt = useRef(0);
+  useEffect(() => {
+    openedAt.current = Date.now();
+    setChecked(new Set(req?.checked ?? []));
+  }, [req]);
   if (!req) return null;
 
   const answer = (paths: string[] | null) => {
@@ -37,6 +41,7 @@ export function AiSendConfirm() {
             <div className="ai-extra-text">{req.extra.text}</div>
           </div>
         )}
+        {req.target && <p className="small">{tx("결과를 넣을 노트: {0} (이 제목은 체크와 상관없이 함께 보냅니다)", req.target)}</p>}
         {req.notes.length > 0 ? (
           <ul className="change-list ai-notes">
             {req.notes.map((n) => (
@@ -73,7 +78,15 @@ export function AiSendConfirm() {
           <button className="btn ghost" onClick={() => answer(null)}>
             {tx("취소")}
           </button>
-          <button className="btn primary" autoFocus onClick={() => answer(chosen.map((n) => n.path))}>
+          <button
+            className="btn primary"
+            autoFocus
+            onClick={(e) => {
+              // The Enter that sent the question must not also send the notes: detail 0 is a keyboard press.
+              if (e.detail === 0 && Date.now() - openedAt.current < 400) return;
+              answer(chosen.map((n) => n.path));
+            }}
+          >
             {tx("보내기")}
           </button>
         </div>

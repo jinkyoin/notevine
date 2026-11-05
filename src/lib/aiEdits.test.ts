@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendText, applyChanges, cleanPath, diffHunks, lineDiff, parseEdits, planEdit, type PlanContext } from "./aiEdits";
+import { appendText, applyChanges, cleanPath, diffHunks, editSystem, lineDiff, parseEdits, planEdit, type PlanContext } from "./aiEdits";
 
 const ANSWER = `회의록 두 개에서 결정사항을 모아 새 노트를 만들고, 원래 회의록에 링크를 답니다.
 
@@ -109,5 +109,29 @@ describe("lineDiff", () => {
       { kind: "add", text: "새" },
       { kind: "add", text: "줄" },
     ]);
+  });
+});
+
+describe("editSystem", () => {
+  const base = { folders: [], newNoteDir: "", today: "2026-11-05" };
+  it("proposes only when asked to change notes", () => {
+    expect(editSystem(base)).toContain("분명히 요청하지 않았으면 블록을 쓰지 말고");
+    expect(editSystem({ ...base, intent: "new" })).toContain("CREATE 블록으로");
+  });
+  it("writes to the open note by an alias, not its path", () => {
+    const s = editSystem({ ...base, intent: "open", target: "독서 기록" });
+    expect(s).toContain("독서 기록");
+    expect(s).toContain("APPEND: 열린노트.md");
+  });
+  it("answers with the text when no note is open", () => {
+    const s = editSystem({ ...base, intent: "open" });
+    expect(s).toContain("열린 노트가 없다");
+    expect(s).toContain("결과 글 자체를 답으로");
+  });
+  it("names the template to follow and folders only when given", () => {
+    expect(editSystem(base)).not.toContain("템플릿");
+    expect(editSystem({ ...base, template: "90.템플릿/독서.md" })).toContain('path="90.템플릿/독서.md"');
+    expect(editSystem(base)).not.toContain("있는 폴더");
+    expect(editSystem({ ...base, folders: ["10.프로젝트"] })).toContain("있는 폴더: 10.프로젝트");
   });
 });

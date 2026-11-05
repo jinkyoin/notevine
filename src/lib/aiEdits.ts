@@ -12,11 +12,47 @@ export type Edit =
 
 export const EDIT_KIND_LABEL: Record<Edit["kind"], string> = { create: tx("새 노트"), append: tx("덧붙이기"), edit: tx("고치기") };
 
-/** What the AI is told about the format; `folders` helps it put new notes in the right place. */
-export function editSystem(opts: { folders: string[]; newNoteDir: string; today: string }): string {
-  const folders = opts.folders.length ? opts.folders.slice(0, 60).join(", ") : "(없음)";
+/** How the AI refers to the open note, whose real path it isn't told unless the note was sent. */
+export const OPEN_NOTE_ALIAS = "열린노트.md";
+
+export interface EditSystemOptions {
+  /** Offered to the AI for placing new notes; empty when the folder names shouldn't go along. */
+  folders: string[];
+  newNoteDir: string;
+  today: string;
+  /** What the wording of the request asks for (`writeIntent`). */
+  intent?: "new" | "open" | null;
+  /** Title of the open note that the writing goes to. */
+  target?: string | null;
+  /** Path of the sent template to follow. */
+  template?: string | null;
+}
+
+/** When to propose changes instead of answering, for this request. */
+function routing(o: EditSystemOptions): string[] {
+  if (o.intent === "new") return ["사용자가 새 노트를 요청했다. 결과를 CREATE 블록으로 제안한다."];
+  if (o.intent === "open" && o.target) {
+    return [
+      `사용자가 노트에 쓰기를 요청했고 지금 열린 노트의 제목은 "${o.target}"이다. 다른 노트를 가리키지 않았으면 결과를 답으로 쓰지 말고 === APPEND: ${OPEN_NOTE_ALIAS} === 블록으로 제안한다. 열린 노트의 글을 고치라는 요청이면 === EDIT: ${OPEN_NOTE_ALIAS} === 블록을 쓴다.`,
+    ];
+  }
+  if (o.intent === "open") {
+    return ["사용자가 글을 쓰라고 요청했지만 열린 노트가 없다. <참고 노트>의 특정 노트를 고치라는 요청이 아니면 블록을 쓰지 말고 결과 글 자체를 답으로 쓴다. 사용자가 답을 새 노트로 저장하거나 복사한다."];
+  }
+  return ["사용자가 노트를 만들거나 고치라고 분명히 요청하지 않았으면 블록을 쓰지 말고 답만 쓴다."];
+}
+
+/** What the AI is told about proposing changes; `folders` helps it put new notes in the right place. */
+export function editSystem(opts: EditSystemOptions): string {
+  const folders = opts.folders.slice(0, 60).join(", ");
   return [
-    "너는 사용자의 마크다운 노트를 만들고 고치는 도우미다. 너는 파일을 직접 바꿀 수 없다. 아래 형식으로 변경을 제안하면 사용자가 하나씩 확인한 뒤 앱이 적용한다.",
+    "노트를 만들거나 고치라는 요청이면 아래 형식으로 변경을 제안한다. 너는 파일을 직접 바꿀 수 없다. 사용자가 하나씩 확인한 뒤 앱이 적용한다.",
+    ...routing(opts),
+    ...(opts.template
+      ? [
+          `<참고 노트>의 path="${opts.template}" 노트는 템플릿이다. 결과는 이 템플릿의 제목 구조·항목 순서·속성을 그대로 따르고, 안내 문구와 자리표시자({{...}})는 실제 내용으로 채운다. 확인하지 못한 항목은 '확인 필요'로 둔다. 템플릿 노트 자체는 고치지 않는다. 있는 노트에 덧붙일 때는 맨 위의 --- 속성 부분을 빼고 쓴다.`,
+        ]
+      : []),
     "",
     "형식 (블록 여러 개 가능):",
     "=== CREATE: 폴더/이름.md ===",
@@ -35,12 +71,12 @@ export function editSystem(opts: { folders: string[]; newNoteDir: string; today:
     "=== END ===",
     "",
     "규칙:",
-    "- 고치거나 덧붙일 수 있는 노트는 <참고 노트>에 있는 노트(path 그대로)뿐이다. 그 밖의 노트는 CREATE로 새로 만들 수만 있다.",
+    `- 고치거나 덧붙일 수 있는 노트는 <참고 노트>에 있는 노트(path 그대로)${opts.target ? `와 ${OPEN_NOTE_ALIAS}` : ""}뿐이다. 그 밖의 노트는 CREATE로 새로 만들 수만 있다.`,
     "- EDIT 블록 하나에 --- FIND --- / --- REPLACE --- 쌍을 여러 번 넣을 수 있다. 노트 전체를 다시 쓰지 말고 바뀌는 부분만 FIND/REPLACE로 쓴다.",
     "- 노트를 지우거나 이름을 바꾸는 제안은 하지 않는다.",
-    `- 경로는 노트 폴더 기준 상대 경로이고 .md로 끝난다. 새 노트는 따로 말이 없으면 ${opts.newNoteDir ? `"${opts.newNoteDir}" 폴더` : "노트 폴더 맨 위"}에 만든다. 있는 폴더: ${folders}`,
+    `- 경로는 노트 폴더 기준 상대 경로이고 .md로 끝난다. 새 노트는 따로 말이 없으면 ${opts.newNoteDir ? `"${opts.newNoteDir}" 폴더` : "노트 폴더 맨 위"}에 만든다.${folders ? ` 있는 폴더: ${folders}` : ""}`,
     "- 다른 노트를 가리킬 때는 [[노트 이름]] 링크를 쓴다.",
-    "- 블록 밖에는 무엇을 왜 바꾸는지 한두 문장만 쓴다. 할 일이 없으면 블록 없이 이유만 쓴다.",
+    "- 블록을 쓸 때 블록 밖에는 무엇을 왜 바꾸는지 한두 문장만 쓴다.",
     `- 오늘 날짜: ${opts.today}`,
   ].join("\n");
 }

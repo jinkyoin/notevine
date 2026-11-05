@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chatPrompt, journalNotesInRange, pickProvider, qaSystem, weekRange, writePrompt } from "./ai";
+import { asksForTemplate, asksForWeb, chatPrompt, journalNotesInRange, matchTemplate, namesWeb, pickProvider, qaSystem, supportsWeb, weekRange, writeIntent, writePrompt } from "./ai";
 
 describe("ai helpers", () => {
   it("allows the web only when asked to", () => {
@@ -8,6 +8,87 @@ describe("ai helpers", () => {
     expect(qaSystem(true)).toContain("웹을 검색");
     expect(qaSystem(true)).toContain("[제목](URL)");
     expect(qaSystem(true)).toContain("검색어에 넣지 말고");
+  });
+
+  it("tells the AI to search whenever the user asks for it, notes or not", () => {
+    expect(qaSystem(true)).toContain("검색을 요청했거나");
+    expect(qaSystem(true)).toContain("노트가 있어도 반드시 웹을 검색");
+  });
+
+  it.each([
+    "'창발의 시대'란 도서를 검색하여 요약해줘",
+    "창발의 시대 책 찾아서 요약해 줘",
+    "웹에서 창발의 시대 요약해줘",
+    "인터넷으로 찾아봐 줘: Tauri 3 출시일",
+    "구글 검색해서 알려 줘",
+    "웹 검색으로 최신 환율 알려줘",
+    "search the web for Tauri 3",
+    "look up the release date online",
+    "'창발의 시대'란 도서를 검색해서 요약 노트를 새로 만들어 줘",
+    "창발의 시대 책 검색해서 새 노트로 저장해 줘",
+  ])("takes this as a request to search the web: %s", (q) => {
+    expect(asksForWeb(q)).toBe(true);
+  });
+
+  it.each([
+    "지난주 회의에서 결정한 것 정리해 줘",
+    "지난주 회의 결정 찾아줘",
+    "내 노트에서 도서 목록 찾아줘",
+    "웹사이트 개편 일정 요약해 줘",
+    "웹 접근성 관련 메모 찾아줘",
+    "도서 메모 찾아줘",
+    "도서 노트 검색해 줘",
+    "정책 찾아줘",
+    "이 글 요약해 줘",
+    "이 노트에 웹에서 찾은 내용을 덧붙여 줘",
+    "요약해 줘",
+  ])("keeps this with the notes: %s", (q) => {
+    expect(asksForWeb(q)).toBe(false);
+  });
+
+  it("keeps notes in when the request names both notes and the web", () => {
+    const q = "창발의 시대를 노트나 웹에서 검색해서 작성해줘";
+    expect(asksForWeb(q)).toBe(false);
+    expect(namesWeb(q)).toBe(true);
+    expect(writeIntent(q)).toBe("open");
+  });
+
+  it.each([
+    ["이 회의록의 결정사항을 '결정사항 모음' 새 노트로 만들어 줘", "new"],
+    ["창발의 시대 요약 노트를 새로 만들어 줘", "new"],
+    ["독서 템플릿에 맞게 작성해줘", "open"],
+    ["할 일의 담당을 김민수로 바꿔 줘", "open"],
+    ["이 노트들에 태그를 달아 줘", "open"],
+    ["보고서는 어떻게 작성해?", null],
+    ["지난주 회의에서 결정한 것 정리해 줘", null],
+    ["작성자가 누구야?", null],
+  ])("reads what is to be written: %s", (q, want) => {
+    expect(writeIntent(q)).toBe(want);
+  });
+
+  it("finds the template a request asks for", () => {
+    const list = [{ title: "독서템플릿" }, { title: "회의록" }, { title: "독서 심화 템플릿" }, { title: "01.주간 보고" }];
+    expect(matchTemplate("템플릿 폴더에 있는 독서템플릿에 맞게 작성해줘", list)?.title).toBe("독서템플릿");
+    expect(matchTemplate("독서 템플릿으로 써 줘", list)?.title).toBe("독서템플릿");
+    expect(matchTemplate("회의록 양식대로 써 줘", list)?.title).toBe("회의록");
+    expect(matchTemplate("독서 심화 템플릿에 맞게", list)?.title).toBe("독서 심화 템플릿");
+    expect(matchTemplate("주간 보고 템플릿에 맞게", list)?.title).toBe("01.주간 보고");
+    expect(matchTemplate("심화 템플릿에 맞게", list)?.title).toBe("독서 심화 템플릿");
+    expect(matchTemplate("요리 템플릿에 맞게", list)).toBeNull();
+  });
+
+  it("tells asking for a template's format from talking about the folder", () => {
+    expect(asksForTemplate("독서템플릿에 맞게 작성해줘")).toBe(true);
+    expect(asksForTemplate("회의록 양식대로 써 줘")).toBe(true);
+    expect(asksForTemplate("템플릿 폴더 정리 방법 알려줘")).toBe(false);
+  });
+
+  it("knows which connections can search the web", () => {
+    expect(supportsWeb("claude")).toBe(true);
+    expect(supportsWeb("codex")).toBe(true);
+    expect(supportsWeb("ollama")).toBe(false);
+    expect(supportsWeb("anthropic")).toBe(false);
+    expect(supportsWeb("openai")).toBe(false);
   });
 
   it("computes Monday–Sunday and the ISO week", () => {
