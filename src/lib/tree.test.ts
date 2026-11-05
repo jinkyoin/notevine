@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TreeNode } from "../api";
-import { ancestors, baseName, countNotes, findNode, noteTitle, parentPath, remapPath } from "./tree";
+import { ancestors, baseName, countNotes, findNode, moveTargets, noteTitle, parentPath, remapPath } from "./tree";
 
 const tree: TreeNode[] = [
   {
@@ -21,6 +21,24 @@ const tree: TreeNode[] = [
     ],
   },
 ];
+
+describe("moveTargets", () => {
+  const folder = (path: string, children: TreeNode[] = []): TreeNode => ({ kind: "folder", path, name: path.split("/").pop()!, children }) as TreeNode;
+  const note = (path: string): TreeNode => ({ kind: "note", path, name: path.split("/").pop()! }) as TreeNode;
+  const tree = [folder("a", [folder("a/b", [note("a/b/n.md")]), note("a/m.md")]), folder("c"), note("t.md")];
+
+  it("offers every folder but where a note already is", () => {
+    expect(moveTargets(tree, "t.md")).toEqual(["a", "a/b", "c"]);
+    expect(moveTargets(tree, "a/b/n.md")).toEqual(["", "a", "c"]);
+  });
+  it("keeps a folder out of itself and what is below it", () => {
+    expect(moveTargets(tree, "a")).toEqual(["c"]);
+    expect(moveTargets(tree, "a/b")).toEqual(["", "c"]);
+  });
+  it("has nowhere to go when there are no other folders", () => {
+    expect(moveTargets([note("t.md")], "t.md")).toEqual([]);
+  });
+});
 
 describe("tree helpers", () => {
   it("splits paths", () => {

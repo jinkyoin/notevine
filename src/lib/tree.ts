@@ -44,3 +44,21 @@ export function remapPath(path: string, from: string, to: string): string {
   if (path.startsWith(from + "/")) return to + path.slice(from.length);
   return path;
 }
+
+/**
+ * Folders `path` (a note, file or folder) can be moved to, in tree order; "" is the top
+ * of the vault. Not where it already is, and a folder not into itself or below it.
+ */
+export function moveTargets(nodes: TreeNode[], path: string): string[] {
+  const here = parentPath(path);
+  const out: string[] = here ? [""] : [];
+  const walk = (list: TreeNode[]) => {
+    for (const n of list) {
+      if (n.kind !== "folder" || n.path === path) continue;
+      if (n.path !== here) out.push(n.path);
+      walk(n.children ?? []);
+    }
+  };
+  walk(nodes);
+  return out;
+}

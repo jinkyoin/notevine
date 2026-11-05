@@ -12,6 +12,7 @@ import { TEXT_COLORS } from "../editor/colors";
 
 import { tx } from "../i18n";
 import { PopupMenu } from "./PopupMenu";
+import { MovePicker } from "./MovePicker";
 interface Menu {
   x: number;
   y: number;
@@ -38,6 +39,7 @@ export function Explorer() {
   const editing = useApp((s) => s.editing);
   const move = useApp((s) => s.move);
   const [menu, setMenu] = useState<Menu | null>(null);
+  const [moving, setMoving] = useState<string | null>(null);
 
   return (
     <div className="explorer">
@@ -72,7 +74,8 @@ export function Explorer() {
         ))}
         {tree.length === 0 && <p className="muted small pad">{tx("노트가 없습니다. ＋로 새 노트를 만드세요.")}</p>}
       </div>
-      {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} />}
+      {menu && <ContextMenu menu={menu} onClose={() => setMenu(null)} onMove={setMoving} />}
+      {moving && <MovePicker path={moving} close={() => setMoving(null)} />}
     </div>
   );
 }
@@ -250,7 +253,7 @@ function NewFolderRow({ parent, depth, project }: { parent: string; depth: numbe
   );
 }
 
-function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
+function ContextMenu({ menu, onClose, onMove }: { menu: Menu; onClose: () => void; onMove: (path: string) => void }) {
   const { createNote, setEditing, remove, toggleFolder, toast, setVersionView, setModal } = useApp.getState();
   const node = menu.node;
   const folderColor = node?.kind === "folder" ? useApp.getState().config.folder_colors?.[node.path] : undefined;
@@ -318,6 +321,7 @@ function ContextMenu({ menu, onClose }: { menu: Menu; onClose: () => void }) {
     }
     groups.push([
       { label: tx("이름 변경"), run: () => setEditing({ mode: "rename", path: node.path }) },
+      { label: tx("다른 폴더로 이동…"), run: () => onMove(node.path) },
       ...(node.kind === "note" ? [{ label: tx("히스토리 보기"), run: () => setVersionView({ path: node.path, id: null }) }] : []),
       ...paraItems,
     ]);

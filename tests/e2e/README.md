@@ -21,6 +21,7 @@ node tests/e2e/day4.cjs   # 링크 자동완성·이동·백링크·이름 변�
 node tests/e2e/day5.cjs   # 검색·필터, 빠른 열기, 속성 패널
 node tests/e2e/day6.cjs   # 프리셋·업무일지·빠른 메모·아이디어 보드·첨부·히스토리·설정
 node tests/e2e/ai.cjs     # AI 도우미 (Claude Code·Codex CLI로 실제 질의, 구독 사용량을 조금 씀)
+node tests/e2e/move-menu.cjs   # 우클릭 '다른 폴더로 이동…' (AI 호출 없음)
 node tests/e2e/ai-private.cjs  # #비공개 노트가 AI로 나가지 않는지 (AI 호출 없음)
 node tests/e2e/ai-web-request.cjs claude # 입력 칸 하나로: 노트 질문은 확인, 웹 요청은 바로 검색, 작성은 열린 노트 제안, 템플릿 형식 (실제 AI·웹 검색)
 node tests/e2e/ai-research.cjs claude  # 질문 하나로 노트+웹 조사 → 새 노트 저장 (실제 AI·웹 검색, codex도 가능)
