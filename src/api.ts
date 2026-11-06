@@ -406,6 +406,7 @@ export const api = {
   importAttachment: (src: string, folder: string) => invoke<string>("import_attachment", { src, folder }),
   saveAttachment: (name: string, data: Uint8Array, folder: string) =>
     invoke<string>("save_attachment", { name, data: Array.from(data), folder }),
+  saveWebImage: (url: string, pageUrl: string, folder: string) => invoke<string>("save_web_image", { url, pageUrl, folder }),
   resolveAttachment: (target: string, from: string) => invoke<string | null>("resolve_attachment", { target, from }),
   attachmentPath: (path: string) => invoke<string>("attachment_path", { path }),
   /** `refresh` probes the CLIs again instead of using the minute-long cache. */

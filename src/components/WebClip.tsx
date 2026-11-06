@@ -41,7 +41,7 @@ function ClipDialog({ close }: { close: () => void }) {
           onKeyDown={(e) => !e.nativeEvent.isComposing && e.key === "Enter" && void go()}
         />
         <p className="muted small">
-          {tx("이 주소에 한 번 접속해 페이지를 가져옵니다. 로그인이 필요한 페이지는 본문 대신 로그인 화면이 저장될 수 있습니다.")}
+          {tx("이 주소에 접속해 페이지를 가져오고, 본문의 그림은 첨부 폴더에 내려받습니다. 로그인이 필요한 페이지는 본문 대신 로그인 화면이 저장될 수 있습니다.")}
         </p>
         <div className="modal-actions">
           <button className="btn ghost" disabled={busy} onClick={close}>

@@ -446,6 +446,18 @@ pub mod cmd {
         })
     }
 
+    /// Saves a picture of a clipped web page as an attachment. Off the main thread, and
+    /// the download happens without holding the vault.
+    #[tauri::command(async)]
+    pub fn save_web_image(state: State<AppState>, url: String, page_url: String, folder: String) -> AppResult<String> {
+        let (name, data) = crate::web::download_image(&url, &page_url)?;
+        with_vault(&state, |v| {
+            let rel = super::save_attachment(v, &name, &data, &folder)?;
+            RESOLVER.added(v.root(), &rel);
+            Ok(rel)
+        })
+    }
+
     #[tauri::command]
     pub fn resolve_attachment(state: State<AppState>, target: String, from: String) -> AppResult<Option<String>> {
         with_vault(&state, |v| RESOLVER.resolve(v, &target, &from))

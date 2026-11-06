@@ -959,22 +959,25 @@ export const useApp = create<AppStore>((set, get) => {
 
     async clipWebPage(url) {
       const config = get().config;
+      // Loaded here: its article extractor and HTML converter are only needed for clipping.
+      const { clipFetched, clipFileName, clipNote, saveClipImages } = await import("./lib/clip");
       let page: { url: string; html: string };
+      let clip: Awaited<ReturnType<typeof clipFetched>>;
       try {
         page = await api.fetchPage(url);
+        clip = await clipFetched(page, api.fetchPage);
       } catch (e) {
         get().toast(errorMessage(e), "error");
         return false;
       }
-      // Loaded here: its article extractor and HTML converter are only needed for clipping.
-      const { clipFileName, clipNote, clipPage } = await import("./lib/clip");
-      const clip = clipPage(page.html, page.url);
       if (!clip) {
         get().toast(tx("이 페이지에서 본문을 찾지 못했습니다"), "error");
         return false;
       }
       const folder = config.preset_enabled ? config.inbox_folder : "";
-      const content = clipNote(clip, page.url, day(Date.now()));
+      const pageUrl = page.url;
+      const images = await saveClipImages(clip.markdown, (image) => api.saveWebImage(image, pageUrl, config.attachment_folder));
+      const content = clipNote({ ...clip, markdown: images.markdown }, pageUrl, day(Date.now()));
       const base = clipFileName(clip.title);
       // Same title clipped again: "제목 2", "제목 3"…
       for (let n = 1; n <= 50; n++) {
@@ -983,6 +986,7 @@ export const useApp = create<AppStore>((set, get) => {
           await get().refreshTree();
           get().openNote(created);
           get().toast(tx("웹 페이지를 노트로 저장했습니다 · {0}", created));
+          if (images.failed) get().toast(tx("그림 {0}개는 받지 못해 웹 주소로 남겼습니다", images.failed), "error");
           return true;
         } catch (e) {
           if ((e as AppError)?.code !== "already_exists") {

@@ -189,6 +189,7 @@ pub fn run() {
             extras::cmd::deleted_notes,
             extras::cmd::import_attachment,
             extras::cmd::save_attachment,
+            extras::cmd::save_web_image,
             extras::cmd::resolve_attachment,
             extras::cmd::attachment_path,
             ai::ai_providers,

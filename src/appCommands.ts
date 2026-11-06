@@ -89,7 +89,7 @@ export function registerAppCommands(): () => void {
       id: "note.webClip",
       title: tx("웹 페이지 클립 (주소로 노트 만들기)"),
       keywords: tx("웹 클립 스크랩 저장 url 주소 인터넷 기사 블로그 clip"),
-      when: () => !!st().vault && st().modal === null,
+      when: noModal,
       run: () => st().setModal("clip"),
     },
     {
