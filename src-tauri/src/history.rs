@@ -110,6 +110,21 @@ impl History {
         Ok(Self { conn })
     }
 
+    /// Adds the versions of another history file that aren't here yet.
+    pub fn merge_from(&self, file: &Path) -> AppResult<()> {
+        self.conn.execute("ATTACH DATABASE ?1 AS other", [file.to_string_lossy()])?;
+        let merged = self.conn.execute_batch(
+            "INSERT INTO main.versions (path, started_at, saved_at, hash, size, content_zstd, origin, sealed)
+             SELECT o.path, o.started_at, o.saved_at, o.hash, o.size, o.content_zstd, o.origin, o.sealed
+             FROM other.versions o
+             WHERE NOT EXISTS (SELECT 1 FROM main.versions v
+                               WHERE v.path = o.path AND v.saved_at = o.saved_at AND v.hash = o.hash)
+             ORDER BY o.id;",
+        );
+        self.conn.execute_batch("DETACH DATABASE other")?;
+        Ok(merged?)
+    }
+
     pub fn record(&self, path: &str, content: &str, origin: Origin, force: bool) -> AppResult<Recorded> {
         self.record_at(path, content, origin, force, now_ms())
     }

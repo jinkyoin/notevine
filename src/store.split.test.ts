@@ -16,7 +16,7 @@ describe("split view in the store", () => {
   function setup() {
     vi.spyOn(api, "setWorkspace").mockResolvedValue(undefined as never);
     vi.spyOn(api, "listNotes").mockResolvedValue([]);
-    useApp.setState({ vault: { root: "D:/v", name: "v" }, tree: ["a.md", "b.md"].map(note) });
+    useApp.setState({ vault: { root: "D:/v", name: "v", drive: null, store_dir: "", store_on_this_pc: false, store_warning: null }, tree: ["a.md", "b.md"].map(note) });
   }
 
   it("saves both editors", async () => {

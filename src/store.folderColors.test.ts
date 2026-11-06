@@ -20,7 +20,7 @@ describe("folder colors in the store", () => {
     vi.spyOn(api, "listNotes").mockResolvedValue([]);
     vi.spyOn(api, "listTree").mockResolvedValue([node("업무", "folder")]);
     useApp.setState({
-      vault: { root: "D:/v", name: "v" },
+      vault: { root: "D:/v", name: "v", drive: null, store_dir: "", store_on_this_pc: false, store_warning: null },
       flushEditor: async () => {},
       config: { ...initial.config, update_links_on_rename: false },
     });

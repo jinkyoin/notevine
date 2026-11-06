@@ -15,6 +15,17 @@ export function sizeDelta(cur: number, prev: number | undefined): string {
   return (d > 0 ? "+" : "−") + txt;
 }
 
+function HistoryNote() {
+  const onThisPc = useApp((s) => !!s.vault?.store_on_this_pc);
+  return (
+    <p className="muted small pad hist-note">
+      {onThisPc
+        ? tx("드라이브 폴더의 이전 버전은 이 PC에 따로 보관됩니다. 다른 PC에서 고친 내용의 이전 버전은 그 PC에 쌓입니다.")
+        : tx("이전 버전은 이 노트 폴더 안의 숨은 .app 폴더에 보관됩니다. 노트를 백업할 때 함께 백업하세요.")}
+    </p>
+  );
+}
+
 export function useVersions(path: string | null): VersionMeta[] {
   const savedSeq = useApp((s) => s.savedSeq);
   const externalSeq = useApp((s) => s.externalSeq);
@@ -63,7 +74,7 @@ export function HistoryPanel() {
           ))}
         </div>
       ))}
-      <p className="muted small pad hist-note">{tx("이전 버전은 이 노트 폴더 안의 숨은 .app 폴더에 보관됩니다. 노트를 백업할 때 함께 백업하세요.")}</p>
+      <HistoryNote />
     </section>
   );
 }

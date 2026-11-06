@@ -2,7 +2,7 @@
 import logo from "../../src-tauri/app-icon.svg?url";
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, type RecentVault } from "../api";
+import { api, type DriveRoot, type RecentVault } from "../api";
 import { useApp } from "../store";
 
 import { tx } from "../i18n";
@@ -12,8 +12,12 @@ let autoOpenTried = false;
 export function StartScreen() {
   const openVault = useApp((s) => s.openVault);
   const [recent, setRecent] = useState<RecentVault[]>([]);
+  const [drives, setDrives] = useState<DriveRoot[]>([]);
 
   const loadRecent = () => api.recentVaults().then(setRecent).catch(() => setRecent([]));
+  useEffect(() => {
+    api.installedDrives().then(setDrives).catch(() => setDrives([]));
+  }, []);
   useEffect(() => {
     if (!autoOpenTried) {
       autoOpenTried = true;
@@ -29,8 +33,8 @@ export function StartScreen() {
     loadRecent();
   }, [openVault]);
 
-  async function pick(title: string) {
-    const dir = await open({ directory: true, multiple: false, title });
+  async function pick(title: string, defaultPath?: string) {
+    const dir = await open({ directory: true, multiple: false, title, defaultPath });
     if (typeof dir === "string") await openVault(dir);
   }
 
@@ -56,6 +60,16 @@ export function StartScreen() {
             {tx("새 노트 폴더 만들기")}
           </button>
         </div>
+
+        {drives.length > 0 && (
+          <div className="start-actions start-drives">
+            {drives.map((d) => (
+              <button key={d.root} className="btn" title={d.start} onClick={() => pick(tx("{0}에서 열 노트 폴더 선택", d.name), d.start)}>
+                {tx("{0}에서 열기", d.name)}
+              </button>
+            ))}
+          </div>
+        )}
 
         <h2 className="section-label">{tx("최근 노트 폴더")}</h2>
         {recent.length === 0 ? (

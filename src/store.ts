@@ -14,6 +14,7 @@ import {
   type DeviceTrust,
 } from "./api";
 import { ancestors, findNode, remapPath } from "./lib/tree";
+import { unseenConflicts } from "./lib/driveConflicts";
 import { setProperty, type Prop } from "./lib/frontmatter";
 import { buildReview, period, reviewFolder, reviewName, type ReviewKind } from "./lib/review";
 import { day } from "./lib/folderTable";
@@ -289,6 +290,7 @@ interface AppStore {
 }
 
 let toastSeq = 0;
+const seenDriveConflicts = new Set<string>();
 /** Largest file taken from a drop (as for attachments in the editor). */
 const MAX_IMPORT_BYTES = 50 * 1024 * 1024;
 let backingUp = false;
@@ -310,6 +312,20 @@ const flushBoth = async (force?: boolean) => {
 };
 
 export const useApp = create<AppStore>((set, get) => {
+  /** Tells about conflict copies the drive's app made since the last look. */
+  const reportDriveConflicts = async () => {
+    if (!get().vault?.drive) return;
+    const found = await api.driveConflicts().catch(() => null);
+    if (!found) return;
+    const fresh = unseenConflicts(found, seenDriveConflicts);
+    if (!fresh.length) return;
+    const message =
+      fresh.length === 1
+        ? tx("드라이브가 만든 충돌본이 있습니다: {0}", fresh[0].copy)
+        : tx("드라이브가 만든 충돌본이 {0}개 있습니다. 설정 > 백업에서 모두 볼 수 있습니다", fresh.length);
+    get().toast(message, "info", { label: tx("열기"), run: () => get().openNote(fresh[0].copy) });
+  };
+
   /** Runs a backend call and reports failures as an error toast. */
   async function attempt<T>(fn: () => Promise<T>): Promise<T | undefined> {
     try {
@@ -454,7 +470,10 @@ export const useApp = create<AppStore>((set, get) => {
         }
         // Coalesce bursts (e.g. a sync tool writing many files) into one tree refresh.
         window.clearTimeout(treeTimer);
-        treeTimer = window.setTimeout(() => get().refreshTree(), 150);
+        treeTimer = window.setTimeout(() => {
+          void get().refreshTree();
+          void reportDriveConflicts();
+        }, 150);
       });
       // Indexing runs in the background after opening: reload the note list (link
       // completion, idea board, folder views) once it is done.
@@ -470,6 +489,11 @@ export const useApp = create<AppStore>((set, get) => {
       const config = await api.getConfig().catch(() => DEFAULT_CONFIG);
       const trust = await api.deviceTrust().catch(() => NO_TRUST);
       set({ config, trust, sidebarTab: get().sidebarTab === "ideas" && !config.preset_enabled ? "files" : get().sidebarTab });
+      if (info.store_warning) {
+        get().toast(tx("이전 히스토리를 드라이브 밖으로 옮기지 못했습니다. 원본은 .app 폴더에 그대로 있고, 다음에 열 때 다시 시도합니다: {0}", info.store_warning), "error");
+      }
+      seenDriveConflicts.clear();
+      void reportDriveConflicts();
       applyTheme(config.theme);
       await get().refreshTree();
 

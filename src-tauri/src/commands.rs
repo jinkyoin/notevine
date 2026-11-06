@@ -4,13 +4,13 @@
 use std::path::Path;
 use std::sync::Mutex;
 
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::drive::{self, DriveConflict, DriveRoot};
 use crate::error::{AppError, AppResult};
 use crate::history::VersionMeta;
 use crate::index::Index;
 use crate::index::NoteRef;
-use crate::paths::APP_DIR;
 use crate::recent::{RecentStore, RecentVault};
 use crate::search::{SearchQuery, SearchResult, TagCount};
 use crate::vault::{Backlink, LinkChange, SaveOutcome, TreeNode, Vault, VaultInfo, Workspace};
@@ -36,9 +36,11 @@ pub fn open_vault(app: AppHandle, state: State<AppState>, path: String) -> AppRe
     // database files still held open (Windows refuses to replace them then).
     *state.watcher.lock().expect("watcher lock poisoned") = None;
     *state.vault.lock().expect("vault lock poisoned") = None;
-    let v = Vault::open(Path::new(&path))?;
+    let local_base = app.path().app_local_data_dir().map_err(|e| AppError::System(e.to_string()))?;
+    let v = Vault::open_placed(Path::new(&path), &local_base, &drive::installed())?;
     let info = v.info();
     let root = v.root().to_path_buf();
+    let store = v.store_dir();
     // A broken recent list must not block opening the vault.
     let _ = state.recent.touch(&info.root, &info.name);
     *state.vault.lock().expect("vault lock poisoned") = Some(v);
@@ -48,10 +50,22 @@ pub fn open_vault(app: AppHandle, state: State<AppState>, path: String) -> AppRe
     // Bring the index up to date in the background on its own connection,
     // so a large vault doesn't block the UI (NFR-PRF-01).
     std::thread::spawn(move || {
-        let result = Index::open(&root.join(APP_DIR).join("index.db")).and_then(|ix| ix.scan(&root));
+        let result = Index::open(&store.join("index.db")).and_then(|ix| ix.scan(&root));
         let _ = app.emit("index-ready", result.map(|s| s.indexed + s.unchanged).map_err(|e| e.to_string()));
     });
     Ok(info)
+}
+
+/// Drive folders on this PC, for the start screen. Off the main thread: it asks each
+/// volume for its name.
+#[tauri::command(async)]
+pub fn installed_drives() -> Vec<DriveRoot> {
+    drive::installed()
+}
+
+#[tauri::command]
+pub fn drive_conflicts(state: State<AppState>) -> AppResult<Vec<DriveConflict>> {
+    with_vault(&state, |v| v.drive_conflicts())
 }
 
 #[tauri::command]
@@ -85,9 +99,26 @@ pub fn list_tree(state: State<AppState>) -> AppResult<Vec<TreeNode>> {
     with_vault(&state, |v| v.tree())
 }
 
-#[tauri::command]
+/// Off the main thread, and in a drive vault the download happens without holding the
+/// vault: a note that has to come from the network mustn't freeze the window.
+#[tauri::command(async)]
 pub fn read_note(state: State<AppState>, path: String) -> AppResult<String> {
-    with_vault(&state, |v| v.read_note(&path))
+    let target = with_vault(&state, |v| Ok(v.fetch_target(&path)?.map(|abs| (abs, v.is_online_only(&path)))))?;
+    let was_online_only = match target {
+        Some((abs, online_only)) => {
+            drive::fetch(&abs, &path)?;
+            online_only
+        }
+        None => false,
+    };
+    with_vault(&state, |v| {
+        let content = v.read_note(&path)?;
+        if was_online_only {
+            // It was only listed by name until now.
+            let _ = v.index().upsert_file(v.root(), &crate::paths::normalize_rel(&path));
+        }
+        Ok(content)
+    })
 }
 
 /// Saves a note. `force` = manual save or app exit: always lands in a history

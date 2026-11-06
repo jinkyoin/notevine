@@ -192,6 +192,15 @@ button {
   gap: 8px;
   margin: 20px 0 24px;
 }
+.drive-conflicts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.start-drives {
+  flex-wrap: wrap;
+  margin-top: -12px;
+}
 .section-label {
   font-size: 12px;
   font-weight: 600;

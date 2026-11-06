@@ -664,7 +664,7 @@ pub fn custom_css(state: State<AppState>, create: bool) -> AppResult<(String, St
 pub fn history_stats(state: State<AppState>) -> AppResult<crate::history::HistoryStats> {
     with_vault(&state, |v| {
         let mut s = v.history().stats()?;
-        let db = v.root().join(crate::paths::APP_DIR).join("history.db");
+        let db = v.store_dir().join("history.db");
         s.file_bytes = ["", "-wal"]
             .iter()
             .filter_map(|ext| fs::metadata(format!("{}{ext}", db.display())).ok())

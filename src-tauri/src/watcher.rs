@@ -59,7 +59,9 @@ fn handle(app: &AppHandle, root: &Path, paths: BTreeSet<PathBuf>) {
                 continue; // .app/, temp files, .git, ...
             }
             if abs.is_file() {
-                if is_note(&rel) {
+                if is_note(&rel) && vault.is_online_only(&rel) {
+                    let _ = vault.index().upsert_file(root, &rel); // listed, not downloaded
+                } else if is_note(&rel) {
                     match vault.on_external_change(&rel) {
                         Ok(true) => external.push(rel.clone()),
                         Ok(false) => continue, // the app's own save

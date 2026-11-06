@@ -13,9 +13,34 @@ export interface TreeNode {
   children?: TreeNode[];
 }
 
+export type DriveKind = "onedrive" | "google";
+
 export interface VaultInfo {
   root: string;
   name: string;
+  /** Set when the note folder is inside a cloud drive folder. */
+  drive: DriveKind | null;
+  /** Folder holding the history and search index: `.app`, or this PC for a drive folder. */
+  store_dir: string;
+  /** Kept on this PC, not in the note folder's `.app`. */
+  store_on_this_pc: boolean;
+  /** The earlier history could not be moved off the drive. */
+  store_warning: string | null;
+}
+
+/** A drive folder on this PC. */
+export interface DriveRoot {
+  kind: DriveKind;
+  name: string;
+  root: string;
+  /** Where the folder picker starts. */
+  start: string;
+}
+
+/** A copy the drive's app made when two PCs changed a note at once. */
+export interface DriveConflict {
+  copy: string;
+  original: string;
 }
 
 export interface RecentVault {
@@ -299,6 +324,7 @@ const ERROR_TEXT: Record<string, () => string> = {
   invalid_name: () => tx("사용할 수 없는 이름입니다"),
   outside_vault: () => tx("노트 폴더 밖의 경로는 사용할 수 없습니다"),
   trash: () => tx("휴지통으로 옮기지 못했습니다"),
+  cloud_file: () => tx("드라이브에서 파일을 받지 못했습니다. 인터넷 연결과 드라이브 앱을 확인하세요"),
 };
 
 export function errorMessage(e: unknown): string {
@@ -315,6 +341,8 @@ export function errorMessage(e: unknown): string {
 export const api = {
   openVault: (path: string) => invoke<VaultInfo>("open_vault", { path }),
   closeVault: () => invoke<void>("close_vault"),
+  installedDrives: () => invoke<DriveRoot[]>("installed_drives"),
+  driveConflicts: () => invoke<DriveConflict[]>("drive_conflicts"),
   recentVaults: () => invoke<RecentVault[]>("recent_vaults"),
   forgetVault: (path: string) => invoke<void>("forget_vault", { path }),
   listTree: () => invoke<TreeNode[]>("list_tree"),

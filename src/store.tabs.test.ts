@@ -13,7 +13,7 @@ describe("tabs in the store", () => {
 
   function setup(paths = ["a.md", "b.md", "c.md"]) {
     const ws = vi.spyOn(api, "setWorkspace").mockResolvedValue(undefined as never);
-    useApp.setState({ vault: { root: "D:/v", name: "v" }, tree: paths.map(note), flushEditor: async () => {} });
+    useApp.setState({ vault: { root: "D:/v", name: "v", drive: null, store_dir: "", store_on_this_pc: false, store_warning: null }, tree: paths.map(note), flushEditor: async () => {} });
     return ws;
   }
   const tabPaths = () => useApp.getState().tabs.map((t) => t.path);

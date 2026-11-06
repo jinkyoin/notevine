@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { allCommands, keysFromEvent, keysOf, onCommandsChanged, type Command } from "../commands";
-import { api, errorMessage, type AppSettings, type BackupStatus, type HistoryStats, type VaultConfig } from "../api";
+import { api, errorMessage, type AppSettings, type BackupStatus, type DriveConflict, type HistoryStats, type VaultConfig } from "../api";
 import { useApp } from "../store";
 import { useAi } from "../aiStore";
 import { forgetApiModels, ProviderFix } from "./AiPanel";
@@ -150,7 +150,12 @@ function SettingsDialog({ close }: { close: () => void }) {
             )}
             {tab === "keys" && <ShortcutSettings />}
             {tab === "plugins" && <PluginSettings />}
-            {tab === "backup" && <BackupSettings />}
+            {tab === "backup" && (
+              <>
+                <DriveSettings />
+                <BackupSettings />
+              </>
+            )}
             {tab === "files" && (
               <>
                 <TextRow label={tx("첨부 폴더")} value={config.attachment_folder} onCommit={(v) => set("attachment_folder", v)} />
@@ -213,12 +218,23 @@ function SettingsDialog({ close }: { close: () => void }) {
                 <Row label={tx("묶음 간격")} hint={tx("같은 노트를 이어서 저장하면 5분 단위로 한 버전으로 묶습니다")}>
                   <span>{tx("5분")}</span>
                 </Row>
-                <Row label={tx("저장 위치")} hint={tx("다시 만들 수 없는 파일이니 노트 폴더와 함께 백업하세요")}>
-                  <span className="mono small">.app/history.db</span>
+                <Row
+                  label={tx("저장 위치")}
+                  hint={
+                    vault?.store_on_this_pc
+                      ? tx("드라이브로 동기화되지 않는 이 PC의 폴더입니다. 다시 만들 수 없는 파일이니 따로 백업하세요")
+                      : tx("다시 만들 수 없는 파일이니 노트 폴더와 함께 백업하세요")
+                  }
+                >
+                  {vault?.store_on_this_pc ? (
+                    <span className="small" title={`${vault.store_dir}\\history.db`}>{tx("이 PC")}</span>
+                  ) : (
+                    <span className="mono small">.app/history.db</span>
+                  )}
                   <button
                     className="btn small"
                     onClick={() =>
-                      vault && void revealItemInDir(`${vault.root}\\.app\\history.db`).catch((e) => toast(errorMessage(e), "error"))
+                      vault && void revealItemInDir(`${vault.store_dir}\\history.db`).catch((e) => toast(errorMessage(e), "error"))
                     }
                   >
                     {tx("폴더 열기")}
@@ -698,6 +714,59 @@ function KeyRow({
         </button>
       )}
     </Row>
+  );
+}
+
+/** Shown when the note folder is inside a cloud drive folder. */
+function DriveSettings() {
+  const drive = useApp((s) => s.vault?.drive ?? null);
+  const tree = useApp((s) => s.tree);
+  const { openNote, setModal, toast } = useApp.getState();
+  const [conflicts, setConflicts] = useState<DriveConflict[]>([]);
+  useEffect(() => {
+    if (!drive) return;
+    let stale = false;
+    api
+      .driveConflicts()
+      .then((c) => !stale && setConflicts(c))
+      .catch((e) => toast(errorMessage(e), "error"));
+    return () => {
+      stale = true;
+    };
+  }, [drive, tree, toast]);
+
+  if (!drive) return null;
+  return (
+    <>
+      <Row
+        label={tx("드라이브")}
+        hint={tx("이 노트 폴더는 드라이브 앱이 동기화합니다. 이 폴더에 Git 백업까지 함께 쓰면 드라이브가 .git 폴더를 망가뜨릴 수 있으니 둘 중 하나만 쓰세요")}
+      >
+        <span>{drive === "google" ? "Google Drive" : "OneDrive"}</span>
+      </Row>
+      <Row label={tx("드라이브 충돌본")} hint={tx("두 PC에서 같은 노트를 고쳤을 때 드라이브 앱이 만든 사본입니다. 내용을 확인해 합친 뒤 지우세요")}>
+        {conflicts.length === 0 ? (
+          <span className="muted small">{tx("없음")}</span>
+        ) : (
+          <ul className="drive-conflicts">
+            {conflicts.map((c) => (
+              <li key={c.copy}>
+                <button
+                  className="link-btn"
+                  title={tx("원본: {0}", c.original)}
+                  onClick={() => {
+                    setModal(null);
+                    openNote(c.copy);
+                  }}
+                >
+                  {c.copy}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Row>
+    </>
   );
 }
 

@@ -841,5 +841,19 @@
  "'{0}' 옮기기": "Move '{0}'",
  "↑↓ 선택 · Enter": "↑↓ to choose · Enter",
  "옮길 폴더 찾기": "Find a folder",
- "옮길 수 있는 폴더가 없습니다": "No folder to move to"
+ "옮길 수 있는 폴더가 없습니다": "No folder to move to",
+ "드라이브에서 파일을 받지 못했습니다. 인터넷 연결과 드라이브 앱을 확인하세요": "Could not get the file from the drive. Check your internet connection and the drive app",
+ "이전 히스토리를 드라이브 밖으로 옮기지 못했습니다. 원본은 .app 폴더에 그대로 있고, 다음에 열 때 다시 시도합니다: {0}": "Could not move the earlier history off the drive. The original is still in the .app folder, and this is tried again next time: {0}",
+ "드라이브가 만든 충돌본이 있습니다: {0}": "The drive made a conflict copy: {0}",
+ "드라이브가 만든 충돌본이 {0}개 있습니다. 설정 > 백업에서 모두 볼 수 있습니다": "The drive made {0} conflict copies. See them all in Settings > Backup",
+ "{0}에서 열 노트 폴더 선택": "Choose a note folder in {0}",
+ "{0}에서 열기": "Open from {0}",
+ "드라이브 폴더의 이전 버전은 이 PC에 따로 보관됩니다. 다른 PC에서 고친 내용의 이전 버전은 그 PC에 쌓입니다.": "Earlier versions of a drive folder are kept separately on this PC. Edits made on another PC keep their earlier versions on that PC.",
+ "드라이브로 동기화되지 않는 이 PC의 폴더입니다. 다시 만들 수 없는 파일이니 따로 백업하세요": "A folder on this PC that the drive doesn't sync. It can't be recreated, so back it up separately",
+ "드라이브": "Drive",
+ "이 노트 폴더는 드라이브 앱이 동기화합니다. 이 폴더에 Git 백업까지 함께 쓰면 드라이브가 .git 폴더를 망가뜨릴 수 있으니 둘 중 하나만 쓰세요": "The drive app syncs this note folder. Using Git backup here as well can let the drive damage the .git folder, so use only one of them",
+ "드라이브 충돌본": "Drive conflict copies",
+ "두 PC에서 같은 노트를 고쳤을 때 드라이브 앱이 만든 사본입니다. 내용을 확인해 합친 뒤 지우세요": "Copies the drive app made when two PCs changed the same note. Check them, merge what you need, then delete them",
+ "원본: {0}": "Original: {0}",
+ "이 PC": "This PC"
 }

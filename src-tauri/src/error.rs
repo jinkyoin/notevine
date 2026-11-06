@@ -16,6 +16,8 @@ pub enum AppError {
     InvalidName(String),
     #[error("노트 폴더 밖의 경로는 사용할 수 없습니다: {0}")]
     OutsideVault(String),
+    #[error("드라이브에서 파일을 받지 못했습니다. 인터넷 연결과 드라이브 앱을 확인하세요: {0}")]
+    CloudFile(String),
     #[error("{0}")]
     Io(#[from] std::io::Error),
     #[error("휴지통으로 옮기지 못했습니다: {0}")]
@@ -38,6 +40,7 @@ impl AppError {
             AppError::AlreadyExists(_) => "already_exists",
             AppError::InvalidName(_) => "invalid_name",
             AppError::OutsideVault(_) => "outside_vault",
+            AppError::CloudFile(_) => "cloud_file",
             AppError::Io(_) => "io",
             AppError::Trash(_) => "trash",
             AppError::Json(_) => "json",

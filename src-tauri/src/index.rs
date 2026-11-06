@@ -11,6 +11,7 @@ use serde::Serialize;
 
 use crate::error::AppResult;
 use crate::parse::{self, LinkKind, ValueType};
+use crate::drive::is_online_only;
 use crate::paths::{APP_DIR, is_hidden, is_note, name_key, parent_rel, resolve_rel, to_rel};
 
 /// Bump when the schema or what `parse` extracts changes: an index built by an
@@ -102,6 +103,10 @@ pub fn link_key(target: &str) -> String {
     k.strip_suffix(".md").map(str::to_string).unwrap_or(k)
 }
 
+/// The size recorded for a note listed without reading it. No file has this size, so
+/// the next scan sees a change as soon as the note can be read.
+const NOT_READ: i64 = -1;
+
 fn title_of(rel: &str) -> String {
     let name = rel.rsplit('/').next().unwrap_or(rel);
     if is_note(name) { name[..name.len() - 3].to_string() } else { name.to_string() }
@@ -189,6 +194,11 @@ impl Index {
     pub fn upsert_file(&self, root: &Path, rel: &str) -> AppResult<()> {
         let abs = root.join(rel);
         let meta = fs::metadata(&abs)?;
+        if is_online_only(&meta) {
+            let listed: bool =
+                self.conn.query_row("SELECT EXISTS(SELECT 1 FROM notes WHERE path = ?1)", params![rel], |r| r.get(0))?;
+            return if listed { Ok(()) } else { self.upsert(rel, "", ms(meta.created()), ms(meta.modified()), NOT_READ) };
+        }
         let content = fs::read_to_string(&abs)?;
         self.upsert(rel, &content, ms(meta.created()), ms(meta.modified()), meta.len() as i64)
     }
@@ -267,6 +277,15 @@ impl Index {
                 let Some(rel) = to_rel(root, &path) else {
                     continue;
                 };
+                // Reading it would download it. Keep what is known, or list it by name so
+                // links to it still resolve; NOT_READ gets it read once it is on this PC.
+                if is_online_only(&meta) {
+                    if known.remove(&rel).is_none() {
+                        self.upsert(&rel, "", ms(meta.created()), ms(meta.modified()), NOT_READ)?;
+                    }
+                    stats.unchanged += 1;
+                    continue;
+                }
                 let stamp = (ms(meta.modified()), meta.len() as i64);
                 if known.remove(&rel) == Some(stamp) {
                     stats.unchanged += 1;
@@ -643,5 +662,60 @@ mod tests {
     fn link_keys_ignore_case_and_extension() {
         assert_eq!(link_key("폴더/회의록.MD"), "폴더/회의록");
         assert_eq!(link_key(" Note "), "note");
+    }
+
+    const BODY_HITS: &str = "SELECT count(*) FROM notes_fts WHERE notes_fts MATCH '\"업무개선\"'";
+    const NOTES: &str = "SELECT count(*) FROM notes";
+
+    #[cfg(windows)]
+    #[test]
+    fn scan_lists_an_online_only_note_without_reading_it() {
+        let (d, ix) = setup();
+        let file = d.path().join("a.md");
+        fs::write(&file, "업무개선 회의").unwrap();
+        crate::drive::mark_online_only(&file);
+        ix.scan(d.path()).unwrap();
+        assert_eq!(count(&ix, NOTES), 1, "links to it still resolve");
+        assert_eq!(count(&ix, BODY_HITS), 0);
+        assert_eq!(ix.resolve("a").unwrap().as_deref(), Some("a.md"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn scan_reads_the_note_once_it_is_on_this_pc() {
+        let (d, ix) = setup();
+        let file = d.path().join("a.md");
+        fs::write(&file, "업무개선 회의").unwrap();
+        crate::drive::mark_online_only(&file);
+        ix.scan(d.path()).unwrap();
+        crate::drive::mark_local(&file);
+        ix.scan(d.path()).unwrap();
+        assert_eq!(count(&ix, BODY_HITS), 1);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn freeing_up_space_keeps_what_was_indexed() {
+        let (d, ix) = setup();
+        let file = d.path().join("a.md");
+        fs::write(&file, "업무개선 회의").unwrap();
+        ix.scan(d.path()).unwrap();
+        crate::drive::mark_online_only(&file);
+        ix.scan(d.path()).unwrap();
+        ix.upsert_file(d.path(), "a.md").unwrap();
+        assert_eq!(count(&ix, NOTES), 1);
+        assert_eq!(count(&ix, BODY_HITS), 1);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn updating_an_online_only_note_does_not_read_it() {
+        let (d, ix) = setup();
+        let file = d.path().join("a.md");
+        fs::write(&file, "업무개선 회의").unwrap();
+        crate::drive::mark_online_only(&file);
+        ix.upsert_file(d.path(), "a.md").unwrap();
+        assert_eq!(count(&ix, NOTES), 1);
+        assert_eq!(count(&ix, BODY_HITS), 0);
     }
 }

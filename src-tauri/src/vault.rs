@@ -9,6 +9,7 @@ use std::time::UNIX_EPOCH;
 
 use serde::Serialize;
 
+use crate::drive::{self, DriveConflict, DriveKind, DriveRoot, Placement};
 use crate::error::{AppError, AppResult};
 use crate::history::{History, Origin};
 use crate::index::{Index, LinkRef};
@@ -51,6 +52,13 @@ pub struct Workspace {
 pub struct VaultInfo {
     pub root: String,
     pub name: String,
+    pub drive: Option<DriveKind>,
+    /// The folder holding this vault's history and search index.
+    pub store_dir: String,
+    /// Kept on this PC, not in the note folder's `.app`.
+    pub store_on_this_pc: bool,
+    /// The earlier history could not be moved off the drive (it is still in `.app`).
+    pub store_warning: Option<String>,
 }
 
 pub const UNTITLED: &str = "제목 없음";
@@ -85,6 +93,10 @@ pub struct Backlink {
 
 pub struct Vault {
     root: PathBuf,
+    /// Where the databases and open tabs live: `.app`, or this PC for a drive vault.
+    store: PathBuf,
+    drive: Option<DriveKind>,
+    store_warning: Option<String>,
     history: History,
     index: Index,
     /// Content hash of each note as the app last read or wrote it. A different
@@ -98,16 +110,70 @@ pub fn content_hash(content: &str) -> String {
 
 impl Vault {
     /// Opens an existing folder as a vault and makes sure `.app/` exists.
+    #[cfg(test)]
     pub fn open(root: &Path) -> AppResult<Self> {
-        if !root.is_dir() {
-            return Err(AppError::NotADirectory(root.display().to_string()));
-        }
-        let root = root.canonicalize()?;
-        let root = strip_verbatim(root);
+        let root = canonical_root(root)?;
+        let dir = root.join(APP_DIR);
+        Self::open_at(root, Placement { dir, warning: None }, None)
+    }
+
+    /// Opens a folder, keeping its databases off the drive if it is in one.
+    pub fn open_placed(root: &Path, local_base: &Path, drives: &[DriveRoot]) -> AppResult<Self> {
+        let root = canonical_root(root)?;
+        let drive = drive::kind_of(&root, drives);
+        let placement = drive::place(&root, local_base, drive);
+        Self::open_at(root, placement, drive)
+    }
+
+    fn open_at(root: PathBuf, placement: Placement, drive: Option<DriveKind>) -> AppResult<Self> {
         fs::create_dir_all(root.join(APP_DIR))?;
-        let history = History::open(&root.join(APP_DIR).join("history.db"))?;
-        let index = Index::open(&root.join(APP_DIR).join("index.db"))?;
-        Ok(Self { root, history, index, known: Mutex::new(HashMap::new()) })
+        fs::create_dir_all(&placement.dir)?;
+        let history = History::open(&placement.dir.join("history.db"))?;
+        let index = Index::open(&placement.dir.join("index.db"))?;
+        Ok(Self {
+            root,
+            store: placement.dir,
+            drive,
+            store_warning: placement.warning,
+            history,
+            index,
+            known: Mutex::new(HashMap::new()),
+        })
+    }
+
+    pub fn store_dir(&self) -> PathBuf {
+        self.store.clone()
+    }
+
+    /// In a drive vault a note may have to come down from the network first. That read
+    /// has to happen without holding the vault, or the whole app waits for the network.
+    pub fn fetch_target(&self, rel: &str) -> AppResult<Option<PathBuf>> {
+        if self.drive.is_none() {
+            return Ok(None);
+        }
+        self.existing(rel).map(Some)
+    }
+
+    /// Copies the drive's app made when two PCs changed a note at once.
+    pub fn drive_conflicts(&self) -> AppResult<Vec<DriveConflict>> {
+        let Some(kind) = self.drive else { return Ok(Vec::new()) };
+        fn notes_in(nodes: Vec<TreeNode>, out: &mut Vec<String>) {
+            for n in nodes {
+                match n.children {
+                    Some(children) => notes_in(children, out),
+                    None if n.kind == EntryKind::Note => out.push(n.path),
+                    None => {}
+                }
+            }
+        }
+        let mut notes = Vec::new();
+        notes_in(self.tree()?, &mut notes);
+        let computer = std::env::var("COMPUTERNAME").unwrap_or_default();
+        Ok(drive::conflict_copies(kind, &notes, &computer))
+    }
+
+    pub fn is_online_only(&self, rel: &str) -> bool {
+        self.abs(rel).ok().and_then(|p| fs::metadata(p).ok()).is_some_and(|m| drive::is_online_only(&m))
     }
 
     pub fn root(&self) -> &Path {
@@ -116,14 +182,14 @@ impl Vault {
 
     /// Note open when the vault was last used (FR-VLT-02), from `.app/workspace.json`.
     pub fn workspace(&self) -> Workspace {
-        fs::read_to_string(self.root.join(APP_DIR).join("workspace.json"))
+        fs::read_to_string(self.store.join("workspace.json"))
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default()
     }
 
     pub fn set_workspace(&self, ws: &Workspace) -> AppResult<()> {
-        fs::write(self.root.join(APP_DIR).join("workspace.json"), serde_json::to_string_pretty(ws)?)?;
+        fs::write(self.store.join("workspace.json"), serde_json::to_string_pretty(ws)?)?;
         Ok(())
     }
 
@@ -135,6 +201,10 @@ impl Vault {
                 .file_name()
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_else(|| self.root.display().to_string()),
+            drive: self.drive,
+            store_dir: self.store.display().to_string(),
+            store_on_this_pc: self.store != self.root.join(APP_DIR),
+            store_warning: self.store_warning.clone(),
         }
     }
 
@@ -230,8 +300,8 @@ impl Vault {
         let dir = p.parent().ok_or_else(|| AppError::OutsideVault(rel.to_string()))?;
         fs::create_dir_all(dir)?;
         let tmp = dir.join(format!(".{}.notevine-tmp", file_name(&normalize_rel(rel))));
-        fs::write(&tmp, content)?;
-        if let Err(e) = fs::rename(&tmp, &p) {
+        drive::retry_locked(|| fs::write(&tmp, content))?;
+        if let Err(e) = drive::retry_locked(|| fs::rename(&tmp, &p)) {
             let _ = fs::remove_file(&tmp);
             return Err(e.into());
         }
@@ -289,6 +359,9 @@ impl Vault {
     /// Returns false when the change is the app's own save.
     pub fn on_external_change(&self, rel: &str) -> AppResult<bool> {
         let rel = normalize_rel(rel);
+        if self.is_online_only(&rel) {
+            return Ok(false); // its text isn't here, and reading it would download it
+        }
         let content = fs::read_to_string(self.abs(&rel)?)?;
         if self.known().get(&rel) == Some(&content_hash(&content)) {
             return Ok(false);
@@ -504,7 +577,8 @@ impl Vault {
             return Ok(to.to_string());
         }
         let plan = if update_links { self.plan_link_updates(from, to)? } else { Vec::new() };
-        fs::rename(self.abs(from)?, self.abs(to)?)?;
+        let (from_abs, to_abs) = (self.abs(from)?, self.abs(to)?);
+        drive::retry_locked(|| fs::rename(&from_abs, &to_abs))?;
         self.after_move(from, to)?;
         for (path, text, _) in plan {
             self.write_tracked(&path, &text)?;
@@ -566,6 +640,13 @@ fn with_md(name: &str) -> String {
 }
 
 /// `canonicalize` on Windows returns `\\?\C:\...`; strip it for display and joins.
+fn canonical_root(root: &Path) -> AppResult<PathBuf> {
+    if !root.is_dir() {
+        return Err(AppError::NotADirectory(root.display().to_string()));
+    }
+    Ok(strip_verbatim(root.canonicalize()?))
+}
+
 fn strip_verbatim(p: PathBuf) -> PathBuf {
     let s = p.to_string_lossy();
     if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
@@ -776,5 +857,113 @@ mod tests {
         assert_eq!(v.move_to("n.md", "f/g", true).unwrap(), "f/g/n.md");
         assert!(v.move_to("f", "f/g", true).is_err());
         assert_eq!(v.move_to("f/g", "", true).unwrap(), "g");
+    }
+
+    struct DriveVault {
+        _dir: tempfile::TempDir,
+        root: PathBuf,
+        base: PathBuf,
+        roots: Vec<DriveRoot>,
+    }
+
+    fn in_drive() -> DriveVault {
+        let dir = tempfile::tempdir().unwrap();
+        let top = strip_verbatim(dir.path().canonicalize().unwrap());
+        let root = top.join("Drive").join("노트");
+        fs::create_dir_all(&root).unwrap();
+        let drive = top.join("Drive").display().to_string();
+        let roots = vec![DriveRoot { kind: DriveKind::Google, name: String::new(), root: drive.clone(), start: drive }];
+        DriveVault { root, base: top.join("local"), roots, _dir: dir }
+    }
+
+    #[test]
+    fn a_drive_vault_keeps_its_databases_off_the_drive() {
+        let d = in_drive();
+        let v = Vault::open_placed(&d.root, &d.base, &d.roots).unwrap();
+        let app = d.root.join(APP_DIR);
+        assert_eq!(v.store_dir(), crate::drive::local_store(&d.base, &d.root));
+        assert_eq!(v.info().drive, Some(DriveKind::Google));
+        assert!(v.info().store_on_this_pc);
+        assert!(v.store_dir().join("history.db").exists());
+        assert!(v.store_dir().join("index.db").exists());
+        assert!(!app.join("history.db").exists());
+        assert!(!app.join("index.db").exists());
+        assert!(app.is_dir(), "settings still sync through .app");
+    }
+
+    #[test]
+    fn a_drive_vault_keeps_its_open_tabs_on_this_pc() {
+        let d = in_drive();
+        let v = Vault::open_placed(&d.root, &d.base, &d.roots).unwrap();
+        v.set_workspace(&Workspace { open_path: Some("a.md".into()), tabs: vec![] }).unwrap();
+        assert!(v.store_dir().join("workspace.json").exists());
+        assert!(!d.root.join(APP_DIR).join("workspace.json").exists());
+        assert_eq!(v.workspace().open_path.as_deref(), Some("a.md"));
+    }
+
+    #[test]
+    fn a_folder_outside_any_drive_stays_as_it_was() {
+        let d = in_drive();
+        let v = Vault::open_placed(&d.root, &d.base, &[]).unwrap();
+        assert_eq!(v.store_dir(), d.root.join(APP_DIR));
+        assert_eq!(v.info().drive, None);
+        assert!(!v.info().store_on_this_pc);
+        assert!(d.root.join(APP_DIR).join("history.db").exists());
+    }
+
+    #[test]
+    fn a_note_is_fetched_outside_the_lock_only_in_a_drive_vault() {
+        let d = in_drive();
+        let v = Vault::open_placed(&d.root, &d.base, &d.roots).unwrap();
+        v.write_note("a.md", "x").unwrap();
+        assert_eq!(v.fetch_target("a.md").unwrap(), Some(d.root.join("a.md")));
+        let (_dir, plain) = vault();
+        plain.write_note("a.md", "x").unwrap();
+        assert_eq!(plain.fetch_target("a.md").unwrap(), None);
+    }
+
+    #[test]
+    fn drive_conflicts_are_listed_only_in_a_drive_vault() {
+        let d = in_drive();
+        let v = Vault::open_placed(&d.root, &d.base, &d.roots).unwrap();
+        v.write_note("폴더/회의.md", "a").unwrap();
+        v.write_note("폴더/회의 (1).md", "b").unwrap();
+        let found = v.drive_conflicts().unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].copy, "폴더/회의 (1).md");
+        assert_eq!(found[0].original, "폴더/회의.md");
+        let (_dir, plain) = vault();
+        plain.write_note("회의.md", "a").unwrap();
+        plain.write_note("회의 (1).md", "b").unwrap();
+        assert!(plain.drive_conflicts().unwrap().is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_note_held_by_a_sync_app_is_saved_once_it_is_free() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let (dir, v) = vault();
+        let file = dir.path().join("a.md");
+        fs::write(&file, "old").unwrap();
+        let held = fs::OpenOptions::new().read(true).share_mode(0).open(&file).unwrap();
+        let free = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            drop(held);
+        });
+        v.write_note("a.md", "new").unwrap();
+        free.join().unwrap();
+        assert_eq!(fs::read_to_string(&file).unwrap(), "new");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_change_to_an_online_only_note_does_not_download_it() {
+        let (dir, v) = vault();
+        let file = dir.path().join("a.md");
+        fs::write(&file, "드라이브의 본문").unwrap();
+        crate::drive::mark_online_only(&file);
+        assert!(v.is_online_only("a.md"));
+        assert!(!v.on_external_change("a.md").unwrap());
+        assert!(v.history().list("a.md").unwrap().is_empty());
     }
 }

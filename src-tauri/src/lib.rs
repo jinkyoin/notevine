@@ -3,6 +3,7 @@ mod ai_api;
 mod backup;
 mod canvas;
 mod commands;
+mod drive;
 mod error;
 mod extras;
 mod history;
@@ -132,6 +133,8 @@ pub fn run() {
             commands::forget_vault,
             commands::list_tree,
             commands::read_note,
+            commands::installed_drives,
+            commands::drive_conflicts,
             commands::write_note,
             commands::list_versions,
             commands::version_content,
