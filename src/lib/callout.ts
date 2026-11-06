@@ -1,7 +1,7 @@
-// 강조 상자: "> [!중요] 제목" 으로 시작하는 인용문을 내용의 중요도를 보여 주는 색 상자로 그린다.
+// 강조 상자: "> [!중요] 제목" 으로 시작하는 인용문을 내용의 중요도나 성격을 보여 주는 색 상자로 그린다.
 // 옵시디언·GitHub의 [!important] 같은 영어 이름도 같은 상자로 보인다.
 
-export type CalloutKind = "important" | "warning" | "note" | "tip";
+export type CalloutKind = "important" | "warning" | "note" | "tip" | "decision" | "question" | "idea";
 
 export interface CalloutType {
   kind: CalloutKind;
@@ -10,12 +10,15 @@ export interface CalloutType {
   icon: string;
 }
 
-/** Most important first, as the format bar lists them. */
+/** As the format bar lists them: by importance, then by what the content is. */
 export const CALLOUTS: CalloutType[] = [
   { kind: "important", label: "중요", icon: "!" },
   { kind: "warning", label: "주의", icon: "⚠" },
   { kind: "note", label: "참고", icon: "i" },
   { kind: "tip", label: "팁", icon: "✓" },
+  { kind: "decision", label: "결정", icon: "★" },
+  { kind: "question", label: "질문", icon: "?" },
+  { kind: "idea", label: "아이디어", icon: "✦" },
 ];
 
 const ALIASES: Record<string, CalloutKind> = {
@@ -40,6 +43,14 @@ const ALIASES: Record<string, CalloutKind> = {
   success: "tip",
   check: "tip",
   done: "tip",
+  결정: "decision",
+  decision: "decision",
+  질문: "question",
+  question: "question",
+  faq: "question",
+  help: "question",
+  아이디어: "idea",
+  idea: "idea",
 };
 
 /** The first line of a quote, after "> ": `[!중요] 제목` (`[!note]-` folds in Obsidian; here it just shows). */

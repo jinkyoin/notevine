@@ -232,7 +232,7 @@ function ColorButton({ prop, apply, disabled }: { prop: ColorProp; apply: (a: Ac
   );
 }
 
-/** Callout box (`> [!중요]`): a button that opens the list of importance types. */
+/** Callout box (`> [!중요]`): a button that opens the list of types. */
 function CalloutButton({ apply, disabled }: { apply: (a: Action) => void; disabled: boolean }) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
@@ -253,7 +253,7 @@ function CalloutButton({ apply, disabled }: { apply: (a: Action) => void; disabl
     <div className="fb-color" ref={box}>
       <button
         className="fb-btn"
-        data-tip={tx("강조 상자 (중요도 표시)")}
+        data-tip={tx("강조 상자")}
         aria-label={tx("강조 상자")}
         aria-haspopup="true"
         aria-expanded={open}

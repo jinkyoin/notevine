@@ -2634,6 +2634,18 @@ kbd {
 .cm-callout-tip {
   --co: #2f9e44;
 }
+.callout-decision,
+.cm-callout-decision {
+  --co: #7950f2;
+}
+.callout-question,
+.cm-callout-question {
+  --co: #0c8599;
+}
+.callout-idea,
+.cm-callout-idea {
+  --co: #a67c00;
+}
 .callout-icon {
   display: inline-grid;
   place-items: center;
@@ -2647,7 +2659,14 @@ kbd {
   font-weight: 800;
   font-style: normal;
   line-height: 1;
-  vertical-align: -2px;
+  /* The middle of a line sits below the middle of Korean letters. */
+  position: relative;
+  top: -1.5px;
+  vertical-align: middle;
+}
+/* Already centered by its flex row. */
+.fb-callout .callout-icon {
+  top: 0;
 }
 .note-view .callout {
   margin: 0.8em 0;
