@@ -22,6 +22,9 @@ pub struct AppState {
     pub recent: RecentStore,
     pub settings: crate::tray::SettingsStore,
     pub trust: crate::trust::TrustStore,
+    /// Held for a whole `open_vault`, so two opens can't leave one folder's vault with
+    /// another's watcher.
+    pub opening: Mutex<()>,
 }
 
 pub(crate) fn with_vault<T>(state: &State<AppState>, f: impl FnOnce(&Vault) -> AppResult<T>) -> AppResult<T> {
@@ -30,8 +33,10 @@ pub(crate) fn with_vault<T>(state: &State<AppState>, f: impl FnOnce(&Vault) -> A
     f(v)
 }
 
-#[tauri::command]
+/// Off the main thread: a folder on a network or a drive can take a long time to answer.
+#[tauri::command(async)]
 pub fn open_vault(app: AppHandle, state: State<AppState>, path: String) -> AppResult<VaultInfo> {
+    let _opening = state.opening.lock().expect("opening lock poisoned");
     // Close the current vault first: reopening the same vault must not find its
     // database files still held open (Windows refuses to replace them then).
     *state.watcher.lock().expect("watcher lock poisoned") = None;
@@ -192,13 +197,11 @@ pub fn preview_move(state: State<AppState>, path: String, new_parent: String) ->
 }
 
 /// Rebuilds the search index from the files (NFR-REL-03). Returns the note count.
-#[tauri::command]
+/// Off the main thread and without holding the vault: it reads every note.
+#[tauri::command(async)]
 pub fn rebuild_index(state: State<AppState>) -> AppResult<usize> {
-    with_vault(&state, |v| {
-        v.index().clear()?;
-        let s = v.index().scan(v.root())?;
-        Ok(s.indexed + s.unchanged)
-    })
+    let (store, root) = with_vault(&state, |v| Ok((v.store_dir(), v.root().to_path_buf())))?;
+    Index::rebuild(&store.join("index.db"), &root)
 }
 
 #[tauri::command]

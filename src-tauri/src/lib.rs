@@ -112,6 +112,7 @@ pub fn run() {
                 recent: RecentStore::new(&config_dir),
                 settings,
                 trust: trust::TrustStore::new(&config_dir),
+                opening: Mutex::new(()),
             });
             if tray_on && let Err(e) = tray::apply_tray(app.handle(), true) {
                 eprintln!("tray icon not shown: {e}");

@@ -345,6 +345,15 @@ impl Index {
         Ok(())
     }
 
+    /// Rebuilds the index on a connection of its own, so the vault stays usable meanwhile.
+    /// Returns the note count.
+    pub fn rebuild(file: &Path, root: &Path) -> AppResult<usize> {
+        let ix = Self::open(file)?;
+        ix.clear()?;
+        let s = ix.scan(root)?;
+        Ok(s.indexed + s.unchanged)
+    }
+
     /// Every note, for quick open and `[[` completion.
     pub fn notes(&self) -> AppResult<Vec<NoteRef>> {
         let mut st = self.conn.prepare("SELECT path, title FROM notes ORDER BY title, path")?;
@@ -522,6 +531,26 @@ mod tests {
         fs::create_dir(dir.path().join(APP_DIR)).unwrap();
         let ix = Index::open(&dir.path().join(APP_DIR).join("index.db")).unwrap();
         (dir, ix)
+    }
+
+    #[test]
+    fn rebuild_rereads_a_file_a_scan_would_skip_while_the_vault_stays_open() {
+        let (dir, ix) = setup();
+        let note = dir.path().join("a.md");
+        let tag = || ix.conn.query_row("SELECT tag FROM tags", [], |r| r.get::<_, String>(0)).unwrap();
+        fs::write(&note, "#one\n").unwrap();
+        ix.scan(dir.path()).unwrap();
+        // Same size and same time: a normal scan sees nothing to do.
+        let stamp = fs::metadata(&note).unwrap().modified().unwrap();
+        fs::write(&note, "#two\n").unwrap();
+        fs::File::options().write(true).open(&note).unwrap().set_modified(stamp).unwrap();
+        ix.scan(dir.path()).unwrap();
+        assert_eq!(tag(), "one");
+
+        let count = Index::rebuild(&dir.path().join(APP_DIR).join("index.db"), dir.path()).unwrap();
+
+        assert_eq!(count, 1);
+        assert_eq!(tag(), "two");
     }
 
     fn count(ix: &Index, sql: &str) -> i64 {

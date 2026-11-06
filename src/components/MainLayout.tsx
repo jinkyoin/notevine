@@ -1,5 +1,5 @@
 // SCR-02 메인 화면: 상단바 + 왼쪽 사이드바(파일·검색·아이디어) + 편집기 + 오른쪽 패널(속성·백링크·히스토리).
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
 import { useApp } from "../store";
@@ -21,7 +21,8 @@ import { DeletedNotes } from "./DeletedNotes";
 import { MarkdownHelp } from "./MarkdownHelp";
 import { UserManual } from "./UserManual";
 import { WebClip } from "./WebClip";
-import { PdfView } from "./PdfView";
+// Not in the PdfView chunk: loaded later, it would come after App.css and win over its rules.
+import "pdfjs-dist/web/pdf_viewer.css";
 import { CanvasView } from "./CanvasView";
 import { PanelResizer } from "./PanelResizer";
 import { PluginPanels } from "./PluginPanels";
@@ -38,6 +39,9 @@ import { AiPreview, AiSendConfirm } from "./AiDialogs";
 import { AiEdits } from "./AiEdits";
 
 import { tx } from "../i18n";
+
+// pdf.js is large and most sessions never open a PDF.
+const PdfView = lazy(() => import("./PdfView").then((m) => ({ default: m.PdfView })));
 /** The vault's `.app/custom.css`, last in the page so it wins over the app's own styles. */
 function applyUserCss(text: string) {
   let el = document.getElementById("user-css");
@@ -260,7 +264,9 @@ export function MainLayout() {
             {canvasView ? (
               <CanvasView key={canvasView} path={canvasView} />
             ) : pdfView ? (
-              <PdfView key={pdfView.path} path={pdfView.path} page={pdfView.page} seq={pdfView.seq} />
+              <Suspense fallback={null}>
+                <PdfView key={pdfView.path} path={pdfView.path} page={pdfView.page} seq={pdfView.seq} />
+              </Suspense>
             ) : tableView !== null ? (
               <FolderView key={tableView} folder={tableView} />
             ) : openPath ? (

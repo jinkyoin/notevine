@@ -18,7 +18,6 @@ import { unseenConflicts } from "./lib/driveConflicts";
 import { setProperty, type Prop } from "./lib/frontmatter";
 import { buildReview, period, reviewFolder, reviewName, type ReviewKind } from "./lib/review";
 import { day } from "./lib/folderTable";
-import { clipFileName, clipNote, clipPage } from "./lib/clip";
 import { opensWithoutAsking } from "./lib/openSafety";
 import { annotationEntry, annotationNote, annotationPath } from "./lib/pdfNotes";
 import type { ParaFolder } from "./lib/para";
@@ -967,6 +966,8 @@ export const useApp = create<AppStore>((set, get) => {
         get().toast(errorMessage(e), "error");
         return false;
       }
+      // Loaded here: its article extractor and HTML converter are only needed for clipping.
+      const { clipFileName, clipNote, clipPage } = await import("./lib/clip");
       const clip = clipPage(page.html, page.url);
       if (!clip) {
         get().toast(tx("이 페이지에서 본문을 찾지 못했습니다"), "error");
