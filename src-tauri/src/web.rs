@@ -127,7 +127,11 @@ fn is_public(ip: IpAddr) -> bool {
             Some(v4) => is_public(IpAddr::V4(v4)),
             None => {
                 let first = v6.segments()[0];
-                !(v6.is_loopback() || v6.is_unspecified() || v6.is_multicast() || first & 0xfe00 == 0xfc00 || first & 0xffc0 == 0xfe80)
+                !(v6.is_loopback()
+                    || v6.is_unspecified()
+                    || v6.is_multicast()
+                    || first & 0xfe00 == 0xfc00
+                    || first & 0xffc0 == 0xfe80)
             }
         },
     }
@@ -138,7 +142,8 @@ fn percent_decode(s: &str) -> String {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        let hex = (bytes[i] == b'%').then(|| bytes.get(i + 1..i + 3)).flatten().and_then(|h| std::str::from_utf8(h).ok());
+        let hex =
+            (bytes[i] == b'%').then(|| bytes.get(i + 1..i + 3)).flatten().and_then(|h| std::str::from_utf8(h).ok());
         match hex.and_then(|h| u8::from_str_radix(h, 16).ok()) {
             Some(b) => {
                 out.push(b);
@@ -158,7 +163,8 @@ fn image_name(url: &tauri::Url, ext: &str) -> String {
     let last = url.path_segments().and_then(|mut s| s.next_back()).map(percent_decode).unwrap_or_default();
     let last = last.rsplit(['/', '\\']).next().unwrap_or_default();
     let stem = last.rsplit_once('.').map_or(last, |(stem, _)| stem);
-    let clean: String = stem.chars().map(|c| if c.is_control() || r#"\/:*?"<>|#^[]"#.contains(c) { ' ' } else { c }).collect();
+    let clean: String =
+        stem.chars().map(|c| if c.is_control() || r#"\/:*?"<>|#^[]"#.contains(c) { ' ' } else { c }).collect();
     let clean = clean.split_whitespace().collect::<Vec<_>>().join(" ");
     let clean: String = clean.trim_matches(['.', ' ']).chars().take(60).collect();
     format!("{}.{ext}", if clean.trim().is_empty() { "그림" } else { clean.trim() })
@@ -170,7 +176,8 @@ fn image_name(url: &tauri::Url, ext: &str) -> String {
 pub fn download_image(url: &str, page_url: &str) -> AppResult<(String, Vec<u8>)> {
     check_web_url(url)?;
     let parsed = tauri::Url::parse(url.trim()).map_err(|e| AppError::System(e.to_string()))?;
-    let page_host = tauri::Url::parse(page_url).ok().and_then(|u| u.host_str().map(|h| h.trim_matches(['[', ']']).to_string()));
+    let page_host =
+        tauri::Url::parse(page_url).ok().and_then(|u| u.host_str().map(|h| h.trim_matches(['[', ']']).to_string()));
     let resp = ureq::AgentBuilder::new()
         .timeout_connect(Duration::from_secs(10))
         .timeout(Duration::from_secs(30))
@@ -222,7 +229,8 @@ mod tests {
             let (mut s, _) = listener.accept().unwrap();
             let mut req = [0u8; 2048];
             let _ = std::io::Read::read(&mut s, &mut req);
-            let head = format!("HTTP/1.1 {status}\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+            let head =
+                format!("HTTP/1.1 {status}\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n", body.len());
             let _ = std::io::Write::write_all(&mut s, head.as_bytes());
             let _ = std::io::Write::write_all(&mut s, &body);
         });
@@ -232,7 +240,8 @@ mod tests {
     #[test]
     fn saves_a_picture_from_the_page_s_own_server() {
         let base = serve("200 OK", String::new(), PNG.to_vec());
-        let (name, bytes) = download_image(&format!("{base}/%EC%82%AC%EC%A7%84.jpg?type=w773"), &format!("{base}/post")).unwrap();
+        let (name, bytes) =
+            download_image(&format!("{base}/%EC%82%AC%EC%A7%84.jpg?type=w773"), &format!("{base}/post")).unwrap();
         assert_eq!(name, "사진.png", "the extension follows the content");
         assert_eq!(bytes, PNG);
     }
@@ -267,8 +276,21 @@ mod tests {
             assert!(is_public(ip.parse().unwrap()), "{ip}");
         }
         for ip in [
-            "127.0.0.1", "10.0.0.1", "172.16.0.1", "192.168.0.90", "169.254.169.254", "100.64.0.1", "0.0.0.0",
-            "224.0.0.1", "255.255.255.255", "::1", "::", "fc00::1", "fe80::1", "ff02::1", "::ffff:192.168.0.1",
+            "127.0.0.1",
+            "10.0.0.1",
+            "172.16.0.1",
+            "192.168.0.90",
+            "169.254.169.254",
+            "100.64.0.1",
+            "0.0.0.0",
+            "224.0.0.1",
+            "255.255.255.255",
+            "::1",
+            "::",
+            "fc00::1",
+            "fe80::1",
+            "ff02::1",
+            "::ffff:192.168.0.1",
         ] {
             assert!(!is_public(ip.parse().unwrap()), "{ip}");
         }

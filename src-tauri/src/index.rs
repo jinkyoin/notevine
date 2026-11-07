@@ -9,9 +9,9 @@ use std::time::{Duration, UNIX_EPOCH};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::Serialize;
 
+use crate::drive::is_online_only;
 use crate::error::AppResult;
 use crate::parse::{self, LinkKind, ValueType};
-use crate::drive::is_online_only;
 use crate::paths::{APP_DIR, is_hidden, is_note, name_key, parent_rel, resolve_rel, to_rel};
 
 /// Bump when the schema or what `parse` extracts changes: an index built by an
@@ -196,8 +196,13 @@ impl Index {
         let meta = fs::metadata(&abs)?;
         if is_online_only(&meta) {
             let listed: bool =
-                self.conn.query_row("SELECT EXISTS(SELECT 1 FROM notes WHERE path = ?1)", params![rel], |r| r.get(0))?;
-            return if listed { Ok(()) } else { self.upsert(rel, "", ms(meta.created()), ms(meta.modified()), NOT_READ) };
+                self.conn
+                    .query_row("SELECT EXISTS(SELECT 1 FROM notes WHERE path = ?1)", params![rel], |r| r.get(0))?;
+            return if listed {
+                Ok(())
+            } else {
+                self.upsert(rel, "", ms(meta.created()), ms(meta.modified()), NOT_READ)
+            };
         }
         let content = fs::read_to_string(&abs)?;
         self.upsert(rel, &content, ms(meta.created()), ms(meta.modified()), meta.len() as i64)

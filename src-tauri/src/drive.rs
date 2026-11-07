@@ -603,16 +603,28 @@ mod tests {
     #[test]
     fn google_conflict_copies_are_found_next_to_their_original() {
         assert_eq!(found(DriveKind::Google, &["회의.md", "회의 (1).md"]), [pair("회의 (1).md", "회의.md")]);
-        assert_eq!(found(DriveKind::Google, &["폴더/회의.md", "폴더/회의_conf(2).md"]), [pair("폴더/회의_conf(2).md", "폴더/회의.md")]);
-        assert_eq!(found(DriveKind::Google, &["회의.md", "[Conflict] 회의.md"]), [pair("[Conflict] 회의.md", "회의.md")]);
+        assert_eq!(
+            found(DriveKind::Google, &["폴더/회의.md", "폴더/회의_conf(2).md"]),
+            [pair("폴더/회의_conf(2).md", "폴더/회의.md")]
+        );
+        assert_eq!(
+            found(DriveKind::Google, &["회의.md", "[Conflict] 회의.md"]),
+            [pair("[Conflict] 회의.md", "회의.md")]
+        );
     }
 
     #[test]
     fn onedrive_conflict_copies_carry_a_pc_name() {
         assert_eq!(found(DriveKind::OneDrive, &["회의.md", "회의-MY-PC.md"]), [pair("회의-MY-PC.md", "회의.md")]);
         assert_eq!(found(DriveKind::OneDrive, &["회의.md", "회의-my-pc-2.md"]), [pair("회의-my-pc-2.md", "회의.md")]);
-        assert_eq!(found(DriveKind::OneDrive, &["회의.md", "회의-DESKTOP-AB12C.md"]), [pair("회의-DESKTOP-AB12C.md", "회의.md")]);
-        assert_eq!(found(DriveKind::OneDrive, &["회의.md", "회의-LAPTOP-XY9.md"]), [pair("회의-LAPTOP-XY9.md", "회의.md")]);
+        assert_eq!(
+            found(DriveKind::OneDrive, &["회의.md", "회의-DESKTOP-AB12C.md"]),
+            [pair("회의-DESKTOP-AB12C.md", "회의.md")]
+        );
+        assert_eq!(
+            found(DriveKind::OneDrive, &["회의.md", "회의-LAPTOP-XY9.md"]),
+            [pair("회의-LAPTOP-XY9.md", "회의.md")]
+        );
     }
 
     #[test]
