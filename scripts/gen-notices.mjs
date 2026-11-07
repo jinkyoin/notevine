@@ -1,7 +1,8 @@
 // 배포본에 들어가는 오픈소스의 라이선스 고지를 모아 public/THIRD-PARTY-NOTICES.txt를 만든다.
 // 패키지에 들어 있는 라이선스 원문을 그대로 쓰고, 같은 원문은 한 번만 적는다.
-// 앱 안에서는 설정 > 정보 > 오픈소스 라이선스로 본다. 릴리스 빌드 전에 자동으로 실행된다.
-// 사용: node scripts/gen-notices.mjs [--check]  (--check: 원문을 못 찾은 패키지가 있으면 실패)
+// 앱 안에서는 설정 > 정보 > 오픈소스 라이선스로 본다. 릴리스 빌드 전에 --check로 자동 실행되어,
+// 원문을 못 찾은 패키지가 있으면 빌드가 실패한다. 패키지에 원문이 없으면 scripts/license-texts에 넣는다.
+// 사용: node scripts/gen-notices.mjs [--check]
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -10,11 +11,29 @@ import path from "node:path";
 const ROOT = path.resolve(import.meta.dirname, "..");
 const OUT = path.join(ROOT, "public", "THIRD-PARTY-NOTICES.txt");
 const TARGET = "x86_64-pc-windows-msvc";
-const LICENSE_FILE = /^(un)?licen[cs]e|^copying|^notice|^copyright/i;
+const TEXTS = path.join(ROOT, "scripts", "license-texts");
+const LICENSE_FILE = /^(un)?licen[cs]e|^(mit|apache)-licen[cs]e|^copying|^notice|^copyright/i;
 const NOT_TEXT = /\.(png|jpe?g|gif|svg|html?|json|rs|js|ts)$/i;
 
 /** Where a package offers a choice, the one Notevine takes. */
 const CHOSEN = { dompurify: "Apache-2.0", "r-efi": "MIT" };
+/** A package that keeps its license file in a subfolder. */
+const LICENSE_DIR = { pretendard: "dist" };
+/**
+ * Packages published without a license file: the text is kept in scripts/license-texts.
+ * fastdom, strictdom: the License section of their README. selectors: the MPL-2.0 text from
+ * cssparser, since its repository has no copy. The rest: the LICENSE of their repository.
+ */
+const KEPT_TEXT = {
+  "@napi-rs/canvas-win32-x64-msvc": "napi-canvas.txt",
+  "alloc-stdlib": "alloc-stdlib.txt",
+  fastdom: "fastdom.txt",
+  selectors: "selectors.txt",
+  strictdom: "strictdom.txt",
+  "webview2-com": "webview2-com.txt",
+  "webview2-com-macros": "webview2-com.txt",
+  "webview2-com-sys": "webview2-com.txt",
+};
 
 /** Files of the licenses in a package's own folder, or (in a folder of several) those named. */
 function licenseTexts(dir) {
@@ -82,11 +101,16 @@ function pdfjsAssets() {
   ];
 }
 
+/** The text of a license kept in scripts/license-texts. */
+function keptText(file) {
+  return fs.readFileSync(path.join(TEXTS, file), "utf8").replace(/\r\n/g, "\n").trim();
+}
+
 const packages = [...npmPackages(), ...cargoPackages()].sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
 const byText = new Map();
 const missing = [];
 for (const p of packages) {
-  const texts = licenseTexts(p.dir);
+  const texts = KEPT_TEXT[p.name] ? [keptText(KEPT_TEXT[p.name])] : licenseTexts(path.join(p.dir, LICENSE_DIR[p.name] ?? ""));
   if (!texts.length) {
     missing.push(p);
     continue;
@@ -109,7 +133,9 @@ MPL-2.0 패키지는 수정하지 않고 썼으며, 소스는 각 패키지 주�
 패키지 ${packages.length}개`,
 ];
 for (const { text, users } of byText.values()) parts.push(`${RULE}\n${users.map(line).join("\n")}\n\n${text}`);
-for (const a of pdfjsAssets()) parts.push(`${RULE}\n  ${a.name}\n\n${a.text}`);
+// KaTeX's package says MIT, but its font files are under the OFL (it is in each font's name table).
+const assets = [...pdfjsAssets(), { name: "KaTeX 글꼴", text: keptText("katex-fonts.txt") }];
+for (const a of assets) parts.push(`${RULE}\n  ${a.name}\n\n${a.text}`);
 if (missing.length) {
   parts.push(`${RULE}\n패키지에 라이선스 파일이 들어 있지 않아 표기와 주소만 적습니다. 원문은 각 주소에서 볼 수 있습니다.\n\n${missing.map(line).join("\n")}`);
 }

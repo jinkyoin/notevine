@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "notices": "node scripts/gen-notices.mjs",
+    "notices": "node scripts/gen-notices.mjs --check",
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest run",
