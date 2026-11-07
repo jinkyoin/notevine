@@ -131,6 +131,7 @@ pub fn run() {
             commands::get_workspace,
             commands::set_workspace,
             commands::recent_vaults,
+            commands::folder_exists,
             commands::forget_vault,
             commands::list_tree,
             commands::read_note,

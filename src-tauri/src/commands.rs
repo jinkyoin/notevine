@@ -89,11 +89,17 @@ pub fn set_workspace(state: State<AppState>, open_path: Option<String>, tabs: Op
     with_vault(&state, |v| v.set_workspace(&Workspace { open_path, tabs: tabs.unwrap_or_default() }))
 }
 
-/// Off the main thread: it waits on folders that may be on a network. A window that stops
-/// answering for 5 seconds also loses its taskbar icon until the app restarts.
-#[tauri::command(async)]
+#[tauri::command]
 pub fn recent_vaults(state: State<AppState>) -> Vec<RecentVault> {
     state.recent.list()
+}
+
+/// On a blocking thread: an unreachable network path takes over 30 seconds to answer. On
+/// the main thread the window would stop answering, and after 5 seconds of that it loses
+/// its taskbar icon until the app restarts.
+#[tauri::command]
+pub async fn folder_exists(path: String) -> bool {
+    tauri::async_runtime::spawn_blocking(move || Path::new(&path).is_dir()).await.unwrap_or(false)
 }
 
 #[tauri::command]

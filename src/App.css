@@ -226,7 +226,6 @@ button {
 }
 .recent-list li.missing {
   opacity: 0.5;
-  cursor: default;
 }
 .recent-name {
   font-weight: 600;

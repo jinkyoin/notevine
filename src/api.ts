@@ -47,7 +47,6 @@ export interface RecentVault {
   path: string;
   name: string;
   opened_at: number;
-  exists: boolean;
 }
 
 export interface VersionMeta {
@@ -344,6 +343,7 @@ export const api = {
   installedDrives: () => invoke<DriveRoot[]>("installed_drives"),
   driveConflicts: () => invoke<DriveConflict[]>("drive_conflicts"),
   recentVaults: () => invoke<RecentVault[]>("recent_vaults"),
+  folderExists: (path: string) => invoke<boolean>("folder_exists", { path }),
   forgetVault: (path: string) => invoke<void>("forget_vault", { path }),
   listTree: () => invoke<TreeNode[]>("list_tree"),
   readNote: (path: string) => invoke<string>("read_note", { path }),
