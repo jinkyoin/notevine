@@ -856,5 +856,8 @@
  "드라이브 충돌본": "Drive conflict copies",
  "두 PC에서 같은 노트를 고쳤을 때 드라이브 앱이 만든 사본입니다. 내용을 확인해 합친 뒤 지우세요": "Copies the drive app made when two PCs changed the same note. Check them, merge what you need, then delete them",
  "원본: {0}": "Original: {0}",
- "이 PC": "This PC"
+ "이 PC": "This PC",
+ "파일을 찾을 수 없습니다: {0}": "File not found: {0}",
+ "이 폴더를 노트 폴더로 열까요?": "Open this folder as a note folder?",
+ "{0}\n\n이 폴더를 열면 안에 앱 데이터를 담는 .app 폴더가 생깁니다. 노트 파일은 바뀌지 않습니다.": "{0}\n\nOpening it creates a .app folder inside for the app's data. Your note files aren't changed."
 }

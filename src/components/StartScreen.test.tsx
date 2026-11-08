@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   recentVaults: vi.fn(),
+  startedWithFile: vi.fn(),
   folderExists: vi.fn(),
   forgetVault: vi.fn(),
   installedDrives: vi.fn(),
@@ -15,6 +16,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../api", () => ({
   api: {
     recentVaults: mocks.recentVaults,
+    startedWithFile: mocks.startedWithFile,
     folderExists: mocks.folderExists,
     forgetVault: mocks.forgetVault,
     installedDrives: mocks.installedDrives,
@@ -58,6 +60,7 @@ describe("start screen recent folders", () => {
     vi.resetModules();
     vi.clearAllMocks();
     mocks.installedDrives.mockResolvedValue([]);
+    mocks.startedWithFile.mockResolvedValue(false);
     mocks.forgetVault.mockResolvedValue(undefined);
     mocks.openVault.mockResolvedValue(undefined);
     host = document.body.appendChild(document.createElement("div"));
@@ -68,6 +71,16 @@ describe("start screen recent folders", () => {
     act(() => root.unmount());
     host.remove();
     vi.unstubAllGlobals();
+  });
+
+  it("leaves the last folder closed when the app started with a note from Explorer", async () => {
+    const q = heldAnswers();
+    mocks.startedWithFile.mockResolvedValue(true);
+    await show([LOCAL]);
+
+    expect(rows()).toHaveLength(1);
+    expect(q.asked()).toEqual([]);
+    expect(mocks.openVault).not.toHaveBeenCalled();
   });
 
   it("shows every folder while a folder has not answered, asking only about the one to open", async () => {

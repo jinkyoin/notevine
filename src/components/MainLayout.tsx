@@ -33,7 +33,6 @@ import { CommandPalette } from "./CommandPalette";
 import { QuickMemo } from "./QuickMemo";
 import { TemplatePicker } from "./TemplatePicker";
 import { Settings } from "./Settings";
-import { ConfirmDialog } from "./ConfirmDialog";
 import { AiPanel } from "./AiPanel";
 import { AiPreview, AiSendConfirm } from "./AiDialogs";
 import { AiEdits } from "./AiEdits";
@@ -317,7 +316,6 @@ export function MainLayout() {
       <UserManual />
       <WebClip />
       <VersionView />
-      <ConfirmDialog />
       <AiSendConfirm />
       <AiPreview />
       <AiEdits />

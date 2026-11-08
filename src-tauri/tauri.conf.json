@@ -60,12 +60,19 @@
     "shortDescription": "로컬 마크다운 지식관리·기록 앱",
     "windows": {
       "wix": {
-        "language": "ko-KR"
+        "language": "ko-KR",
+        "fragmentPaths": [
+          "windows/open-with.wxs"
+        ],
+        "componentRefs": [
+          "NotevineMdOpenWith"
+        ]
       },
       "nsis": {
         "languages": [
           "Korean"
-        ]
+        ],
+        "installerHooks": "windows/hooks.nsh"
       }
     },
     "publisher": "Notevine contributors",

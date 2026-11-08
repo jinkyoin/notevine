@@ -44,11 +44,12 @@ export function StartScreen() {
   useEffect(() => {
     const autoOpen = !autoOpenTried;
     autoOpenTried = true;
-    api
-      .recentVaults()
-      .then((list) => {
+    // Started with a note from Explorer: that note decides which folder opens (FR-VLT-10).
+    const withFile = autoOpen ? api.startedWithFile().catch(() => false) : Promise.resolve(false);
+    Promise.all([api.recentVaults(), withFile])
+      .then(([list, file]) => {
         setRecent(list);
-        if (autoOpen && list[0]) void choose(list[0].path);
+        if (autoOpen && !file && list[0]) void choose(list[0].path);
       })
       .catch(() => setRecent([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps

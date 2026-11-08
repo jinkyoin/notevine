@@ -25,6 +25,10 @@ pub struct AppState {
     /// Held for a whole `open_vault`, so two opens can't leave one folder's vault with
     /// another's watcher.
     pub opening: Mutex<()>,
+    /// The note Windows asked this app to open, until the page takes it (FR-VLT-10).
+    pub opened_file: Mutex<Option<String>>,
+    /// Whether this run began with such a note: the last note folder doesn't reopen then.
+    pub started_with_file: bool,
 }
 
 pub(crate) fn with_vault<T>(state: &State<AppState>, f: impl FnOnce(&Vault) -> AppResult<T>) -> AppResult<T> {
@@ -100,6 +104,21 @@ pub fn recent_vaults(state: State<AppState>) -> Vec<RecentVault> {
 #[tauri::command]
 pub async fn folder_exists(path: String) -> bool {
     tauri::async_runtime::spawn_blocking(move || Path::new(&path).is_dir()).await.unwrap_or(false)
+}
+
+#[tauri::command]
+pub fn take_opened_file(state: State<AppState>) -> Option<String> {
+    state.opened_file.lock().expect("opened file lock poisoned").take()
+}
+
+#[tauri::command]
+pub fn started_with_file(state: State<AppState>) -> bool {
+    state.started_with_file
+}
+
+#[tauri::command]
+pub async fn locate_note_file(path: String) -> Option<crate::file_open::NoteFile> {
+    tauri::async_runtime::spawn_blocking(move || crate::file_open::locate(Path::new(&path))).await.unwrap_or(None)
 }
 
 #[tauri::command]

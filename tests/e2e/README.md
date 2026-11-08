@@ -32,6 +32,18 @@ node tests/e2e/ai-login.cjs    # 로그아웃·미설치일 때 로그인 버튼
 - 개발 모드에서만 열리는 `window.__notevine`(앱 상태)으로 폴더 선택 대화상자 같은 OS 창을 건너뛴다.
 - 테스트 노트 폴더와 스크린샷은 `%TEMP%\notevine-e2e`에 만들어진다.
 
+그 밖의 시나리오도 같은 방법으로 실행한다. 파일 이름이 다루는 기능이다.
+
+| 영역 | 파일 |
+| --- | --- |
+| 편집기 | `callout`, `editor-drop`, `editor-top`, `embed`, `format-tip`, `ime-template`, `rich`, `tag-complete` |
+| 탭·창 | `tabs`, `split`, `sidebar-resize`, `menu-edge`, `tray`, `global-memo` |
+| 파일 트리·폴더 | `tree-drop`, `tree-link-drop`, `open-external`, `folder-colors`, `folder-table`, `folder-views` |
+| 기록 관리 | `preset-para`, `para-actions`, `para-guides`, `search-review-blocks` |
+| 첨부·설정 | `pdf-clip`, `pdf-nav`, `settings-extras`, `manual` |
+| AI | `ai-api` |
+| 탐색기에서 열기 | `open-file` (릴리스 exe를 띄움. 실행 중인 Notevine을 먼저 닫는다) |
+
 ## 성능 측정 (NFR-PRF-01~05)
 
 ```bash
@@ -41,4 +53,4 @@ npm run test:e2e:perf                                                  # 릴리�
 ```
 
 측정 항목: 최초 인덱싱(≤60초), 인덱스가 있을 때 시작(≤3초), 검색 20개 평균(≤200ms),
-1MB 노트 입력 지연(≤50ms), 유휴 메모리(≤200MB), 설치 파일 크기(≤30MB).
+1MB 노트 입력 지연(≤50ms), 유휴 메모리(≤500MB, WebView2 포함), 설치 파일 크기(≤30MB).

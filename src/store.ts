@@ -182,6 +182,8 @@ interface AppStore {
   flushEditor: (force?: boolean) => Promise<void>;
 
   openVault(path: string): Promise<void>;
+  /** Opens a note Windows handed over (FR-VLT-10), asking before making a note folder. */
+  openFileFromOs(path: string): Promise<void>;
   closeVault(): Promise<void>;
   refreshTree(): Promise<void>;
   toggleFolder(path: string, open?: boolean): void;
@@ -506,6 +508,27 @@ export const useApp = create<AppStore>((set, get) => {
 
       // The history policy (FR-HIS-08) is applied each time the vault opens.
       if (config.history_thin_days || config.history_delete_days) void api.pruneHistory(false).catch(() => {});
+    },
+
+    async openFileFromOs(path) {
+      const found = await attempt(() => api.locateNoteFile(path));
+      if (found === undefined) return;
+      if (!found) return get().toast(tx("파일을 찾을 수 없습니다: {0}", path), "error");
+      const here = (root?: string) => root?.toLowerCase() === found.root.toLowerCase();
+      if (!here(get().vault?.root)) {
+        const ok =
+          found.in_vault ||
+          (await get().ask(
+            tx("이 폴더를 노트 폴더로 열까요?"),
+            tx("{0}\n\n이 폴더를 열면 안에 앱 데이터를 담는 .app 폴더가 생깁니다. 노트 파일은 바뀌지 않습니다.", found.root),
+            tx("열기"),
+          ));
+        if (!ok) return;
+        if (get().vault) await get().closeVault();
+        await get().openVault(found.root);
+        if (!here(get().vault?.root)) return;
+      }
+      get().openNote(found.rel);
     },
 
     async closeVault() {

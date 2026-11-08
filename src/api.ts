@@ -337,6 +337,13 @@ export function errorMessage(e: unknown): string {
   return String(e);
 }
 
+/** Where a file handed over by Windows belongs (FR-VLT-10). */
+export interface NoteFile {
+  root: string;
+  rel: string;
+  in_vault: boolean;
+}
+
 export const api = {
   openVault: (path: string) => invoke<VaultInfo>("open_vault", { path }),
   closeVault: () => invoke<void>("close_vault"),
@@ -344,6 +351,9 @@ export const api = {
   driveConflicts: () => invoke<DriveConflict[]>("drive_conflicts"),
   recentVaults: () => invoke<RecentVault[]>("recent_vaults"),
   folderExists: (path: string) => invoke<boolean>("folder_exists", { path }),
+  takeOpenedFile: () => invoke<string | null>("take_opened_file"),
+  startedWithFile: () => invoke<boolean>("started_with_file"),
+  locateNoteFile: (path: string) => invoke<NoteFile | null>("locate_note_file", { path }),
   forgetVault: (path: string) => invoke<void>("forget_vault", { path }),
   listTree: () => invoke<TreeNode[]>("list_tree"),
   readNote: (path: string) => invoke<string>("read_note", { path }),

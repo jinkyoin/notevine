@@ -6,6 +6,7 @@ mod commands;
 mod drive;
 mod error;
 mod extras;
+mod file_open;
 mod history;
 mod index;
 mod parse;
@@ -23,7 +24,7 @@ mod workspace;
 
 use std::sync::Mutex;
 
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use commands::AppState;
@@ -75,7 +76,15 @@ pub fn run() {
     }
     tauri::Builder::default()
         // First: a second launch (e.g. while hidden in the tray) shows this window instead.
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| tray::show_main(app)))
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            if let Some(file) = file_open::from_args(args, std::path::Path::new(&cwd))
+                && let Some(state) = app.try_state::<AppState>()
+            {
+                *state.opened_file.lock().expect("opened file lock poisoned") = Some(file.display().to_string());
+                let _ = app.emit("open-file", ());
+            }
+            tray::show_main(app)
+        }))
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             Some(vec![tray::TRAY_ARG]),
@@ -106,7 +115,11 @@ pub fn run() {
             let config_dir = config_dir(app)?;
             let settings = tray::SettingsStore::new(&config_dir);
             let tray_on = settings.load().tray;
+            let cwd = std::env::current_dir().unwrap_or_default();
+            let opened_file = file_open::from_args(std::env::args(), &cwd).map(|f| f.display().to_string());
             app.manage(AppState {
+                started_with_file: opened_file.is_some(),
+                opened_file: Mutex::new(opened_file),
                 vault: Mutex::new(None),
                 watcher: Mutex::new(None),
                 recent: RecentStore::new(&config_dir),
@@ -132,6 +145,9 @@ pub fn run() {
             commands::set_workspace,
             commands::recent_vaults,
             commands::folder_exists,
+            commands::take_opened_file,
+            commands::started_with_file,
+            commands::locate_note_file,
             commands::forget_vault,
             commands::list_tree,
             commands::read_note,

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The MSI's side of windows/hooks.nsh: lists Notevine under "Open with" for .md files
+     (FR-VLT-10) without changing which program opens them by default. -->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="NotevineMdOpenWith" Guid="6F1D9C52-3B7A-4E08-9A44-2C7E51B0D3A6">
+        <RegistryValue Root="HKLM" Key="Software\Classes\Notevine.md" Type="string" Value="Markdown document" KeyPath="yes" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Notevine.md\DefaultIcon" Type="string" Value="[INSTALLDIR]notevine.exe,0" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\Notevine.md\shell\open\command" Type="string" Value="&quot;[INSTALLDIR]notevine.exe&quot; &quot;%1&quot;" />
+        <RegistryValue Root="HKLM" Key="Software\Classes\.md\OpenWithProgids" Name="Notevine.md" Type="string" Value="" />
+      </Component>
+    </DirectoryRef>
+  </Fragment>
+</Wix>

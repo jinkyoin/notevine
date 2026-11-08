@@ -7,6 +7,7 @@ import { registerAppCommands } from "./appCommands";
 import { StartScreen } from "./components/StartScreen";
 import { MainLayout } from "./components/MainLayout";
 import { Toasts } from "./components/Toasts";
+import { ConfirmDialog } from "./components/ConfirmDialog";
 import "./App.css";
 
 export default function App() {
@@ -42,9 +43,24 @@ export default function App() {
     };
   }, []);
 
+  // A note opened from Explorer, at the start or while already running (FR-VLT-10).
+  useEffect(() => {
+    const openPending = () =>
+      api
+        .takeOpenedFile()
+        .then((path) => (path ? useApp.getState().openFileFromOs(path) : undefined))
+        .catch(() => {});
+    const unlisten = listen("open-file", () => void openPending());
+    void openPending();
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, []);
+
   return (
     <>
       {vault ? <MainLayout /> : <StartScreen />}
+      <ConfirmDialog />
       <Toasts />
     </>
   );

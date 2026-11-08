@@ -647,7 +647,7 @@ fn canonical_root(root: &Path) -> AppResult<PathBuf> {
     Ok(strip_verbatim(root.canonicalize()?))
 }
 
-fn strip_verbatim(p: PathBuf) -> PathBuf {
+pub(crate) fn strip_verbatim(p: PathBuf) -> PathBuf {
     let s = p.to_string_lossy();
     if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
         PathBuf::from(format!(r"\\{rest}"))
