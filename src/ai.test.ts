@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asksForTemplate, asksForWeb, chatPrompt, journalNotesInRange, matchTemplate, namesWeb, pickProvider, qaSystem, supportsWeb, weekRange, writeIntent, writePrompt } from "./ai";
+import { asksForTemplate, asksForWeb, chatPrompt, journalNotesInRange, matchTemplate, namesWeb, pickProvider, qaSystem, supportsWeb, weekRange, withInstructions, writeIntent, writePrompt } from "./ai";
 
 describe("ai helpers", () => {
   it("allows the web only when asked to", () => {
@@ -59,11 +59,29 @@ describe("ai helpers", () => {
     ["독서 템플릿에 맞게 작성해줘", "open"],
     ["할 일의 담당을 김민수로 바꿔 줘", "open"],
     ["이 노트들에 태그를 달아 줘", "open"],
+    ["오늘 날씨를 지금 열려있는 노트에 작성해", "open"],
+    ["지금 열린 노트에 날씨 작성하라", "open"],
+    ["열려 있는 노트에 오늘 할 일 적어", "open"],
+    ["현재 노트에 날씨 넣어", "open"],
+    ["날씨를 작성해.", "open"],
     ["보고서는 어떻게 작성해?", null],
+    ["열린 노트에 뭐가 적혀 있어?", null],
     ["지난주 회의에서 결정한 것 정리해 줘", null],
     ["작성자가 누구야?", null],
   ])("reads what is to be written: %s", (q, want) => {
     expect(writeIntent(q)).toBe(want);
+  });
+
+  it("adds the folder's answer instructions after the app's own rules, which still win", () => {
+    expect(withInstructions("규칙", "")).toBe("규칙");
+    expect(withInstructions("규칙", "  \n ")).toBe("규칙");
+    const s = withInstructions("규칙", " 결론부터 세 줄로 ");
+    expect(s.startsWith("규칙\n\n")).toBe(true);
+    expect(s).toContain("<사용자 지침>\n결론부터 세 줄로\n</사용자 지침>");
+    expect(s.indexOf("규칙")).toBeLessThan(s.indexOf("결론부터"));
+    expect(s).toMatch(/앞의 규칙.*따른다/);
+    expect(withInstructions("규칙", "가".repeat(5000))).toContain("가".repeat(4000) + "\n</사용자 지침>");
+    expect(withInstructions("규칙", "가".repeat(5000))).not.toContain("가".repeat(4001));
   });
 
   it("finds the template a request asks for", () => {

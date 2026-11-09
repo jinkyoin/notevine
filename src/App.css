@@ -2088,6 +2088,18 @@ kbd {
   font-size: 13px;
   color: var(--muted);
 }
+/* 설정 → AI → 답변 지침 */
+textarea.ai-instructions {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+}
 .keys-tools {
   display: flex;
   gap: 8px;
@@ -2208,6 +2220,67 @@ kbd {
   align-items: center;
   padding: 8px 10px 10px;
   border-top: 1px solid var(--border);
+}
+/* FR-AI-03 끌어다 놓은 노트·폴더: 입력창 위 칩, 놓는 중 강조, 아래 안내 */
+.ai-input.dropping {
+  background: var(--bg-active);
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+}
+.ai-chips {
+  list-style: none;
+  margin: 0;
+  padding: 8px 10px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-top: 1px solid var(--border);
+}
+.ai-chips + .ai-input {
+  border-top: 0;
+}
+.ai-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  padding: 2px 4px 2px 8px;
+  border-radius: 12px;
+  background: var(--bg-active);
+  font-size: 12px;
+}
+.ai-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-chip button {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 13px;
+  line-height: 1;
+}
+.ai-chip button:hover {
+  color: var(--text);
+}
+.ai-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 8px;
+}
+.ai-hint > span {
+  flex: 1;
+}
+.ai-web-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  cursor: pointer;
 }
 .ai-input textarea {
   flex: 1;

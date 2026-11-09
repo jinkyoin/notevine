@@ -570,7 +570,7 @@ function AiSettings() {
   const cur = current();
   return (
     <>
-      <Row label={tx("AI 도우미")} hint={tx("켜도 질문할 때마다 보낼 노트를 먼저 보여 주고, 확인한 것만 보냅니다")}>
+      <Row label={tx("AI 도우미")} hint={tx("켜도 노트는 AI 입력창에 끌어다 놓은 것만 보냅니다")}>
         <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
       </Row>
       <Row label={tx("연결된 AI")} hint={tx("PC에 설치·로그인된 공식 CLI를 그대로 씁니다. Notevine은 로그인 정보를 읽지 않습니다")}>
@@ -620,7 +620,34 @@ function AiSettings() {
       <p className="muted small pad">
         {tx("Claude Code는 Claude Pro/Max 구독, Codex는 ChatGPT 구독으로 동작합니다. 로그인 버튼을 누르면 각 AI의 공식 로그인 창이 열리고, 브라우저에서 로그인을 마치면 자동으로 연결됩니다. 선택: {0}", providerId || tx("자동"))}
       </p>
+      <AiInstructions />
       <ApiConnections />
+    </>
+  );
+}
+
+/** How the AI answers in this note folder: sent with every AI request (질문·글 고치기·주간 회고). */
+function AiInstructions() {
+  const config = useApp((s) => s.config);
+  const { saveConfig } = useApp.getState();
+  const [draft, setDraft] = useState(config.ai_instructions);
+  useEffect(() => setDraft(config.ai_instructions), [config.ai_instructions]);
+  const save = () => draft !== config.ai_instructions && void saveConfig({ ...config, ai_instructions: draft });
+  return (
+    <>
+      <h3 className="set-sub">{tx("답변 지침 (이 노트 폴더)")}</h3>
+      <p className="muted small">
+        {tx("AI가 이 노트 폴더에서 답할 때 따를 말투·길이·형식을 적습니다. 모든 AI 요청에 함께 보내고, 노트 폴더 안에 저장되어 다른 PC에서도 같이 쓰입니다. 노트를 고치는 방식이나 #비공개 노트 같은 앱의 규칙은 바꾸지 못합니다.")}
+      </p>
+      <textarea
+        className="ai-instructions"
+        rows={5}
+        maxLength={4000}
+        value={draft}
+        placeholder={tx("예: 한국어로 답한다. 결론부터 세 줄 이내로 쓴다. 비교는 표로 정리한다.")}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={save}
+      />
     </>
   );
 }

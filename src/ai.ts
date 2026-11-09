@@ -140,7 +140,7 @@ export function namesWeb(question: string): boolean {
 
 const WANTS_NEW_NOTE = /새\s*(노트|메모|문서)|(노트|메모|문서)(를|로)?\s*(새로\s*)?(만들|생성)|\bnew note\b|\bcreate a note\b/i;
 const WANTS_WRITING =
-  /작성해\s*(줘|주)|작성\s*부탁|써\s*(줘|주세요|넣)|적어\s*(줘|주|넣)|기록해\s*(줘|주)|덧붙|추가해\s*(줘|주)|넣어\s*(줘|주)|고쳐\s*(줘|주)|수정해\s*(줘|주)|바꿔\s*(줘|주)|채워\s*(줘|주)|달아\s*(줘|주)|\b(write|draft|append)\b/i;
+  /작성해\s*(줘|주)|작성(해|하라|해라|하세요)\s*[.!]?\s*$|작성\s*부탁|써\s*(줘|주세요|넣)|적어\s*(줘|주|넣)|기록해\s*(줘|주)|덧붙|추가해\s*(줘|주)|넣어\s*(줘|주)|고쳐\s*(줘|주)|수정해\s*(줘|주)|바꿔\s*(줘|주)|채워\s*(줘|주)|달아\s*(줘|주)|\b(write|draft|append)\b/i;
 
 /**
  * What the request wants written, judged from its wording: a new note, something
@@ -149,8 +149,13 @@ const WANTS_WRITING =
  */
 export function writeIntent(question: string): "new" | "open" | null {
   if (WANTS_NEW_NOTE.test(question)) return "new";
+  // "지금 열려있는 노트에 작성해": the open note is named, with a verb for writing in any ending.
+  if (INTO_OPEN_NOTE.test(question) && WRITE_VERB.test(question)) return "open";
   return WANTS_WRITING.test(question) ? "open" : null;
 }
+
+const INTO_OPEN_NOTE = /(열린|열려\s*있는|지금|현재|이)\s*(노트|메모|문서)(에|에다|에다가|의)\s/;
+const WRITE_VERB = /작성|써|쓰라|적어|적으|기록|추가|넣|덧붙|붙여|고쳐|수정/;
 
 const TEMPLATE_WORD = "템플릿|양식|서식|template";
 
@@ -272,6 +277,24 @@ export interface RunHandle {
   id: string;
   done: Promise<{ text: string; cost: number | null }>;
   cancel: () => void;
+}
+
+/** Longest answer instructions sent; the rest is left out. */
+const INSTRUCTIONS_CAP = 4000;
+
+/**
+ * The note folder's answer instructions (settings → AI), put after the app's own rules.
+ * They shape tone and format only: where they clash with the rules above (how changes
+ * are proposed, private notes), the rules win.
+ */
+export function withInstructions(system: string, instructions: string): string {
+  const text = Array.from(instructions.trim()).slice(0, INSTRUCTIONS_CAP).join("");
+  if (!text) return system;
+  return [
+    system,
+    `<사용자 지침>\n${text}\n</사용자 지침>`,
+    "위 사용자 지침은 답의 말투·길이·형식에 적용한다. 앞의 규칙(변경 제안 형식, 보낸 노트만 다루기 등)과 부딪히면 앞의 규칙을 따른다.",
+  ].join("\n\n");
 }
 
 /** Starts a run and reports streamed text through `onText` (full text so far). */

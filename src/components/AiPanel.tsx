@@ -2,9 +2,11 @@
 import { useEffect, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useAi } from "../aiStore";
-import { API_DEFAULT_LABEL, API_PROVIDERS, INSTALL_COMMAND, isLoginError, MODEL_OPTIONS, needsLogin } from "../ai";
+import { API_DEFAULT_LABEL, API_PROVIDERS, INSTALL_COMMAND, isLoginError, MODEL_OPTIONS, needsLogin, supportsWeb } from "../ai";
 import { api, type AiProvider } from "../api";
 import { useApp } from "../store";
+import { TREE_DRAG_TYPE } from "../editor/attachments";
+import { noteTitle } from "../lib/tree";
 
 import { tx } from "../i18n";
 /** Answer text: [[links]] are clickable, **bold** and "# heading" lines are styled; the rest stays plain. */
@@ -165,6 +167,9 @@ export function AiPanel() {
   const models = useAi((s) => s.models);
   const [customModel, setCustomModel] = useState(false);
   const [q, setQ] = useState("");
+  const [dropping, setDropping] = useState(false);
+  const webSearch = useAi((s) => s.webSearch);
+  const { attach, setWebSearch } = useAi.getState();
   const bottom = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -182,7 +187,7 @@ export function AiPanel() {
           {tx("노트에 질문하고, 글을 요약·다듬고, 주간 회고를 만듭니다. PC에 로그인된")}{" "} <b>Claude Code</b>{tx("나")}{" "} <b>Codex CLI</b>{tx("를 그대로 씁니다.")}
         </p>
         <p className="muted small pad">
-          {tx("켜면 질문할 때마다 보낼 노트를 먼저 보여 드리고, 확인한 것만 해당 AI 서비스(Anthropic·OpenAI)로 보냅니다. #비공개 태그가 있는 노트는 보내지 않습니다.")}
+          {tx("노트는 AI 입력창에 끌어다 놓은 것만 해당 AI 서비스(Anthropic·OpenAI)로 보냅니다. #비공개 태그가 있는 노트는 보내지 않습니다.")}
         </p>
         <div className="pad">
           <button className="btn primary small" onClick={() => setEnabled(true)}>
@@ -242,7 +247,7 @@ export function AiPanel() {
       <div className="ai-chat">
         {chat.length === 0 && usable.length > 0 && (
           <p className="muted small pad">
-            {tx("예: \"지난주 회의에서 결정한 것 정리해 줘\", \"○○을 노트나 웹에서 찾아 작성해 줘\", \"독서 템플릿에 맞게 작성해 줘\". 관련 노트를 보내기 전에 보여 드립니다. 작성을 요청하면 열린 노트에 넣을 내용을 보여 드리고, 확인한 것만 적용합니다. 열린 노트가 없으면 답을 새 노트로 저장하거나 복사할 수 있습니다.")}
+            {tx("예: 회의록 폴더를 끌어다 놓고 \"지난주에 결정한 것 정리해 줘\", \"○○을 웹에서 찾아 작성해 줘\", \"독서 템플릿에 맞게 작성해 줘\". 노트는 끌어다 놓은 것만 보냅니다. 작성을 요청하면 열린 노트에 넣을 내용을 보여 드리고, 확인한 것만 적용합니다. 열린 노트가 없으면 답을 새 노트로 저장하거나 복사할 수 있습니다.")}
           </p>
         )}
         {chat.map((m, i) => (
@@ -298,8 +303,29 @@ export function AiPanel() {
         <div ref={bottom} />
       </div>
 
+      <AttachedChips />
       <form
-        className="ai-input"
+        className={`ai-input${dropping ? " dropping" : ""}`}
+        // Notes and folders dragged from the file tree are what a question sends (FR-AI-03).
+        onDragOver={(e) => {
+          const t = e.dataTransfer.types;
+          if (!t.includes(TREE_DRAG_TYPE) && !t.includes("Files")) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = t.includes(TREE_DRAG_TYPE) ? "link" : "none";
+          setDropping(true);
+        }}
+        onDragLeave={() => setDropping(false)}
+        onDrop={(e) => {
+          setDropping(false);
+          const path = e.dataTransfer.getData(TREE_DRAG_TYPE);
+          if (path) {
+            e.preventDefault();
+            void attach(path);
+          } else if (e.dataTransfer.types.includes("Files")) {
+            e.preventDefault();
+            useApp.getState().toast(tx("왼쪽 파일 트리에서 노트나 폴더를 끌어다 놓으세요"), "error");
+          }
+        }}
         onSubmit={(e) => {
           e.preventDefault();
           const text = q;
@@ -344,6 +370,42 @@ export function AiPanel() {
           </button>
         )}
       </form>
+      {usable.length > 0 && (
+        <div className="ai-hint muted small">
+          <span>{tx("노트에 대해 물으려면 파일 트리에서 노트나 폴더를 여기에 끌어다 놓으세요")}</span>
+          {cur && supportsWeb(cur.id) && (
+            <label className="ai-web-toggle" title={tx("질문할 때 웹도 찾아봅니다")}>
+              <input type="checkbox" checked={webSearch} onChange={(e) => setWebSearch(e.target.checked)} /> {tx("웹 검색")}
+            </label>
+          )}
+        </div>
+      )}
     </section>
+  );
+}
+
+/** The notes and folders dropped on the question box; × takes one out. */
+function AttachedChips() {
+  const attached = useAi((s) => s.attached);
+  const { detach } = useAi.getState();
+  if (!attached.length) return null;
+  return (
+    <ul className="ai-chips" aria-label={tx("AI에 함께 보낼 노트")}>
+      {attached.map((a) => {
+        const folder = a.notes.length !== 1 || a.notes[0] !== a.path;
+        return (
+          <li key={a.path} className="ai-chip" title={a.notes.join("\n")}>
+            <span>
+              {folder ? "📁" : "📄"} {noteTitle(a.path)}
+              {folder && <span className="muted"> {tx("(노트 {0}개)", a.notes.length)}</span>}
+              {a.privateCount > 0 && <span className="muted"> · {tx("비공개 {0}개 제외", a.privateCount)}</span>}
+            </span>
+            <button type="button" aria-label={tx("{0} 빼기", noteTitle(a.path))} onClick={() => detach(a.path)}>
+              ×
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

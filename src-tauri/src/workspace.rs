@@ -63,6 +63,8 @@ pub struct VaultConfig {
     pub history_delete_days: u32,
     /// Command id → shortcut ("" = none) replacing the built-in one (FR-UI-05).
     pub keybindings: BTreeMap<String, String>,
+    /// How the AI should answer in this note folder (tone, length, format), added to every request.
+    pub ai_instructions: String,
 }
 
 /// A search kept under a name: the search box text plus the conditions added below it.
@@ -112,6 +114,7 @@ impl Default for VaultConfig {
             history_thin_days: 0,
             history_delete_days: 0,
             keybindings: BTreeMap::new(),
+            ai_instructions: String::new(),
         }
     }
 }
@@ -808,8 +811,10 @@ mod tests {
             }],
             history_thin_days: 30,
             keybindings: BTreeMap::from([("note.quickMemo".into(), "Ctrl+M".into())]),
+            ai_instructions: "결론부터 세 줄로".into(),
             ..c
         };
+        assert_eq!(c.ai_instructions, "", "a config saved before has no AI instructions");
         save_config(&v, &changed).unwrap();
         assert_eq!(load_config(&v).unwrap(), changed);
         let text = fs::read_to_string(&cfg).unwrap();

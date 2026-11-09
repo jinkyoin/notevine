@@ -178,6 +178,8 @@ export interface VaultConfig {
   history_delete_days: number;
   /** Command id → shortcut ("" = none) replacing the built-in one (FR-UI-05). */
   keybindings: Record<string, string>;
+  /** How the AI should answer in this note folder, added to every AI request. */
+  ai_instructions: string;
 }
 
 /** What this PC's user allowed the open vault to do; kept outside the vault, which can't grant it. */

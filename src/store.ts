@@ -102,6 +102,7 @@ export const DEFAULT_CONFIG: VaultConfig = {
   history_thin_days: 0,
   history_delete_days: 0,
   keybindings: {},
+  ai_instructions: "",
 };
 
 const NO_TRUST: DeviceTrust = { git: false, backup_minutes: 0, custom_css: false };

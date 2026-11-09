@@ -19,6 +19,7 @@ import {
   reviewPrompt,
   runAi,
   weekRange,
+  withInstructions,
   WRITE_LABEL,
   WRITE_SYSTEM,
   writePrompt,
@@ -29,7 +30,7 @@ import { useApp } from "./store";
 import { findNode, noteTitle } from "./lib/tree";
 import { appendText, applyChanges, editSystem, OPEN_NOTE_ALIAS, parseEdits, planEdit, type Edit, type Planned } from "./lib/aiEdits";
 import { day } from "./lib/folderTable";
-import type { TreeNode } from "./api";
+import { notesUnder } from "./lib/aiAttach";
 
 import { tx } from "./i18n";
 export interface ChatMessage {
@@ -104,6 +105,14 @@ export interface EditProposal {
   chatIndex: number;
 }
 
+/** A note or folder dropped on the question box, with the notes it sends. */
+export interface Attached {
+  path: string;
+  notes: string[];
+  /** #비공개 notes in it, left out. */
+  privateCount: number;
+}
+
 interface AiState {
   enabled: boolean;
   providers: AiProvider[] | null;
@@ -123,9 +132,14 @@ interface AiState {
   /** Applies the checked proposals (through the editor or the save path, so history keeps them). */
   applyEdits(): Promise<void>;
   closeEdits(): void;
-  /** Questions may also search the web (choice in the send dialog, remembered). */
+  /** Questions may also search the web (choice under the question box, remembered). */
   webSearch: boolean;
   setWebSearch(on: boolean): void;
+  /** Notes and folders dragged onto the question box: the only notes a question sends (FR-AI-03). */
+  attached: Attached[];
+  /** Adds a file-tree entry (a note, or a folder's notes) to what questions send. */
+  attach(path: string): Promise<void>;
+  detach(path: string): void;
 
   /** `refresh` probes the CLIs again now. */
   detect(refresh?: boolean): Promise<void>;
@@ -168,10 +182,6 @@ export function folderBound<A extends unknown[]>(fn: (...a: A) => void): (...a: 
   };
 }
 
-/** Folders of the vault (two levels deep), for telling the AI where new notes can go. */
-function folderPaths(tree: TreeNode[], depth = 0): string[] {
-  return tree.flatMap((n) => (n.kind === "folder" ? [n.path, ...(depth < 1 ? folderPaths(n.children ?? [], depth + 1) : [])] : []));
-}
 
 /** Makes `dir` and the folders above it when they are missing. */
 async function ensureFolder(dir: string) {
@@ -218,31 +228,6 @@ export const useAi = create<AiState>((set, get) => {
       return null;
     }
     return p;
-  }
-
-  /**
-   * Notes related to `q` to offer for sending: the good search hits are pre-checked, the
-   * rest and the open note are not (the open note is when it is to be written to). Private
-   * notes are never offered, only counted, and templates only when asked for.
-   */
-  async function relatedNotes(q: string, checkOpen: boolean): Promise<{ notes: ContextNote[]; checked: string[]; privateExcluded: number }> {
-    const ctx = await api.aiContext(q, 8).catch(() => ({ notes: [] as ContextNote[], private_excluded: [] as string[] }));
-    const templates = app().config.template_folder + "/";
-    const found = ctx.notes.filter((n) => !n.path.startsWith(templates));
-    const excluded = new Set(ctx.private_excluded);
-    const open = app().openPath;
-    const notes = [...found];
-    if (open && !notes.some((n) => n.path === open)) {
-      const isPrivate = (await api.aiPrivateNotes([open]).catch(() => [open])).length > 0;
-      if (isPrivate) excluded.add(open);
-      else {
-        const text = await api.readNote(open).catch(() => "");
-        notes.push({ path: open, title: noteTitle(open), snippet: tx("(지금 열려 있는 노트)"), chars: [...text].length, relevant: false });
-      }
-    }
-    const checked = found.filter((n) => n.relevant).map((n) => n.path);
-    if (checkOpen && open && notes.some((n) => n.path === open)) checked.push(open);
-    return { notes, checked: [...new Set(checked)], privateExcluded: excluded.size };
   }
 
   /** The template the request asks to follow, as a note to send. undefined: none asked for. null: not usable; said why. */
@@ -295,6 +280,24 @@ export const useAi = create<AiState>((set, get) => {
     loggingIn: null,
     webSearch: aiPrefs.web(),
     edits: null,
+    attached: [],
+
+    async attach(path) {
+      if (get().attached.some((a) => a.path === path)) return;
+      const notes = notesUnder(app().tree, path);
+      if (notes === null) return app().toast(tx("노트나 폴더만 AI에 보낼 수 있습니다"), "error");
+      const hidden = new Set(notes.length ? await api.aiPrivateNotes(notes).catch(() => notes) : []);
+      const sendable = notes.filter((p) => !hidden.has(p));
+      if (!sendable.length) {
+        return app().toast(hidden.size ? tx("#비공개 노트뿐이라 보낼 노트가 없습니다: {0}", noteTitle(path)) : tx("폴더에 보낼 노트가 없습니다: {0}", noteTitle(path)), "error");
+      }
+      if (get().attached.some((a) => a.path === path)) return;
+      set({ attached: [...get().attached, { path, notes: sendable, privateCount: hidden.size }] });
+    },
+
+    detach(path) {
+      set({ attached: get().attached.filter((a) => a.path !== path) });
+    },
 
     reviewEdits(index) {
       const p = get().chat[index]?.proposal;
@@ -447,30 +450,18 @@ export const useAi = create<AiState>((set, get) => {
       // The writing goes to the open note, unless that note is private: its title stays here too.
       const open = app().openPath;
       const target = intent === "open" && open && !(await api.aiPrivateNotes([open]).catch(() => [open])).length ? open : null;
-      let paths: string[] | null = [];
-      // Searching the web plainly takes no notes, so there is nothing to confirm (FR-AI-03 is about notes).
-      if (!webOnly || template) {
-        const related = webOnly ? { notes: [] as ContextNote[], checked: [] as string[], privateExcluded: 0 } : await relatedNotes(q, intent === "open");
-        paths = await get().confirmSend({
-          provider,
-          title: tx("AI에 보내기"),
-          notes: [...(template ? [template] : []), ...related.notes.filter((n) => n.path !== template?.path)],
-          checked: [...(template ? [template.path] : []), ...related.checked],
-          privateExcluded: related.privateExcluded,
-          extra: { label: tx("요청"), text: q },
-          web: !wantsWeb,
-          target: target ? noteTitle(target) : undefined,
-        });
-      }
-      if (paths === null) return;
-      const sent = paths;
+      // Only what the user put in: notes dropped on the box, the template asked for, and the
+      // open note when the request writes into it. Nothing is searched for (FR-AI-03).
+      const sent = [
+        ...new Set([...(template ? [template.path] : []), ...get().attached.flatMap((a) => a.notes), ...(target ? [target] : [])]),
+      ];
       const web = wantsWeb || get().webSearch;
       const cfg = app().config;
       const system = [
         qaSystem(web),
         editSystem({
-          // Folder names are for placing a new note, and don't go along unconfirmed.
-          folders: intent === "new" && !webOnly ? folderPaths(app().tree) : [],
+          // Folder names would go along unasked: a new note goes to the inbox folder instead.
+          folders: [],
           newNoteDir: cfg.preset_enabled ? cfg.inbox_folder : "",
           today: day(Date.now()),
           intent,
@@ -509,7 +500,7 @@ export const useAi = create<AiState>((set, get) => {
       };
       const handle = runAi(
         provider.id,
-        system,
+        withInstructions(system, app().config.ai_instructions),
         chatPrompt(history, q),
         sent,
         (text) => update({ text: shown(text) }),
@@ -548,20 +539,20 @@ export const useAi = create<AiState>((set, get) => {
 
     newChat() {
       if (get().running) return;
-      set({ chat: [], edits: null });
+      set({ chat: [], edits: null, attached: [] });
     },
 
     snapshot() {
-      const { chat, edits, preview } = get();
+      const { chat, edits, preview, attached } = get();
       // An answer or preview still being written stops with the switch: it can't finish in another folder.
       const stopped = chat.map((m) => (m.streaming ? { ...m, streaming: false, error: tx("노트 폴더를 바꿔 답을 멈췄습니다") } : m));
-      return { chat: stopped, edits, preview: preview?.streaming ? null : preview };
+      return { chat: stopped, edits, preview: preview?.streaming ? null : preview, attached };
     },
 
     restore(s) {
       folderGen++;
-      const v = (s ?? {}) as Partial<Pick<AiState, "chat" | "edits" | "preview">>;
-      set({ chat: v.chat ?? [], edits: v.edits ?? null, preview: v.preview ?? null, running: null });
+      const v = (s ?? {}) as Partial<Pick<AiState, "chat" | "edits" | "preview" | "attached">>;
+      set({ chat: v.chat ?? [], edits: v.edits ?? null, preview: v.preview ?? null, attached: v.attached ?? [], running: null });
     },
 
     async saveAnswer(index) {
@@ -604,7 +595,7 @@ export const useAi = create<AiState>((set, get) => {
         extra: { label: sel.whole ? tx("현재 문단") : tx("선택한 글"), text: sel.text },
       });
       if (ok === null) return;
-      const handle = runAi(provider.id, WRITE_SYSTEM, writePrompt(task, title, sel.text), [], (text) =>
+      const handle = runAi(provider.id, withInstructions(WRITE_SYSTEM, app().config.ai_instructions), writePrompt(task, title, sel.text), [], (text) =>
         set({ preview: get().preview && { ...get().preview!, result: text } }),
       );
       set({
@@ -658,7 +649,7 @@ export const useAi = create<AiState>((set, get) => {
       });
       if (send === null) return;
       if (!send.length) return app().toast(tx("보낼 업무일지를 하나 이상 고르세요"), "error");
-      const handle = runAi(provider.id, REVIEW_SYSTEM, reviewPrompt(`${from} ~ ${to}`), send, (text) =>
+      const handle = runAi(provider.id, withInstructions(REVIEW_SYSTEM, app().config.ai_instructions), reviewPrompt(`${from} ~ ${to}`), send, (text) =>
         set({ preview: get().preview && { ...get().preview!, result: text } }),
       );
       set({

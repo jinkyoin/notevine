@@ -1,4 +1,4 @@
-// #비공개 태그 노트가 AI로 나가지 않는지 확인 (AI 호출 없음: 확인 창에서 취소하거나 백엔드가 거절).
+// #비공개 태그 노트가 AI로 나가지 않는지 확인 (AI 호출 없음: 끌어다 놓기에서 거절하거나 백엔드가 거절).
 const { chromium } = require("playwright-core");
 const path = require("path");
 const fs = require("fs");
@@ -29,15 +29,19 @@ w("회사 메모.md", "---\ntags: [비공개/회사]\n---\n배포 일정 회의 
   await page.waitForSelector(".ai-head select", { timeout: 15000 });
   await new Promise((r) => setTimeout(r, 800));
 
-  // 1) question while a private note is open: neither private note is offered
+  // 1) Notes go to the AI only when dragged onto its box (FR-AI-03): a private note is refused,
+  //    and a folder drop leaves its private notes out.
   await page.evaluate(() => window.__notevine.getState().openNote("인사 회의.md"));
   await page.waitForSelector(".note-title >> text=인사 회의");
-  await page.fill(".ai-input textarea", "배포 일정 회의 내용 정리해 줘");
-  await page.keyboard.press("Enter");
-  await page.waitForSelector(".modal.ai-send");
-  console.log("offered:", await page.$$eval(".ai-notes .ai-note-title", (els) => els.map((e) => e.textContent)));
-  console.log("notice:", await page.textContent(".ai-private").catch(() => "(없음)"));
-  await page.click(".modal.ai-send .btn.ghost"); // cancel: nothing sent
+  const row = (name) => `.tree-row:has(.tree-label:text-is("${name}"))`;
+  await page.dragAndDrop(row("인사 회의"), ".ai-input");
+  await page.waitForSelector(".toast.error >> text=#비공개");
+  await page.dragAndDrop(row("공개 회의"), ".ai-input");
+  await page.waitForSelector(".ai-chip >> text=공개 회의");
+  const chips = await page.$$eval(".ai-chip", (els) => els.map((e) => e.textContent.replace("×", "").trim()));
+  console.log("chips:", JSON.stringify(chips), chips.length === 1 && !chips.some((c) => c.includes("인사")) ? "ok" : "FAIL");
+  console.log("send dialog on drop:", !!(await page.$(".modal.ai-send")) ? "FAIL" : "none (ok)");
+  await page.evaluate(() => window.__notevineAi.getState().newChat());
 
   // 2) AI writing on a private note is refused before any dialog
   await page.click(".cm-content");

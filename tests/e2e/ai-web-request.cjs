@@ -11,7 +11,7 @@ const PROVIDER = process.argv[2] || "claude";
 const VAULT = path.join(os.tmpdir(), "notevine-e2e", "aiweb-" + Date.now());
 const TEMPLATES = path.join(VAULT, "90.템플릿");
 fs.mkdirSync(TEMPLATES, { recursive: true });
-// Words of the question appear here, so a plain search would offer these notes.
+// Words of the questions appear here: none may go along unless dragged onto the box.
 fs.writeFileSync(path.join(VAULT, "도서 목록.md"), "# 도서 목록\n\n올해 읽을 도서를 검색하여 요약해 둔다. 내부코드 ZX-4471\n");
 fs.writeFileSync(path.join(VAULT, "지난주 회의.md"), "# 지난주 회의\n\n결정: 3월 개통\n");
 fs.writeFileSync(path.join(VAULT, "일기.md"), "# 일기\n\n오늘 결정을 미뤘다.\n");
@@ -41,15 +41,6 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await page.fill(".ai-input textarea", text);
     await page.keyboard.press("Enter");
   };
-  const sendDialog = async () => {
-    await page.waitForSelector(".modal.ai-send");
-    await sleep(800);
-    assert.strictEqual(await page.locator(".modal.ai-send").count(), 1, "the Enter that sent the request also answered the dialog");
-    return page.evaluate(() => {
-      const r = window.__notevineAi.getState().send;
-      return { notes: r.notes.map((n) => n.title), checked: r.checked, target: r.target };
-    });
-  };
   const finished = async () => {
     const t0 = Date.now();
     await page.waitForFunction(() => window.__notevineAi.getState().running, null, { timeout: 30000 });
@@ -67,15 +58,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // 0) One box, no tabs.
   assert.strictEqual(await page.locator(".ai-mode").count(), 0, "the tabs are still there");
 
-  // 1) A question about my notes asks first, and only good hits are checked.
-  await send("지난주 회의 결정 찾아줘");
-  let d = await sendDialog();
-  assert.ok(d.checked.includes("지난주 회의.md"), "the meeting isn't checked: " + JSON.stringify(d));
-  assert.ok(d.notes.includes("일기") && !d.checked.includes("일기.md"), "a one-word body hit should be listed unchecked: " + JSON.stringify(d));
-  assert.ok(!d.notes.includes("비밀"), "private note offered");
-  assert.strictEqual(d.target, undefined, "a question has no note to write to");
-  console.log("1 note question: ok");
-  await page.click(".modal.ai-send .btn.ghost");
+  // 1) Notes go along only when dragged onto the box (FR-AI-03); a private one is refused.
+  const row = (name) => `.tree-row:has(.tree-label:text-is("${name}"))`;
+  await page.dragAndDrop(row("지난주 회의"), ".ai-input");
+  await page.waitForSelector(".ai-chip >> text=지난주 회의");
+  await page.dragAndDrop(row("비밀"), ".ai-input");
+  await page.waitForSelector(".toast.error >> text=#비공개");
+  assert.deepStrictEqual(await ai(() => window.__notevineAi.getState().attached.map((a) => a.path)), ["지난주 회의.md"], "chips");
+  await page.click('.ai-chip button');
+  assert.strictEqual(await page.locator(".ai-chip").count(), 0, "× did not take the chip out");
+  console.log("1 dragged notes: ok");
 
   // 2) Plainly asking for the web: no dialog, no notes, an answer to save or copy.
   await send("'창발의 시대'란 도서를 검색하여 요약해줘");
@@ -94,12 +86,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await page.evaluate(() => window.__notevine.getState().openNote("독후감.md"));
   await page.waitForSelector(".cm-content");
   await send("창발의 시대 책을 노트나 웹에서 검색해서 세 문장으로 작성해줘");
-  d = await sendDialog();
-  assert.strictEqual(d.target, "독후감", "no target: " + JSON.stringify(d));
-  assert.ok(d.checked.includes("독후감.md"), "the open note should be checked");
-  await sleep(500);
-  await page.click(".modal.ai-send .btn.primary");
   m = await finished();
+  assert.strictEqual(await page.locator(".modal.ai-send").count(), 0, "a send dialog was shown");
+  assert.deepStrictEqual(m.sources, ["독후감.md"], "only the open note goes along: " + JSON.stringify(m.sources));
   console.log("   items", JSON.stringify(m.items.map((i) => [i.kind, i.path, i.error])));
   assert.ok(m.items.some((i) => i.kind === "append" && i.path === "독후감.md" && !i.error), "no proposal for the open note: " + m.text.slice(0, 300));
   const note = path.join(VAULT, "독후감.md");
@@ -129,12 +118,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   assert.strictEqual(await ai(() => window.__notevine.getState().openPath), null, "a note is still open");
   {
     await send("창발의 시대 책을 노트나 웹에서 찾아서 템플릿 폴더에 있는 독서템플릿에 맞게 작성해줘");
-    d = await sendDialog();
-    assert.ok(d.notes.includes("독서템플릿") && d.checked.includes("90.템플릿/독서템플릿.md"), "template not offered: " + JSON.stringify(d));
-    assert.strictEqual(d.target, undefined);
-    await sleep(500);
-    await page.click(".modal.ai-send .btn.primary");
     m = await finished();
+    assert.deepStrictEqual(m.sources, ["90.템플릿/독서템플릿.md"], "only the template goes along: " + JSON.stringify(m.sources));
     console.log("----- answer -----\n" + m.text.slice(0, 500) + "\n------------------");
     assert.ok(m.written, "not marked as writing");
     assert.strictEqual(m.items.length, 0, "proposed changes with no note open: " + JSON.stringify(m.items.map((i) => i.path)));
