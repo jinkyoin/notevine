@@ -4,6 +4,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
 import { useApp } from "../store";
 import { dispatchKey, setKeyOverrides } from "../commands";
+import { VaultRail } from "./VaultRail";
 import { api } from "../api";
 import { Explorer } from "./Explorer";
 import { Editor } from "./Editor";
@@ -86,16 +87,19 @@ function VaultMenu({ name, root }: { name: string; root: string }) {
   };
   return (
     <div className="vault-menu" ref={box}>
-      <button className="vault-name" title={tx("{0}\n눌러서 노트 폴더 바꾸기", root)} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button className="vault-name" title={tx("{0}\n노트 폴더 메뉴", root)} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(!open)}>
         {name} <span className="caret">▾</span>
       </button>
       {open && (
         <div className="menu" role="menu">
-          <button role="menuitem" onClick={() => run(() => useApp.getState().closeVault())}>
-            {tx("노트 폴더 바꾸기…")}
+          <button role="menuitem" onClick={() => run(() => useApp.getState().setAdding(true))}>
+            {tx("노트 폴더 더 열기…")}
           </button>
           <button role="menuitem" onClick={() => run(() => void revealItemInDir(root).catch(() => {}))}>
             {tx("탐색기에서 노트 폴더 열기")}
+          </button>
+          <button role="menuitem" onClick={() => run(() => void useApp.getState().closeRailVault())}>
+            {tx("이 노트 폴더 닫기")}
           </button>
         </div>
       )}
@@ -181,6 +185,8 @@ export function MainLayout() {
   const crumbs = openPath ? openPath.split("/") : [];
 
   return (
+    <div className="shell">
+    <VaultRail />
     <div className="main">
       <header className="topbar">
         <button
@@ -319,6 +325,7 @@ export function MainLayout() {
       <AiSendConfirm />
       <AiPreview />
       <AiEdits />
+    </div>
     </div>
   );
 }

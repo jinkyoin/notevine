@@ -11,6 +11,7 @@ use crate::error::{AppError, AppResult};
 use crate::history::VersionMeta;
 use crate::index::Index;
 use crate::index::NoteRef;
+use crate::rail::RailFile;
 use crate::recent::{RecentStore, RecentVault};
 use crate::search::{SearchQuery, SearchResult, TagCount};
 use crate::vault::{Backlink, LinkChange, SaveOutcome, TreeNode, Vault, VaultInfo, Workspace};
@@ -20,6 +21,7 @@ pub struct AppState {
     pub vault: Mutex<Option<Vault>>,
     pub watcher: Mutex<Option<VaultWatcher>>,
     pub recent: RecentStore,
+    pub rail: crate::rail::RailStore,
     pub settings: crate::tray::SettingsStore,
     pub trust: crate::trust::TrustStore,
     /// Held for a whole `open_vault`, so two opens can't leave one folder's vault with
@@ -41,10 +43,11 @@ pub(crate) fn with_vault<T>(state: &State<AppState>, f: impl FnOnce(&Vault) -> A
 #[tauri::command(async)]
 pub fn open_vault(app: AppHandle, state: State<AppState>, path: String) -> AppResult<VaultInfo> {
     let _opening = state.opening.lock().expect("opening lock poisoned");
-    // Close the current vault first: reopening the same vault must not find its
-    // database files still held open (Windows refuses to replace them then).
-    *state.watcher.lock().expect("watcher lock poisoned") = None;
-    *state.vault.lock().expect("vault lock poisoned") = None;
+    let current = state.vault.lock().expect("vault lock poisoned").as_ref().map(|v| v.root().to_path_buf());
+    if must_close_first(current.as_deref(), Path::new(&path)) {
+        *state.watcher.lock().expect("watcher lock poisoned") = None;
+        *state.vault.lock().expect("vault lock poisoned") = None;
+    }
     let local_base = app.path().app_local_data_dir().map_err(|e| AppError::System(e.to_string()))?;
     let v = Vault::open_placed(Path::new(&path), &local_base, &drive::installed())?;
     let info = v.info();
@@ -52,6 +55,7 @@ pub fn open_vault(app: AppHandle, state: State<AppState>, path: String) -> AppRe
     let store = v.store_dir();
     // A broken recent list must not block opening the vault.
     let _ = state.recent.touch(&info.root, &info.name);
+    *state.watcher.lock().expect("watcher lock poisoned") = None;
     *state.vault.lock().expect("vault lock poisoned") = Some(v);
     // Without a watcher the app still works; external edits just show up later.
     *state.watcher.lock().expect("watcher lock poisoned") = watcher::start(app.clone(), root.clone()).ok();
@@ -63,6 +67,32 @@ pub fn open_vault(app: AppHandle, state: State<AppState>, path: String) -> AppRe
         let _ = app.emit("index-ready", result.map(|s| s.indexed + s.unchanged).map_err(|e| e.to_string()));
     });
     Ok(info)
+}
+
+/// Whether the open vault has to close before `target` opens. Only the same folder does:
+/// Windows refuses to replace its database files while they are held open. Another folder
+/// opens beside it, so the shown one keeps answering meanwhile and stays if the open fails
+/// (FR-VLT-07).
+fn must_close_first(current: Option<&Path>, target: &Path) -> bool {
+    let Some(current) = current else { return false };
+    // A folder that can't be read won't open either: no reason to close the shown one.
+    crate::vault::canonical_root(target).is_ok_and(|t| t == current)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::must_close_first;
+
+    #[test]
+    fn only_the_same_folder_closes_before_opening() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let a_root = crate::vault::canonical_root(a.path()).unwrap();
+        assert!(!must_close_first(None, a.path()));
+        assert!(must_close_first(Some(&a_root), a.path()));
+        assert!(!must_close_first(Some(&a_root), b.path()));
+        assert!(!must_close_first(Some(&a_root), &a.path().join("없음")));
+    }
 }
 
 /// Drive folders on this PC, for the start screen. Off the main thread: it asks each
@@ -124,6 +154,32 @@ pub async fn locate_note_file(path: String) -> Option<crate::file_open::NoteFile
 #[tauri::command]
 pub fn forget_vault(state: State<AppState>, path: String) -> AppResult<()> {
     state.recent.forget(&path)
+}
+
+/// The note folder rail (FR-VLT-07); None before it was ever saved.
+#[tauri::command]
+pub fn rail_list(state: State<AppState>) -> Option<RailFile> {
+    state.rail.load()
+}
+
+#[tauri::command]
+pub fn rail_add(state: State<AppState>, path: String, name: String) -> AppResult<RailFile> {
+    state.rail.add(&path, &name)
+}
+
+#[tauri::command]
+pub fn rail_remove(state: State<AppState>, path: String) -> AppResult<RailFile> {
+    state.rail.remove(&path)
+}
+
+#[tauri::command]
+pub fn rail_move(state: State<AppState>, path: String, delta: i32) -> AppResult<RailFile> {
+    state.rail.move_by(&path, delta)
+}
+
+#[tauri::command]
+pub fn rail_set_active(state: State<AppState>, path: String) -> AppResult<()> {
+    state.rail.set_active(&path)
 }
 
 #[tauri::command]

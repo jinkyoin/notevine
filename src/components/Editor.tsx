@@ -21,6 +21,8 @@ import { toggleLines, toggleWrap, webLink } from "../editor/format";
 import { colorSpans } from "../editor/colors";
 import { koDate } from "../editor/koDate";
 import { toggleTask } from "../lib/renderNote";
+import { viewKey } from "../lib/vaultMemory";
+import { switchGuard } from "../editor/switchGuard";
 import { FormatBar, ModeSwitch, type FormatAction } from "./FormatBar";
 import { NoteView } from "./NoteView";
 import { NoteTags } from "./NoteTags";
@@ -179,6 +181,8 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
       ? { setDocText: () => {}, setEditText: () => {}, setEditorApi: () => {} }
       : useApp.getState();
     const scrollEl = scroller.current;
+    // Taken now: by cleanup another note folder may already be open (FR-VLT-07).
+    const memoryKey = viewKey(useApp.getState().vault?.root ?? "", path);
     // Read on scroll: by cleanup the editor may already be off the page and read as 0.
     let top = 0;
     const onScroll = () => scrollEl && (top = scrollEl.scrollTop);
@@ -255,6 +259,7 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
           state: EditorState.create({
             doc: text,
             extensions: [
+              switchGuard,
               history(),
               drawSelection(),
               EditorView.lineWrapping,
@@ -353,7 +358,7 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
         else if (readModeRef.current) setReadText(text);
         // Coming from a backlink: put the cursor on the linking line.
         const jump = side ? null : useApp.getState().jumpLine;
-        const seen = viewMemory.get(path);
+        const seen = viewMemory.get(memoryKey);
         if (jump && jump <= view.state.doc.lines) {
           const at = view.state.doc.line(jump).from;
           view.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: "center" }) });
@@ -421,7 +426,7 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
     return () => {
       if (view) {
         const sel = view.state.selection.main;
-        viewMemory.set(path, { anchor: sel.anchor, head: sel.head, top });
+        viewMemory.set(memoryKey, { anchor: sel.anchor, head: sel.head, top });
       }
       scrollEl?.removeEventListener("scroll", onScroll);
       void save();

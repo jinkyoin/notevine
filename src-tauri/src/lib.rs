@@ -12,6 +12,7 @@ mod index;
 mod parse;
 mod paths;
 mod plugins;
+mod rail;
 mod recent;
 mod rewrite;
 mod search;
@@ -123,6 +124,7 @@ pub fn run() {
                 vault: Mutex::new(None),
                 watcher: Mutex::new(None),
                 recent: RecentStore::new(&config_dir),
+                rail: rail::RailStore::new(&config_dir),
                 settings,
                 trust: trust::TrustStore::new(&config_dir),
                 opening: Mutex::new(()),
@@ -149,6 +151,11 @@ pub fn run() {
             commands::started_with_file,
             commands::locate_note_file,
             commands::forget_vault,
+            commands::rail_list,
+            commands::rail_add,
+            commands::rail_remove,
+            commands::rail_move,
+            commands::rail_set_active,
             commands::list_tree,
             commands::read_note,
             commands::installed_drives,

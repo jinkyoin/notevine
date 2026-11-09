@@ -49,6 +49,18 @@ export interface RecentVault {
   opened_at: number;
 }
 
+/** A note folder on the rail at the window's left edge (FR-VLT-07). */
+export interface RailEntry {
+  path: string;
+  name: string;
+}
+
+/** The rail in order, and the folder shown last (opened at the next start). */
+export interface RailFile {
+  entries: RailEntry[];
+  active: string | null;
+}
+
 export interface VersionMeta {
   id: number;
   path: string;
@@ -355,6 +367,12 @@ export const api = {
   startedWithFile: () => invoke<boolean>("started_with_file"),
   locateNoteFile: (path: string) => invoke<NoteFile | null>("locate_note_file", { path }),
   forgetVault: (path: string) => invoke<void>("forget_vault", { path }),
+  /** null before the rail was ever saved (the first run after the update). */
+  railList: () => invoke<RailFile | null>("rail_list"),
+  railAdd: (path: string, name: string) => invoke<RailFile>("rail_add", { path, name }),
+  railRemove: (path: string) => invoke<RailFile>("rail_remove", { path }),
+  railMove: (path: string, delta: number) => invoke<RailFile>("rail_move", { path, delta }),
+  railSetActive: (path: string) => invoke<void>("rail_set_active", { path }),
   listTree: () => invoke<TreeNode[]>("list_tree"),
   readNote: (path: string) => invoke<string>("read_note", { path }),
   writeNote: (path: string, content: string, force = false) =>

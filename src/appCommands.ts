@@ -14,7 +14,7 @@ const hasNote = () => !!st().openPath;
  * Shortcuts that open dialogs shouldn't fire while another dialog is up. The palette
  * doesn't count: it lists commands while it is open and closes itself before running one.
  */
-const noModal = () => hasVault() && (!st().modal || st().modal === "palette") && !st().quickOpen && !st().versionView;
+const noModal = () => hasVault() && (!st().modal || st().modal === "palette") && !st().quickOpen && !st().versionView && !st().adding && !st().switchLocked;
 
 export function registerAppCommands(): () => void {
   return registerCommands([
@@ -258,7 +258,16 @@ export function registerAppCommands(): () => void {
         void st().saveConfig({ ...c, theme: order[(order.indexOf(c.theme) + 1) % order.length] });
       },
     },
-    { id: "vault.switch", title: tx("노트 폴더 바꾸기"), when: hasVault, run: () => st().closeVault() },
+    // Note folder rail (FR-VLT-07).
+    { id: "vault.switch", title: tx("노트 폴더 더 열기"), keywords: tx("노트 폴더 바꾸기 추가 열기 vault"), when: noModal, run: () => st().setAdding(true) },
+    { id: "vault.close", title: tx("노트 폴더 닫기"), keywords: tx("막대에서 닫기 vault"), when: hasVault, run: () => st().closeRailVault() },
+    ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({
+      id: `vault.go${n}`,
+      title: tx("노트 폴더 {0}로 가기", n),
+      keys: `Ctrl+${n}`,
+      when: () => noModal() && st().rail.length >= n,
+      run: () => st().switchVault(st().rail[n - 1].path),
+    })),
     {
       id: "ai.panel",
       title: tx("AI: 질문하기 (노트·웹)"),

@@ -146,9 +146,27 @@ interface AiState {
   weeklyReview(): Promise<void>;
   closePreview(): void;
   applyPreview(how: "replace" | "below" | "note", text: string): Promise<void>;
+  /** The chat and proposals of the open note folder, kept while another folder is shown (FR-VLT-07). */
+  snapshot(): unknown;
+  /** Puts back what `snapshot` gave, or starts empty for a folder without one. */
+  restore(s: unknown): void;
 }
 
 const app = () => useApp.getState();
+
+/** Bumped whenever another note folder's AI state is put on screen (FR-VLT-07). */
+let folderGen = 0;
+
+/**
+ * Wraps a callback of a running AI request so it does nothing once another note folder is
+ * shown: a late answer must not land in that folder's chat or proposals.
+ */
+export function folderBound<A extends unknown[]>(fn: (...a: A) => void): (...a: A) => void {
+  const gen = folderGen;
+  return (...a) => {
+    if (gen === folderGen) fn(...a);
+  };
+}
 
 /** Folders of the vault (two levels deep), for telling the AI where new notes can go. */
 function folderPaths(tree: TreeNode[], depth = 0): string[] {
@@ -480,7 +498,10 @@ export const useAi = create<AiState>((set, get) => {
           },
         ],
       });
-      const update = (patch: Partial<ChatMessage>) => set({ chat: get().chat.map((m, i) => (i === idx ? { ...m, ...patch } : m)) });
+      // Bound to this folder: after a switch, the answer's late parts are dropped (FR-VLT-07).
+      const update = folderBound((patch: Partial<ChatMessage>) => set({ chat: get().chat.map((m, i) => (i === idx ? { ...m, ...patch } : m)) }));
+      const propose = folderBound((edits: EditProposal) => set({ edits }));
+      const finished = folderBound(() => set({ running: null }));
       // Proposal blocks aren't for reading as they arrive: the review shows them.
       const shown = (text: string) => {
         const r = parseEdits(text);
@@ -512,12 +533,12 @@ export const useAi = create<AiState>((set, get) => {
           const items = await planEdits(edits, allowed, target);
           const proposal: EditProposal = { request: q, message, items, applying: false, chatIndex: idx };
           update({ text: message || tx("노트에 적용할 안을 만들었습니다."), streaming: false, proposal });
-          set({ edits: proposal });
+          propose(proposal);
         }
       } catch (e) {
         update({ streaming: false, error: errorMessage(e) });
       } finally {
-        set({ running: null });
+        finished();
       }
     },
 
@@ -528,6 +549,19 @@ export const useAi = create<AiState>((set, get) => {
     newChat() {
       if (get().running) return;
       set({ chat: [], edits: null });
+    },
+
+    snapshot() {
+      const { chat, edits, preview } = get();
+      // An answer or preview still being written stops with the switch: it can't finish in another folder.
+      const stopped = chat.map((m) => (m.streaming ? { ...m, streaming: false, error: tx("노트 폴더를 바꿔 답을 멈췄습니다") } : m));
+      return { chat: stopped, edits, preview: preview?.streaming ? null : preview };
+    },
+
+    restore(s) {
+      folderGen++;
+      const v = (s ?? {}) as Partial<Pick<AiState, "chat" | "edits" | "preview">>;
+      set({ chat: v.chat ?? [], edits: v.edits ?? null, preview: v.preview ?? null, running: null });
     },
 
     async saveAnswer(index) {

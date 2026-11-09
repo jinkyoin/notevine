@@ -10,6 +10,9 @@ const mocks = vi.hoisted(() => ({
   forgetVault: vi.fn(),
   installedDrives: vi.fn(),
   openVault: vi.fn(),
+  switchVault: vi.fn(),
+  setAdding: vi.fn(),
+  railList: vi.fn(),
   dialogOpen: vi.fn(),
 }));
 
@@ -20,10 +23,12 @@ vi.mock("../api", () => ({
     folderExists: mocks.folderExists,
     forgetVault: mocks.forgetVault,
     installedDrives: mocks.installedDrives,
+    railList: mocks.railList,
   },
 }));
 vi.mock("../store", () => ({
-  useApp: (select: (s: { openVault: typeof mocks.openVault }) => unknown) => select({ openVault: mocks.openVault }),
+  useApp: (select: (s: object) => unknown) =>
+    select({ openVault: mocks.openVault, switchVault: mocks.switchVault, setAdding: mocks.setAdding }),
 }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: mocks.dialogOpen }));
 
@@ -49,10 +54,10 @@ describe("start screen recent folders", () => {
   let host: HTMLElement;
 
   /** A fresh module each time: auto-open happens once per app start. */
-  async function show(list: unknown[]) {
+  async function show(list: unknown[], adding = false) {
     mocks.recentVaults.mockResolvedValue(list);
     const { StartScreen } = await import("./StartScreen");
-    await act(async () => root.render(<StartScreen />));
+    await act(async () => root.render(<StartScreen adding={adding} />));
   }
 
   beforeEach(() => {
@@ -62,8 +67,10 @@ describe("start screen recent folders", () => {
     mocks.installedDrives.mockResolvedValue([]);
     mocks.startedWithFile.mockResolvedValue(false);
     mocks.forgetVault.mockResolvedValue(undefined);
-    mocks.openVault.mockResolvedValue(undefined);
-    host = document.body.appendChild(document.createElement("div"));
+    mocks.openVault.mockResolvedValue(true);
+    mocks.switchVault.mockResolvedValue(true);
+    mocks.railList.mockResolvedValue(null);
+    host =document.body.appendChild(document.createElement("div"));
     root = createRoot(host);
   });
 
@@ -145,5 +152,84 @@ describe("start screen recent folders", () => {
     await q.answer(OFFLINE.path, true);
 
     expect(mocks.openVault).not.toHaveBeenCalled();
+  });
+});
+
+describe("start screen with the note folder rail", () => {
+  let root: Root;
+  let host: HTMLElement;
+  const A = { path: "C:\\a", name: "a", opened_at: 3 };
+  const B = { path: "C:\\b", name: "b", opened_at: 2 };
+
+  async function show(list: unknown[], adding = false) {
+    mocks.recentVaults.mockResolvedValue(list);
+    const { StartScreen } = await import("./StartScreen");
+    await act(async () => root.render(<StartScreen adding={adding} />));
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    vi.resetModules();
+    vi.clearAllMocks();
+    mocks.installedDrives.mockResolvedValue([]);
+    mocks.startedWithFile.mockResolvedValue(false);
+    mocks.folderExists.mockResolvedValue(true);
+    mocks.openVault.mockResolvedValue(true);
+    mocks.switchVault.mockResolvedValue(true);
+    host = document.body.appendChild(document.createElement("div"));
+    root = createRoot(host);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    host.remove();
+    vi.unstubAllGlobals();
+  });
+
+  it("opens the rail's active folder at start, not recent[0]", async () => {
+    mocks.railList.mockResolvedValue({ entries: [{ path: B.path, name: "b" }, { path: A.path, name: "a" }], active: "c:\\A" });
+    await show([B, A]);
+    expect(mocks.openVault).toHaveBeenCalledExactlyOnceWith(A.path);
+  });
+
+  it("opens the rail's first folder when none was shown last", async () => {
+    mocks.railList.mockResolvedValue({ entries: [{ path: B.path, name: "b" }], active: null });
+    await show([A, B]);
+    expect(mocks.openVault).toHaveBeenCalledExactlyOnceWith(B.path);
+  });
+
+  it("does not open anything when the rail was emptied", async () => {
+    mocks.railList.mockResolvedValue({ entries: [], active: null });
+    await show([A]);
+    expect(mocks.openVault).not.toHaveBeenCalled();
+  });
+
+  it("falls back to recent[0] when there is no rail file yet", async () => {
+    mocks.railList.mockResolvedValue(null);
+    await show([A, B]);
+    expect(mocks.openVault).toHaveBeenCalledExactlyOnceWith(A.path);
+  });
+
+  it("adding mode switches instead of opening and can be cancelled", async () => {
+    mocks.railList.mockResolvedValue({ entries: [{ path: A.path, name: "a" }], active: A.path });
+    await show([A, B], true);
+    expect(mocks.openVault).not.toHaveBeenCalled();
+    await act(async () => [...document.querySelectorAll<HTMLElement>(".recent-list li")][1].click());
+    expect(mocks.setAdding).toHaveBeenCalledWith(false);
+    expect(mocks.switchVault).toHaveBeenCalledExactlyOnceWith(B.path);
+    expect(mocks.openVault).not.toHaveBeenCalled();
+    mocks.setAdding.mockClear();
+    await act(async () => document.querySelector<HTMLElement>(".start-cancel")!.click());
+    expect(mocks.setAdding).toHaveBeenCalledExactlyOnceWith(false);
+  });
+
+  it("cancelling while a folder is still being checked does not switch to it later", async () => {
+    mocks.railList.mockResolvedValue({ entries: [{ path: A.path, name: "a" }], active: A.path });
+    const q = heldAnswers();
+    await show([A, B], true);
+    await act(async () => [...document.querySelectorAll<HTMLElement>(".recent-list li")][1].click());
+    await act(async () => document.querySelector<HTMLElement>(".start-cancel")!.click());
+    await q.answer(B.path, true);
+    expect(mocks.switchVault).not.toHaveBeenCalled();
   });
 });

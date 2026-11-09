@@ -640,7 +640,7 @@ fn with_md(name: &str) -> String {
 }
 
 /// `canonicalize` on Windows returns `\\?\C:\...`; strip it for display and joins.
-fn canonical_root(root: &Path) -> AppResult<PathBuf> {
+pub(crate) fn canonical_root(root: &Path) -> AppResult<PathBuf> {
     if !root.is_dir() {
         return Err(AppError::NotADirectory(root.display().to_string()));
     }

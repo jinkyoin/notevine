@@ -27,7 +27,8 @@ const body = (page) => page.evaluate(() => document.body.innerText);
 
 async function see(page, text, what) {
   for (let i = 0; i < 100; i++) {
-    if ((await body(page)).includes(text)) return console.log(`ok - ${what}`);
+    // The page may still be loading when the app has just started: try again.
+    if ((await body(page).catch(() => "")).includes(text)) return console.log(`ok - ${what}`);
     await sleep(100);
   }
   throw new Error(`${what}: "${text}" not on screen\n${(await body(page)).slice(0, 400)}`);
@@ -53,6 +54,11 @@ const openAgain = (file) => spawnSync(EXE, [file], { timeout: 15000 });
     if (!page) throw new Error("could not connect to the app");
 
     await see(page, "표식-안쪽", "시작할 때 넘긴 파일이 그 노트 폴더에서 열림");
+    // FR-VLT-07: a folder not on the rail opens only for now, shown with a dashed button.
+    const onRail = async () => ((await invoke(page, "rail_list"))?.entries ?? []).filter((e) => e.path.startsWith(TOP)).map((e) => e.name);
+    await page.waitForSelector('.rail-btn.temp[aria-label="노트 폴더"]');
+    if ((await onRail()).length) throw new Error("the folder opened from Explorer was saved on the rail");
+    console.log("ok - 탐색기에서 연 막대 밖 폴더는 점선 단추로만 보이고 막대에 저장되지 않음");
 
     openAgain(inVault2);
     await see(page, "표식-둘째", "실행 중에 같은 노트 폴더의 파일을 넘기면 바로 열림");
@@ -71,6 +77,12 @@ const openAgain = (file) => spawnSync(EXE, [file], { timeout: 15000 });
     await page.click('[role="alertdialog"] .btn.primary');
     await see(page, "표식-바깥", "확인하면 그 폴더를 열고 파일을 보여 줌");
     if (!fs.existsSync(path.join(OUTSIDE, ".app"))) throw new Error("no .app after opening");
+    await page.waitForSelector('.rail-btn.temp[aria-label="받은 파일"]');
+    if ((await page.$$(".rail-btn.temp")).length !== 1) throw new Error("more than one temporary folder");
+    if ((await onRail()).length) throw new Error("the folder made a note folder from Explorer was saved on the rail");
+    console.log("ok - '노트 폴더로 열기'로 연 폴더도 잠깐 연 폴더 하나로만 보임");
+    // "막대에 추가" is left to store.rail.test.ts: this run uses the installed app's settings,
+    // and a rail file made here would stay behind as an emptied rail.
 
     openAgain(path.join(OUTSIDE, "없는 노트.md"));
     await see(page, "없는 노트.md", "없는 파일은 알림으로 알려 줌");

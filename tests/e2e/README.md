@@ -42,7 +42,8 @@ node tests/e2e/ai-login.cjs    # 로그아웃·미설치일 때 로그인 버튼
 | 기록 관리 | `preset-para`, `para-actions`, `para-guides`, `search-review-blocks` |
 | 첨부·설정 | `pdf-clip`, `pdf-nav`, `settings-extras`, `manual` |
 | AI | `ai-api` |
-| 탐색기에서 열기 | `open-file` (릴리스 exe를 띄움. 실행 중인 Notevine을 먼저 닫는다) |
+| 노트 폴더 막대 | `vault-rail` (폴더 바꾸기·되돌아오기·닫기·순서. 개발 앱의 막대 목록은 잠시 비웠다가 끝나면 되돌린다) |
+| 탐색기에서 열기 | `open-file` (릴리스 exe를 띄움. 실행 중인 Notevine을 먼저 닫는다. 막대 밖 폴더는 잠깐 연 폴더로 열리는지도 본다) |
 
 ## 성능 측정 (NFR-PRF-01~05)
 

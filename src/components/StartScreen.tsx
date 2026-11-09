@@ -2,15 +2,49 @@
 import logo from "../../src-tauri/app-icon.svg?url";
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, type DriveRoot, type RecentVault } from "../api";
+import { api, type DriveRoot, type RailFile, type RecentVault } from "../api";
 import { useApp } from "../store";
+import { samePath } from "../lib/rail";
 
 import { tx } from "../i18n";
-// Reopen the last vault only when the app starts, not after "노트 폴더 바꾸기" (FR-VLT-02).
+// Reopen the last vault only when the app starts, not after the last rail folder closed (FR-VLT-02).
 let autoOpenTried = false;
 
-export function StartScreen() {
-  const openVault = useApp((s) => s.openVault);
+/** The folder to open at app start: the rail's last shown one, else its first; before any rail, the last opened. */
+function startFolder(rail: RailFile | null, recent: RecentVault[]): string | undefined {
+  if (!rail) return recent[0]?.path;
+  const active = rail.active ? rail.entries.find((e) => samePath(e.path, rail.active!)) : undefined;
+  return (active ?? rail.entries[0])?.path;
+}
+
+/**
+ * SCR-01. With `adding` it is shown over the open folder to put another one on the rail
+ * ("노트 폴더 더 열기", FR-VLT-07): it switches to the chosen folder and can be cancelled.
+ */
+export function StartScreen({ adding = false }: { adding?: boolean }) {
+  const openVaultNow = useApp((s) => s.openVault);
+  const switchVault = useApp((s) => s.switchVault);
+  const setAdding = useApp((s) => s.setAdding);
+  const openVault = async (path: string) => {
+    if (!adding) return void (await openVaultNow(path));
+    if (!addingNow.current) return; // cancelled while the folder was being checked
+    setAdding(false);
+    await switchVault(path);
+  };
+  // Cancel or Esc while a folder is checked: its late answer must not switch (FR-VLT-07).
+  const addingNow = useRef(true);
+  const cancelAdding = () => {
+    addingNow.current = false;
+    cancelChoice();
+    setAdding(false);
+  };
+  useEffect(() => {
+    addingNow.current = true;
+    return () => {
+      addingNow.current = false;
+      choice.current++;
+    };
+  }, []);
   const [recent, setRecent] = useState<RecentVault[]>([]);
   const [drives, setDrives] = useState<DriveRoot[]>([]);
   const [checking, setChecking] = useState<string | null>(null);
@@ -42,18 +76,28 @@ export function StartScreen() {
     api.installedDrives().then(setDrives).catch(() => setDrives([]));
   }, []);
   useEffect(() => {
-    const autoOpen = !autoOpenTried;
+    const autoOpen = !autoOpenTried && !adding;
     autoOpenTried = true;
     // Started with a note from Explorer: that note decides which folder opens (FR-VLT-10).
     const withFile = autoOpen ? api.startedWithFile().catch(() => false) : Promise.resolve(false);
-    Promise.all([api.recentVaults(), withFile])
-      .then(([list, file]) => {
+    const rail = autoOpen ? api.railList().catch(() => null) : Promise.resolve(null);
+    Promise.all([api.recentVaults(), withFile, rail])
+      .then(([list, file, rail]) => {
         setRecent(list);
-        if (autoOpen && !file && list[0]) void choose(list[0].path);
+        const first = autoOpen && !file ? startFolder(rail, list) : undefined;
+        if (first) void choose(first);
       })
       .catch(() => setRecent([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!adding) return;
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && cancelAdding();
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adding]);
 
   async function pick(title: string, defaultPath?: string) {
     cancelChoice();
@@ -70,6 +114,11 @@ export function StartScreen() {
   return (
     <div className="start">
       <div className="start-card">
+        {adding && (
+          <button className="btn ghost small start-cancel" title="Esc" onClick={cancelAdding}>
+            {tx("취소")}
+          </button>
+        )}
         <div className="start-brand">
           <img className="logo-mark" src={logo} alt="" />
           <h1>Notevine</h1>

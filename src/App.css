@@ -2,6 +2,7 @@
 :root {
   --bg: #ffffff;
   --bg-sidebar: #f8f8f9;
+  --bg-rail: #efedf5;
   --bg-hover: #f0f0f2;
   --bg-active: #ece8f6;
   --text: #1c1c1f;
@@ -27,6 +28,7 @@
     --selection: rgba(184, 161, 232, 0.28);
     --bg: #18181b;
     --bg-sidebar: #1e1e21;
+    --bg-rail: #141416;
     --bg-hover: #2a2a2e;
     --bg-active: #322b44;
     --text: #ececef;
@@ -46,6 +48,7 @@
     --selection: rgba(184, 161, 232, 0.28);
     --bg: #18181b;
     --bg-sidebar: #1e1e21;
+    --bg-rail: #141416;
     --bg-hover: #2a2a2e;
     --bg-active: #322b44;
     --text: #ececef;
@@ -243,6 +246,106 @@ button {
   height: 100%;
   display: flex;
   flex-direction: column;
+}
+
+/* FR-VLT-07 노트 폴더 막대: 창 왼쪽 끝, 열어 둔 노트 폴더마다 첫 글자 단추 */
+.shell {
+  height: 100%;
+  display: flex;
+}
+.shell > .main {
+  flex: 1;
+  min-width: 0;
+}
+.rail {
+  width: 52px;
+  flex-shrink: 0;
+  background: var(--bg-rail);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+.rail-list {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+.rail-btn {
+  position: relative;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--accent);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.rail-btn:hover {
+  background: var(--bg-active);
+}
+.rail-btn.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+.rail-btn.on::before {
+  content: "";
+  position: absolute;
+  left: -9px;
+  top: 7px;
+  width: 4px;
+  height: 20px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+}
+.rail-btn.temp {
+  border-style: dashed;
+  border-color: var(--accent);
+}
+.rail-btn.pending {
+  opacity: 0.5;
+  cursor: progress;
+}
+.rail-btn.add {
+  background: transparent;
+  border-style: dashed;
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 18px;
+}
+.menu li.disabled {
+  color: var(--muted);
+  opacity: 0.6;
+  cursor: default;
+}
+.menu li.disabled:hover {
+  background: none;
+}
+/* "노트 폴더 더 열기": the start screen over the open folder */
+.start-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+.start-card {
+  position: relative;
+}
+.start-cancel {
+  position: absolute;
+  top: 12px;
+  right: 12px;
 }
 .topbar {
   height: 40px;

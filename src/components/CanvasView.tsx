@@ -111,7 +111,8 @@ export function CanvasView({ path }: { path: string }) {
 
   /** Changes the board; `record` keeps the previous state for Ctrl+Z. */
   function commit(next: Canvas, record = true, before = boardRef.current) {
-    if (!before || next === before) return;
+    // No changes while the note folder switches: they could only be saved into the other folder (FR-VLT-07).
+    if (!before || next === before || useApp.getState().switchLocked) return;
     if (record) {
       past.current = [...past.current.slice(-99), before];
       future.current = [];

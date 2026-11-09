@@ -7,6 +7,8 @@ import {
   type AppError,
   type LinkChange,
   type NoteRef,
+  type RailEntry,
+  type RailFile,
   type TreeNode,
   type VaultChanged,
   type VaultConfig,
@@ -36,6 +38,10 @@ import {
   type Tab,
   type Tabs,
 } from "./lib/tabs";
+
+import { nextAfterClose, samePath } from "./lib/rail";
+import { dropSnapshot, keepSnapshot, takeSnapshot, type VaultSnapshot } from "./lib/vaultMemory";
+import { useAi } from "./aiStore";
 
 import { dateLocale, tx } from "./i18n";
 export type ToastKind = "info" | "error";
@@ -181,7 +187,34 @@ interface AppStore {
   /** Set by the editor; saves unsaved text before files move under it. */
   flushEditor: (force?: boolean) => Promise<void>;
 
-  openVault(path: string): Promise<void>;
+  /** Note folders on the rail at the window's left edge, in order (FR-VLT-07). */
+  rail: RailEntry[];
+  /** Root of the folder opened from Explorer that isn't on the rail ("잠깐 연 폴더"), or null. */
+  tempVault: string | null;
+  /** Folder being checked and opened after a rail click, or null. */
+  switching: string | null;
+  /** From the save at the start of a folder switch until it ends: editors take no typing then. */
+  switchLocked: boolean;
+  /** The start screen is shown over the open folder to add another one ("노트 폴더 더 열기"). */
+  adding: boolean;
+  /** Reads the rail file into `rail`; null when it was never saved. */
+  loadRail(): Promise<RailFile | null>;
+  /**
+   * Opens a vault; true when it opened. It goes on the rail and becomes the one opened at
+   * the next start, unless `temporary`.
+   */
+  openVault(path: string, opts?: { temporary?: boolean }): Promise<boolean>;
+  /**
+   * Shows another note folder, keeping what this one had on screen for coming back. The
+   * latest call wins; if the folder can't be opened, the one shown stays. True when it opened.
+   */
+  switchVault(path: string, opts?: { temporary?: boolean }): Promise<boolean>;
+  /** Takes a folder (the one shown by default) off the rail; the shown one gives way to the next. */
+  closeRailVault(path?: string): Promise<void>;
+  /** Puts the temporary folder on the rail for good. */
+  pinTempVault(): Promise<void>;
+  moveRail(path: string, delta: -1 | 1): Promise<void>;
+  setAdding(on: boolean): void;
   /** Opens a note Windows handed over (FR-VLT-10), asking before making a note folder. */
   openFileFromOs(path: string): Promise<void>;
   closeVault(): Promise<void>;
@@ -304,6 +337,9 @@ function baseOf(p: string) {
   return p.slice(p.lastIndexOf("/") + 1);
 }
 let unlistenChanges: UnlistenFn | null = null;
+// Folder switches (FR-VLT-07): only the latest counts, and opens run one at a time.
+let switchSeq = 0;
+let switchChain: Promise<unknown> = Promise.resolve();
 let treeTimer: number | undefined;
 // The two editors' save functions: the main one and the split view's right pane.
 let flushMain = async (_force?: boolean) => {};
@@ -415,8 +451,50 @@ export const useApp = create<AppStore>((set, get) => {
     set({ expanded });
   }
 
+  /** What the open folder has on screen, to bring back when it is shown again. */
+  function snapshotNow(): VaultSnapshot {
+    const s = get();
+    return {
+      tabs: s.tabs,
+      openPath: s.openPath,
+      closedTabs: s.closedTabs,
+      splitPath: s.splitPath,
+      expanded: [...s.expanded],
+      tableView: s.tableView,
+      pdfView: s.pdfView,
+      canvasView: s.canvasView,
+      ai: useAi.getState().snapshot(),
+    };
+  }
+
+  /** Puts a snapshot back on screen, leaving out notes that went away meanwhile. */
+  function restoreSnapshot(snap: VaultSnapshot) {
+    const exists = (p: string | null) => !!p && !!findNode(get().tree, p);
+    const tabs = snap.tabs.filter((t) => exists(t.path));
+    const active = snap.openPath && tabs.some((t) => t.path === snap.openPath) ? snap.openPath : (tabs[0]?.path ?? null);
+    set({ closedTabs: snap.closedTabs, expanded: new Set(snap.expanded), splitPath: exists(snap.splitPath) ? snap.splitPath : null });
+    applyTabs({ tabs, active });
+    set({
+      tableView: snap.tableView !== null && (snap.tableView === "" || exists(snap.tableView)) ? snap.tableView : null,
+      pdfView: snap.pdfView && exists(snap.pdfView.path) ? snap.pdfView : null,
+      canvasView: exists(snap.canvasView) ? snap.canvasView : null,
+    });
+  }
+
+  /** Nothing open, front and back: the start screen shows. */
+  function showStart() {
+    unlistenChanges?.();
+    unlistenChanges = null;
+    set({ vault: null, tempVault: null, trust: NO_TRUST, tree: [], openPath: null, editing: null, tabs: [], back: [], forward: [], splitPath: null, tableView: null, pdfView: null, canvasView: null });
+  }
+
   return {
     vault: null,
+    rail: [],
+    tempVault: null,
+    switching: null,
+    switchLocked: false,
+    adding: false,
     tree: [],
     notes: [],
     pendingRelocate: null,
@@ -461,7 +539,13 @@ export const useApp = create<AppStore>((set, get) => {
     externalPaths: [],
     flushEditor: flushBoth,
 
-    async openVault(path) {
+    async loadRail() {
+      const r = await api.railList().catch(() => null);
+      if (r) set({ rail: r.entries });
+      return r;
+    },
+
+    async openVault(path, opts) {
       // Listen before opening: indexing starts with the open and, in a small vault,
       // is done before anything after the open could start listening.
       unlistenChanges?.();
@@ -485,8 +569,17 @@ export const useApp = create<AppStore>((set, get) => {
       };
 
       const info = await attempt(() => api.openVault(path));
-      if (!info) return;
-      set({ vault: info, trust: NO_TRUST, tree: [], expanded: new Set(), openPath: null, editing: null, back: [], forward: [], tabs: [], closedTabs: [], tableView: null, pdfView: null, canvasView: null, splitPath: null });
+      if (!info) return false;
+      const temporary = !!opts?.temporary;
+      // What this folder had on screen earlier in this run, if it was shown before (FR-VLT-07).
+      const snap = takeSnapshot(info.root);
+      set({ vault: info, tempVault: temporary ? info.root : null, trust: NO_TRUST, tree: [], expanded: new Set(), openPath: null, editing: null, back: [], forward: [], tabs: [], closedTabs: [], tableView: null, pdfView: null, canvasView: null, splitPath: null });
+      useAi.getState().restore(snap?.ai);
+      if (!temporary) {
+        const rail = await api.railAdd(info.root, info.name).catch(() => null);
+        if (rail) set({ rail: rail.entries });
+        await api.railSetActive(info.root).catch(() => {});
+      }
       const config = await api.getConfig().catch(() => DEFAULT_CONFIG);
       const trust = await api.deviceTrust().catch(() => NO_TRUST);
       set({ config, trust, sidebarTab: get().sidebarTab === "ideas" && !config.preset_enabled ? "files" : get().sidebarTab });
@@ -498,16 +591,123 @@ export const useApp = create<AppStore>((set, get) => {
       applyTheme(config.theme);
       await get().refreshTree();
 
-      // Reopen the tabs and the note that were open last time (FR-VLT-02).
-      const ws = await api.getWorkspace().catch(() => null);
-      const exists = (p: string) => !!findNode(get().tree, p);
-      const saved = (ws?.tabs ?? []).filter(exists);
-      if (saved.length) set({ tabs: saved.map((path) => ({ path, back: [], forward: [] })) });
-      const last = ws?.open_path && exists(ws.open_path) ? ws.open_path : saved[0];
-      if (last) get().openNote(last);
+      if (snap) {
+        restoreSnapshot(snap);
+      } else {
+        // Reopen the tabs and the note that were open last time (FR-VLT-02).
+        const ws = await api.getWorkspace().catch(() => null);
+        const exists = (p: string) => !!findNode(get().tree, p);
+        const saved = (ws?.tabs ?? []).filter(exists);
+        if (saved.length) set({ tabs: saved.map((path) => ({ path, back: [], forward: [] })) });
+        const last = ws?.open_path && exists(ws.open_path) ? ws.open_path : saved[0];
+        if (last) get().openNote(last);
+      }
 
       // The history policy (FR-HIS-08) is applied each time the vault opens.
       if (config.history_thin_days || config.history_delete_days) void api.pruneHistory(false).catch(() => {});
+      return true;
+    },
+
+    async switchVault(path, opts) {
+      const cur = get().vault;
+      if (cur && samePath(cur.root, path)) {
+        // Back to the folder shown: a switch still being checked is called off.
+        ++switchSeq;
+        set({ switching: null });
+        return true;
+      }
+      const mine = ++switchSeq;
+      set({ switching: path });
+      const there = await api.folderExists(path).catch(() => false);
+      if (mine !== switchSeq) return false;
+      if (!there) {
+        set({ switching: null });
+        get().toast(tx("노트 폴더를 찾을 수 없습니다: {0}", path), "error");
+        return false;
+      }
+      const run = switchChain.then(async () => {
+        if (mine !== switchSeq) return false;
+        const ai = useAi.getState();
+        if (ai.edits?.applying) {
+          if (mine === switchSeq) set({ switching: null });
+          get().toast(tx("AI 제안을 적용하는 중입니다. 끝난 뒤에 노트 폴더를 바꾸세요"), "error");
+          return false;
+        }
+        const prev = get().vault;
+        const prevTemp = !!prev && !!get().tempVault && samePath(get().tempVault!, prev.root);
+        // Dialogs about the shown folder's notes close; typing stops until the switch is over.
+        set({ switchLocked: true, versionView: null, modal: null, quickOpen: false });
+        try {
+          await get().flushEditor();
+          ai.stop();
+          if (ai.preview?.streaming) ai.closePreview();
+          // Kept even for a temporary folder until the open succeeds: a failed open stays on it.
+          if (prev) keepSnapshot(prev.root, snapshotNow());
+          const ok = await get().openVault(path, opts);
+          if (prev) {
+            const kept = takeSnapshot(prev.root);
+            if (!ok) {
+              // The backend opens another folder beside the shown one, which stays open when that
+              // fails: the screen is still as it was, only the AI panel was put aside.
+              useAi.getState().restore(kept?.ai);
+            } else if (kept && !prevTemp) {
+              keepSnapshot(prev.root, kept);
+            }
+          }
+          return ok;
+        } finally {
+          set({ switchLocked: false });
+          if (mine === switchSeq) set({ switching: null });
+        }
+      });
+      switchChain = run.catch(() => {});
+      return run;
+    },
+
+    async closeRailVault(path) {
+      const cur = get().vault;
+      const target = path ?? cur?.root;
+      if (!target) return;
+      const temp = get().tempVault;
+      if (temp && samePath(temp, target)) {
+        // Back to the rail: the folder shown there last, else its first one, else the start screen.
+        const r = await get().loadRail();
+        const order = [...new Set([r?.active, ...(r?.entries ?? []).map((e) => e.path)].filter((p): p is string => !!p))];
+        for (const p of order) if (await get().switchVault(p)) return;
+        await get().closeVault();
+        return;
+      }
+      const before = get().rail.map((e) => e.path);
+      const r = await attempt(() => api.railRemove(target));
+      if (r) set({ rail: r.entries });
+      dropSnapshot(target);
+      if (!cur || !samePath(cur.root, target)) return;
+      for (const p of nextAfterClose(before, target)) {
+        if (await get().switchVault(p)) {
+          dropSnapshot(target);
+          return;
+        }
+      }
+      dropSnapshot(target);
+      await get().closeVault();
+    },
+
+    async pinTempVault() {
+      const v = get().vault;
+      if (!v || !get().tempVault || !samePath(get().tempVault!, v.root)) return;
+      const r = await attempt(() => api.railAdd(v.root, v.name));
+      if (!r) return;
+      set({ rail: r.entries, tempVault: null });
+      await api.railSetActive(v.root).catch(() => {});
+    },
+
+    async moveRail(path, delta) {
+      const r = await attempt(() => api.railMove(path, delta));
+      if (r) set({ rail: r.entries });
+    },
+
+    setAdding(on) {
+      set({ adding: on });
     },
 
     async openFileFromOs(path) {
@@ -524,8 +724,21 @@ export const useApp = create<AppStore>((set, get) => {
             tx("열기"),
           ));
         if (!ok) return;
-        if (get().vault) await get().closeVault();
-        await get().openVault(found.root);
+        // A folder not on the rail opens only for now ("잠깐 연 폴더"): it isn't saved there.
+        let rail = await get().loadRail();
+        if (!rail) {
+          // First run after the update, started from Explorer: the folder used last goes on the
+          // rail now, before opening this one makes it the latest in the recent list.
+          const last = (await api.recentVaults().catch(() => []))[0];
+          if (last && !samePath(last.path, found.root)) {
+            rail = await api.railAdd(last.path, last.name).catch(() => null);
+            await api.railSetActive(last.path).catch(() => {});
+            if (rail) set({ rail: rail.entries });
+          }
+        }
+        const onRail = get().rail.some((e) => samePath(e.path, found.root));
+        // With no rail and no folder before it, this one starts the rail.
+        if (!(await get().switchVault(found.root, { temporary: !onRail && !!rail }))) return;
         if (!here(get().vault?.root)) return;
       }
       get().openNote(found.rel);
@@ -536,7 +749,7 @@ export const useApp = create<AppStore>((set, get) => {
       unlistenChanges?.();
       unlistenChanges = null;
       await attempt(() => api.closeVault());
-      set({ vault: null, trust: NO_TRUST, tree: [], openPath: null, editing: null, tabs: [], back: [], forward: [] });
+      showStart();
     },
 
     async refreshTree() {

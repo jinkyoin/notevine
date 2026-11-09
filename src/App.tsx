@@ -12,6 +12,7 @@ import "./App.css";
 
 export default function App() {
   const vault = useApp((s) => s.vault);
+  const adding = useApp((s) => s.adding);
 
   useEffect(() => {
     applyTheme("system");
@@ -59,7 +60,14 @@ export default function App() {
 
   return (
     <>
-      {vault ? <MainLayout /> : <StartScreen />}
+      {/* Keyed by folder: notes with the same path in two folders must not share an editor (FR-VLT-07). */}
+      {vault ? <MainLayout key={vault.root.toLowerCase()} /> : <StartScreen />}
+      {/* "노트 폴더 더 열기" (FR-VLT-07): the start screen over the open folder, which stays until one is chosen. */}
+      {vault && adding && (
+        <div className="start-overlay">
+          <StartScreen adding />
+        </div>
+      )}
       <ConfirmDialog />
       <Toasts />
     </>
