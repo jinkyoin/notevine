@@ -1,6 +1,6 @@
 [package]
 name = "notevine"
-version = "0.1.6"
+version = "0.1.7"
 description = "Notevine — 로컬 마크다운 지식관리·기록 앱"
 authors = ["jkin"]
 license = "MIT"
