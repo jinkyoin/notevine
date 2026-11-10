@@ -2441,7 +2441,7 @@ dependencies = [
 
 [[package]]
 name = "notevine"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "blake3",
  "chrono",
