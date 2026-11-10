@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { clipFetched, clipFileName, clipNote, clipPage, saveClipImages } from "./clip";
+import { clipFetched, clipFileName, clipNote, clipPage, clipSection, insertClip, saveClipImages } from "./clip";
 
 const PAGE = `<!doctype html><html><head><title>Tauri 2 자동 업데이트 정리 | 개발 블로그</title>
 <meta property="og:site_name" content="개발 블로그"></head><body>
@@ -67,6 +67,32 @@ ${table}
     const out = md(`<table><tr><td><p>레이아웃 표 안의 문단이다.</p></td></tr><tr><td><p>두 번째 문단.</p></td></tr></table>`);
     expect(out).toContain("레이아웃 표 안의 문단이다.\n\n두 번째 문단.");
     expect(out).not.toContain("| ---");
+  });
+
+  it("a table inside a layout table (Naver Blog puts the whole post in one) is still a table", () => {
+    const out = md(`<table><tr><td>
+<div class="se-component se-table"><table class="se-table-content"><tbody>
+<tr class="se-tr"><td class="se-cell"><div class="se-module se-module-text"><p class="se-text-paragraph"><span><b>코드</b></span></p></div></td>
+<td class="se-cell"><div class="se-module se-module-text"><p class="se-text-paragraph"><span><b>사용 기한</b></span></p></div></td></tr>
+<tr class="se-tr"><td class="se-cell"><p>K7M3XQ</p></td><td class="se-cell"><p>2026.11.13 23:59 KST</p></td></tr>
+</tbody></table></div></td><td>옆 칸</td></tr></table>`);
+    expect(out).toContain("| **코드** | **사용 기한** |\n| --- | --- |\n| K7M3XQ | 2026.11.13 23:59 KST |");
+  });
+
+  it("a Naver Blog page gives only the post, not the notice list around it", () => {
+    const out = clipPage(
+      `<html><head><title>글 제목 : 네이버 블로그</title></head><body>
+<table class="blog2_notice"><tr><th>글 제목</th><th>작성일</th></tr><tr><td>공지 글</td><td>2026. 9. 18.</td></tr></table>
+<div class="se-main-container"><div class="se-component se-text"><p class="se-text-paragraph">본문 첫 문단이다. 본문으로 뽑히도록 충분히 길게 쓴다. 한 문장 더 쓴다. 또 한 문장 더 쓴다.</p></div>
+<div class="se-component se-text"><p class="se-text-paragraph">​</p></div>
+<div class="se-component se-text"><p class="se-text-paragraph">두 번째 문단도 충분히 길게 쓴다. 본문 판정은 글자 수를 보기 때문이다. 끝.</p></div></div>
+</body></html>`,
+      "https://blog.naver.com/PostView.naver?blogId=a&logNo=1",
+    )!.markdown;
+    expect(out).toContain("본문 첫 문단이다.");
+    expect(out).not.toContain("공지 글");
+    expect(out).not.toContain("​");
+    expect(out).toMatch(/한 문장 더 쓴다\.\n\n두 번째 문단도/);
   });
 
   it("a one-row layout table (a notice box) is just its content", () => {
@@ -186,5 +212,26 @@ describe("clip note", () => {
     expect(note).toBe(
       '---\ntype: clip\nsource: "https://a.com/x"\nsite: "블로그"\ncreated: 2026-11-02\n---\n\n# 제목\n\n> 원문: [블로그](https://a.com/x)\n\n본문\n',
     );
+  });
+});
+
+describe("clip into the open note", () => {
+  const clip = { title: "제목", markdown: "본문", site: "블로그", byline: "" };
+  const section = clipSection(clip, "https://a.com/x", "2026-11-10");
+
+  it("is a section: title, source with the date, body", () => {
+    expect(section).toBe("## 제목\n\n> 원문: [블로그](https://a.com/x) · 2026-11-10 클립\n\n본문");
+  });
+
+  it("goes in at the cursor on lines of its own, with blank lines around", () => {
+    const r = insertClip("앞 문단\n뒤 문단\n", 4, section);
+    expect(r.text).toBe(`앞 문단\n\n${section}\n\n뒤 문단\n`);
+    expect(r.cursor).toBe(r.text.indexOf("\n\n뒤 문단"));
+  });
+
+  it("goes below the properties, and at the end of an empty note", () => {
+    expect(insertClip("---\ntags: [a]\n---\n본문", 3, section).text).toBe(`---\ntags: [a]\n---\n\n${section}\n\n본문`);
+    expect(insertClip("", 0, section).text).toBe(`${section}\n`);
+    expect(insertClip("끝 문단", 4, section).text).toBe(`끝 문단\n\n${section}\n`);
   });
 });

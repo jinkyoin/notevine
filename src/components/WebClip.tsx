@@ -1,6 +1,7 @@
 // 웹 클리핑 (FR-ATT-03): 주소를 넣으면 그 페이지의 본문을 마크다운 노트로 저장한다.
 import { useState } from "react";
-import { useApp } from "../store";
+import { clipTarget, useApp } from "../store";
+import { noteTitle } from "../lib/tree";
 
 import { tx } from "../i18n";
 export function WebClip() {
@@ -12,6 +13,8 @@ export function WebClip() {
 function ClipDialog({ close }: { close: () => void }) {
   const preset = useApp((s) => s.config.preset_enabled);
   const inbox = useApp((s) => s.config.inbox_folder);
+  const target = useApp(clipTarget);
+  const readMode = useApp((s) => s.readMode);
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const valid = /^https?:\/\/\S+$/i.test(url.trim());
@@ -29,7 +32,9 @@ function ClipDialog({ close }: { close: () => void }) {
       <div className="modal web-clip" onMouseDown={(e) => e.stopPropagation()}>
         <h2>{tx("웹 페이지 클립")}</h2>
         <p className="muted small">
-          {tx("웹 페이지의 본문만 골라 노트로 저장합니다. 메뉴·광고는 빼고, 원문 주소는 노트 속성(source)에 남깁니다. 저장 위치: {0}", preset ? inbox : tx("노트 폴더 맨 위"))}
+          {target
+            ? tx("웹 페이지의 본문만 골라 열린 노트 \"{0}\"의 {1}에 넣습니다. 메뉴·광고는 빼고, 페이지 제목과 원문 링크를 함께 넣습니다. 새 노트로 만들려면 노트를 닫고 가져오세요.", noteTitle(target), readMode ? tx("끝") : tx("커서 자리"))
+            : tx("웹 페이지의 본문만 골라 노트로 저장합니다. 메뉴·광고는 빼고, 원문 주소는 노트 속성(source)에 남깁니다. 저장 위치: {0}", preset ? inbox : tx("노트 폴더 맨 위"))}
         </p>
         <input
           className="clip-url"

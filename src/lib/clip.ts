@@ -16,10 +16,9 @@ const turndown = new TurndownService(OPTIONS);
 // Scripts, forms and frames go.
 turndown.remove(["script", "style", "noscript", "iframe", "form", "button"]);
 
-/** Converts one cell; a table inside a cell is flattened to its text. */
+/** Converts one cell of a table that holds no other table. */
 const cellTurndown = new TurndownService(OPTIONS);
 cellTurndown.remove(["script", "style", "noscript", "iframe", "form", "button"]);
-cellTurndown.addRule("nestedTable", { filter: "table", replacement: (_c, node) => ` ${(node.textContent ?? "").replace(/\s+/g, " ").trim()} ` });
 
 /** A cell's markdown on one line: lines joined with <br>, bars escaped. */
 function cellText(cell: Element): string {
@@ -34,7 +33,7 @@ function cellText(cell: Element): string {
 
 /** The table's rows as a grid; a merged cell (colspan/rowspan) leaves the other places empty. */
 function tableGrid(table: HTMLTableElement): string[][] {
-  const rows = [...table.rows].filter((r) => r.closest("table") === table);
+  const rows = [...table.rows];
   const grid: string[][] = [];
   rows.forEach((row, r) => {
     grid[r] ??= [];
@@ -53,10 +52,13 @@ function tableGrid(table: HTMLTableElement): string[][] {
   return grid;
 }
 
-// Tables become markdown tables. A one-column or one-row table is page layout (a notice box, a picture beside text): just its content.
+// Tables become markdown tables. Page layout is just its content: a table holding other tables
+// (Naver Blog puts the whole post in one; the tables inside still become tables), and a
+// one-column or one-row table (a notice box, a picture beside text).
 turndown.addRule("table", {
-  filter: (node) => node.nodeName === "TABLE" && !node.parentElement?.closest("table"),
+  filter: "table",
   replacement(content, node) {
+    if ((node as HTMLElement).querySelector("table")) return `\n\n${content}\n\n`;
     // Markdown tables need a header row: the first row is it, th or not.
     const grid = tableGrid(node as HTMLTableElement);
     const width = Math.max(0, ...grid.map((r) => r.length));
@@ -82,11 +84,16 @@ export function clipPage(html: string, url: string): Clip | null {
     if (lazy) img.setAttribute("src", lazy);
     if (img.hasAttribute("src")) img.setAttribute("src", img.src);
   }
+  // Naver Blog: only the post, not the blog's notice list, profile and menus around it.
+  const post = doc.querySelector(".se-main-container, #postViewArea");
+  if (post?.textContent?.trim()) doc.body.replaceChildren(post);
 
   const article = new Readability(doc, { keepClasses: false }).parse();
   if (!article?.content || !article.textContent?.trim()) return null;
   const markdown = turndown
     .turndown(article.content)
+    // Naver Blog's empty lines hold only a zero-width space.
+    .replace(/^[​\s]+$/gm, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
   return {
@@ -187,4 +194,29 @@ export function clipNote(clip: Clip, url: string, today: string): string {
     "---",
   ];
   return `${props.join("\n")}\n\n# ${clip.title}\n\n> 원문: [${clip.site}](${url})\n\n${clip.markdown}\n`;
+}
+
+/** The clip as a section of the open note: its title, the source with the clipped date, the article. */
+export function clipSection(clip: Clip, url: string, today: string): string {
+  return `## ${clip.title}\n\n> 원문: [${clip.site}](${url}) · ${today} 클립\n\n${clip.markdown.trim()}`;
+}
+
+const NOTE_FRONTMATTER = /^---\r?\n[\s\S]*?\r?\n---[ \t]*(\r?\n|$)/;
+
+/**
+ * Puts a clipped section into `text` at `pos` (below the properties if `pos` is inside them),
+ * with a blank line before and after it. Returns the new text and where the cursor goes (its end).
+ */
+export function insertClip(text: string, pos: number, section: string): { text: string; cursor: number } {
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const body = section.replace(/\r?\n/g, eol);
+  const fm = NOTE_FRONTMATTER.exec(text)?.[0].length ?? 0;
+  const at = Math.max(fm, Math.min(pos, text.length));
+  // Text before the cursor, below the properties; the properties keep their own line end.
+  const before = text.slice(fm, at).replace(/\s+$/, "");
+  const after = text.slice(at).replace(/^\s+/, "");
+  const head = before ? text.slice(0, fm) + before + eol + eol : fm ? text.slice(0, fm) + eol : "";
+  const tail = after ? eol + eol + after : eol;
+  const out = head + body + tail;
+  return { text: out, cursor: head.length + body.length };
 }

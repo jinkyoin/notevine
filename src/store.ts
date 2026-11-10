@@ -15,7 +15,7 @@ import {
   type VaultInfo,
   type DeviceTrust,
 } from "./api";
-import { ancestors, findNode, remapPath } from "./lib/tree";
+import { ancestors, findNode, noteTitle, remapPath } from "./lib/tree";
 import { unseenConflicts } from "./lib/driveConflicts";
 import { setProperty, type Prop } from "./lib/frontmatter";
 import { buildReview, period, reviewFolder, reviewName, type ReviewKind } from "./lib/review";
@@ -106,6 +106,16 @@ export const DEFAULT_CONFIG: VaultConfig = {
 };
 
 const NO_TRUST: DeviceTrust = { git: false, backup_minutes: 0, custom_css: false };
+
+/**
+ * The note a web clip goes into: the one open in the editor (not a PDF, canvas, folder view
+ * or old version shown in its place). null: the clip becomes a note of its own.
+ */
+export function clipTarget(s: Pick<AppStore, "openPath" | "editorApi" | "pdfView" | "canvasView" | "tableView" | "versionView">): string | null {
+  const open = s.openPath;
+  if (!open || !/\.md$/i.test(open) || !s.editorApi) return null;
+  return s.pdfView || s.canvasView || s.tableView !== null || s.versionView ? null : open;
+}
 
 /** Applies the theme setting (FR-UI-02) to the document. */
 export function applyTheme(theme: VaultConfig["theme"]) {
@@ -1214,6 +1224,19 @@ export const useApp = create<AppStore>((set, get) => {
       const folder = config.preset_enabled ? config.inbox_folder : "";
       const pageUrl = page.url;
       const images = await saveClipImages(clip.markdown, (image) => api.saveWebImage(image, pageUrl, config.attachment_folder));
+      // A note open in the editor takes the clip at the cursor (at its end in the read view,
+      // where the cursor isn't seen); otherwise it becomes a note of its own.
+      const target = clipTarget(get());
+      const ed = get().editorApi;
+      if (target && ed && clipTarget(get()) === target) {
+        const { clipSection, insertClip } = await import("./lib/clip");
+        const section = clipSection({ ...clip, markdown: images.markdown }, pageUrl, day(Date.now()));
+        const atEnd = get().readMode;
+        ed.rewrite((cur, cursor) => insertClip(cur, atEnd ? cur.length : cursor, section));
+        get().toast(tx("웹 페이지를 열린 노트에 넣었습니다 · {0}", noteTitle(target)));
+        if (images.failed) get().toast(tx("그림 {0}개는 받지 못해 웹 주소로 남겼습니다", images.failed), "error");
+        return true;
+      }
       const content = clipNote({ ...clip, markdown: images.markdown }, pageUrl, day(Date.now()));
       const base = clipFileName(clip.title);
       // Same title clipped again: "제목 2", "제목 3"…
