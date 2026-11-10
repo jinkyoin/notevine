@@ -7,8 +7,8 @@ use std::fs;
 use std::io::Read;
 use std::path::Path;
 
-use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::events::Event;
 use tauri::State;
 
 use crate::commands::{AppState, with_vault};
@@ -31,8 +31,8 @@ pub enum Kind {
 
 const TEXT_EXT: &[&str] = &[
     "txt", "text", "csv", "tsv", "json", "jsonl", "xml", "yaml", "yml", "toml", "ini", "cfg", "conf", "log", "html",
-    "htm", "css", "js", "mjs", "cjs", "ts", "tsx", "jsx", "py", "rs", "java", "kt", "c", "h", "cpp", "hpp", "cs",
-    "go", "rb", "php", "swift", "sql", "sh", "ps1", "bat", "cmd", "r", "tex", "rst", "org", "srt", "vtt",
+    "htm", "css", "js", "mjs", "cjs", "ts", "tsx", "jsx", "py", "rs", "java", "kt", "c", "h", "cpp", "hpp", "cs", "go",
+    "rb", "php", "swift", "sql", "sh", "ps1", "bat", "cmd", "r", "tex", "rst", "org", "srt", "vtt",
 ];
 
 /// What a file is read as, by its extension. None: not sent (pictures, archives, programs, PDF here).
@@ -134,7 +134,8 @@ fn tidy(s: &str) -> String {
 type Zip = zip::ZipArchive<fs::File>;
 
 fn open_zip(abs: &Path) -> AppResult<Zip> {
-    zip::ZipArchive::new(fs::File::open(abs)?).map_err(|_| err("문서 파일을 열 수 없습니다 (손상됐거나 암호가 걸린 파일)"))
+    zip::ZipArchive::new(fs::File::open(abs)?)
+        .map_err(|_| err("문서 파일을 열 수 없습니다 (손상됐거나 암호가 걸린 파일)"))
 }
 
 fn part(z: &mut Zip, name: &str) -> AppResult<String> {
@@ -241,7 +242,11 @@ fn sheet_names(xml: &str) -> Vec<String> {
         match r.read_event() {
             Ok(Event::Start(e) | Event::Empty(e)) if e.local_name().as_ref() == "sheet" => {
                 if let Some(Ok(a)) = e.attributes().find(|a| a.as_ref().is_ok_and(|a| a.key.as_ref() == "name")) {
-                    names.push(a.normalized_value(quick_xml::XmlVersion::Implicit1_0).map(|v| v.into_owned()).unwrap_or_default());
+                    names.push(
+                        a.normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                            .map(|v| v.into_owned())
+                            .unwrap_or_default(),
+                    );
                 }
             }
             Ok(Event::Eof) | Err(_) => break,
@@ -353,7 +358,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("a.pptx");
         let s = |t: &str| format!(r#"<p:sld xmlns:a="a" xmlns:p="p"><a:p><a:r><a:t>{t}</a:t></a:r></a:p></p:sld>"#);
-        make_zip(&p, &[("ppt/slides/slide10.xml", &s("열")), ("ppt/slides/slide2.xml", &s("둘")), ("ppt/slides/slide1.xml", &s("하나"))]);
+        make_zip(
+            &p,
+            &[
+                ("ppt/slides/slide10.xml", &s("열")),
+                ("ppt/slides/slide2.xml", &s("둘")),
+                ("ppt/slides/slide1.xml", &s("하나")),
+            ],
+        );
         let t = read_text(&p, Kind::Pptx).unwrap();
         assert_eq!(t, "## 슬라이드 1\n하나\n\n## 슬라이드 2\n둘\n\n## 슬라이드 3\n열");
     }
@@ -362,7 +374,9 @@ mod tests {
     fn hwpx_sections() {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("a.hwpx");
-        let sec = |t: &str| format!(r#"<hs:sec xmlns:hs="s" xmlns:hp="p"><hp:p><hp:run><hp:t>{t}</hp:t></hp:run></hp:p></hs:sec>"#);
+        let sec = |t: &str| {
+            format!(r#"<hs:sec xmlns:hs="s" xmlns:hp="p"><hp:p><hp:run><hp:t>{t}</hp:t></hp:run></hp:p></hs:sec>"#)
+        };
         make_zip(&p, &[("Contents/section0.xml", &sec("과업 범위")), ("Contents/section1.xml", &sec("제출 서류"))]);
         assert_eq!(read_text(&p, Kind::Hwpx).unwrap(), "과업 범위\n\n제출 서류");
     }
@@ -375,7 +389,15 @@ mod tests {
         let ss = r#"<sst><si><t>항목</t></si><si><r><t>금</t></r><r><t>액</t></r></si></sst>"#;
         let s1 = r#"<worksheet><sheetData><row><c t="s"><v>0</v></c><c t="s"><v>1</v></c></row><row><c t="inlineStr"><is><t>인건비</t></is></c><c><v>1200</v></c></row></sheetData></worksheet>"#;
         let s2 = r#"<worksheet><sheetData><row><c><v>3</v></c></row></sheetData></worksheet>"#;
-        make_zip(&p, &[("xl/workbook.xml", wb), ("xl/sharedStrings.xml", ss), ("xl/worksheets/sheet1.xml", s1), ("xl/worksheets/sheet2.xml", s2)]);
+        make_zip(
+            &p,
+            &[
+                ("xl/workbook.xml", wb),
+                ("xl/sharedStrings.xml", ss),
+                ("xl/worksheets/sheet1.xml", s1),
+                ("xl/worksheets/sheet2.xml", s2),
+            ],
+        );
         assert_eq!(read_text(&p, Kind::Xlsx).unwrap(), "## 예산\n항목\t금액\n인건비\t1200\n\n## 인력 & 일정\n3");
     }
 

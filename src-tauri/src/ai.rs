@@ -1536,7 +1536,10 @@ mod tests {
         assert_eq!(pdf.title, "제안요청서.pdf");
         let (block, _) = notes_block(&[doc("회의.md", "본문"), pdf]);
         assert!(block.contains("<note path=\"회의.md\" title=\"회의\">\n본문\n</note>\n"), "{block}");
-        assert!(block.contains("<file path=\"자료/제안요청서.pdf\" title=\"제안요청서.pdf\">\n과업 범위\n</file>\n"), "{block}");
+        assert!(
+            block.contains("<file path=\"자료/제안요청서.pdf\" title=\"제안요청서.pdf\">\n과업 범위\n</file>\n"),
+            "{block}"
+        );
         let long = file_doc(FileText { path: "긴.pdf".into(), text: "가".repeat(FILE_CAP + 5) });
         let (block, notice) = notes_block(&[long]);
         assert!(block.contains(&format!("{}\n{TRUNCATED}\n</file>", "가".repeat(FILE_CAP))));
