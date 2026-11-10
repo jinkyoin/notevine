@@ -893,5 +893,8 @@
  "웹 페이지를 열린 노트에 넣었습니다 · {0}": "Clipped the web page into the open note · {0}",
  "웹 페이지의 본문만 골라 열린 노트 \"{0}\"의 {1}에 넣습니다. 메뉴·광고는 빼고, 페이지 제목과 원문 링크를 함께 넣습니다. 새 노트로 만들려면 노트를 닫고 가져오세요.": "Puts the page's article at the {1} of the open note \"{0}\", without menus or ads, with the page title and a link to it. To clip it as a new note, close the note first.",
  "끝": "end",
- "커서 자리": "cursor"
+ "커서 자리": "cursor",
+ "연두": "Lime",
+ "하늘": "Sky blue",
+ "남색": "Indigo"
 }

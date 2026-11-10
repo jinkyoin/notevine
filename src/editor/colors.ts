@@ -20,6 +20,26 @@ export const TEXT_COLORS = [
   { name: tx("회색"), value: "#868e96" },
 ];
 
+/**
+ * Folder name colors in the file tree: the text colors plus more mid-tones, around the
+ * color wheel. The text colors keep their values, so folders colored before stay the same.
+ */
+export const FOLDER_COLORS = [
+  TEXT_COLORS[0], // 빨강
+  TEXT_COLORS[1], // 주황
+  { name: tx("노랑"), value: "#e67700" },
+  TEXT_COLORS[2], // 갈색
+  { name: tx("연두"), value: "#66a80f" },
+  TEXT_COLORS[3], // 초록
+  { name: tx("청록"), value: "#099268" },
+  { name: tx("하늘"), value: "#1098ad" },
+  TEXT_COLORS[4], // 파랑
+  { name: tx("남색"), value: "#4263eb" },
+  TEXT_COLORS[5], // 보라
+  TEXT_COLORS[6], // 분홍
+  TEXT_COLORS[7], // 회색
+];
+
 /** Translucent backgrounds, so the text color underneath works on both themes. */
 export const BG_COLORS = [
   { name: tx("노랑"), value: "rgba(255, 212, 59, 0.45)" },

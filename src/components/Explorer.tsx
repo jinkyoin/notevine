@@ -8,7 +8,7 @@ import { baseName, countNotes, findNode, noteTitle, parentPath } from "../lib/tr
 import { paraActions, paraInfo } from "../lib/para";
 import { openProps } from "./TabBar";
 import { MODE_LABEL } from "./FolderView";
-import { TEXT_COLORS } from "../editor/colors";
+import { FOLDER_COLORS } from "../editor/colors";
 
 import { tx } from "../i18n";
 import { PopupMenu } from "./PopupMenu";
@@ -411,7 +411,7 @@ function FolderColors({ path, current, onClose }: { path: string; current: strin
     <li className="menu-colors" aria-label={tx("폴더 색")}>
       <span className="muted small">{tx("폴더 색")}</span>
       <div className="menu-swatches">
-        {TEXT_COLORS.map((c) => (
+        {FOLDER_COLORS.map((c) => (
           <button
             key={c.value}
             className={`menu-swatch${current === c.value ? " on" : ""}`}
