@@ -28,7 +28,7 @@ fs.writeFileSync(path.join(VAULT, "자료", "회의록.md"), "# 회의록\n");
   await page.evaluate(() => window.__notevine.getState().toggleFolder("자료", true));
   await page.waitForSelector(".tree-row >> text=견적서.xlsx");
 
-  await page.locator(".tree-row", { hasText: "견적서.xlsx" }).click();
+  await page.locator(".tree-row", { hasText: "견적서.xlsx" }).dblclick();
   await page.waitForTimeout(500);
   console.log("click on xlsx →", JSON.stringify(await page.evaluate(() => window.__opened)));
 

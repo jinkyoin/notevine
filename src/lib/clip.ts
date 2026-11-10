@@ -11,9 +11,62 @@ export interface Clip {
   byline: string;
 }
 
-const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced", bulletListMarker: "-", emDelimiter: "*" });
-// Tables stay readable as text; scripts, forms and frames go.
+const OPTIONS = { headingStyle: "atx", codeBlockStyle: "fenced", bulletListMarker: "-", emDelimiter: "*" } as const;
+const turndown = new TurndownService(OPTIONS);
+// Scripts, forms and frames go.
 turndown.remove(["script", "style", "noscript", "iframe", "form", "button"]);
+
+/** Converts one cell; a table inside a cell is flattened to its text. */
+const cellTurndown = new TurndownService(OPTIONS);
+cellTurndown.remove(["script", "style", "noscript", "iframe", "form", "button"]);
+cellTurndown.addRule("nestedTable", { filter: "table", replacement: (_c, node) => ` ${(node.textContent ?? "").replace(/\s+/g, " ").trim()} ` });
+
+/** A cell's markdown on one line: lines joined with <br>, bars escaped. */
+function cellText(cell: Element): string {
+  return cellTurndown
+    .turndown(cell.innerHTML)
+    .split(/\n+/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .join("<br>")
+    .replace(/\|/g, "\\|");
+}
+
+/** The table's rows as a grid; a merged cell (colspan/rowspan) leaves the other places empty. */
+function tableGrid(table: HTMLTableElement): string[][] {
+  const rows = [...table.rows].filter((r) => r.closest("table") === table);
+  const grid: string[][] = [];
+  rows.forEach((row, r) => {
+    grid[r] ??= [];
+    let c = 0;
+    for (const cell of [...row.cells]) {
+      while (grid[r][c] !== undefined) c++;
+      const span = Math.max(1, Math.min(cell.colSpan || 1, 50));
+      const down = Math.max(1, Math.min(cell.rowSpan || 1, rows.length - r));
+      for (let dr = 0; dr < down; dr++) {
+        grid[r + dr] ??= [];
+        for (let dc = 0; dc < span; dc++) grid[r + dr][c + dc] = dr === 0 && dc === 0 ? cellText(cell) : "";
+      }
+      c += span;
+    }
+  });
+  return grid;
+}
+
+// Tables become markdown tables. A one-column or one-row table is page layout (a notice box, a picture beside text): just its content.
+turndown.addRule("table", {
+  filter: (node) => node.nodeName === "TABLE" && !node.parentElement?.closest("table"),
+  replacement(content, node) {
+    // Markdown tables need a header row: the first row is it, th or not.
+    const grid = tableGrid(node as HTMLTableElement);
+    const width = Math.max(0, ...grid.map((r) => r.length));
+    if (width <= 1 || grid.length <= 1) return `\n\n${content}\n\n`;
+    const line = (cells: string[]) => `| ${Array.from({ length: width }, (_, i) => cells[i] ?? "").join(" | ")} |`;
+    const [first, ...rest] = grid;
+    const sep = `| ${Array(width).fill("---").join(" | ")} |`;
+    return `\n\n${[line(first), sep, ...rest.map(line)].join("\n")}\n\n`;
+  },
+});
 
 /** The article in `html` (fetched from `url`) as a note body; null when there is no readable text. */
 export function clipPage(html: string, url: string): Clip | null {

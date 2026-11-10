@@ -1,4 +1,4 @@
-// 설정: 히스토리 사용량·정리 규칙(FR-HIS-08), 단축키 바꾸기·사용자 CSS(FR-UI-05). AI 호출 없음.
+// 설정: 히스토리 사용량·정리 규칙(FR-HIS-08), 단축키 바꾸기·사용자 CSS(FR-UI-05), AI 답변 지침 저장. AI 호출 없음.
 const { chromium } = require("playwright-core");
 const path = require("path");
 const fs = require("fs");
@@ -88,6 +88,23 @@ fs.writeFileSync(path.join(VAULT, "메모.md"), "# 메모\n\n본문\n");
   await page.evaluate(async () => window.__notevine.getState().setTrust(await window.__notevineApi.setCustomCss(false)));
   await page.waitForTimeout(300);
   console.log("3 off:", await color(), (await page.$("#user-css")) === null);
+
+  // 4) AI answer instructions are kept when the settings close with Esc or a click outside
+  //    (they close before the box loses focus), and are in the note folder's config file.
+  for (const how of ["Esc", "바깥 클릭"]) {
+    await openSettings("AI");
+    await page.fill(".ai-instructions", `결론부터 (${how})`);
+    if (how === "Esc") await page.keyboard.press("Escape");
+    else await page.mouse.click(5, 5);
+    await page.waitForSelector(".ai-instructions", { state: "detached" });
+    await page.waitForTimeout(300);
+    await openSettings("AI");
+    console.log(`4 ${how} kept:`, await page.inputValue(".ai-instructions"));
+    await page.evaluate(() => window.__notevine.getState().setModal(null));
+  }
+  const onDisk = JSON.parse(fs.readFileSync(path.join(VAULT, ".app", "config.json"), "utf8")).ai_instructions;
+  console.log("4 in config file:", onDisk);
+  if (onDisk !== "결론부터 (바깥 클릭)") throw new Error("AI instructions not saved");
 
   console.log("errors:", errors);
   await browser.close();

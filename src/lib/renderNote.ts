@@ -72,6 +72,32 @@ const highlight: TokenizerAndRendererExtension = {
   },
 };
 
+const PUNCT = /[\p{P}\p{S}]/u;
+
+/**
+ * `**전이 학습(transfer learning)**의`: the standard rule won't close bold when the text
+ * ends with punctuation and a letter follows the marker (or open it when the text starts
+ * with punctuation after a letter), and Korean puts a particle right there. Such a pair
+ * is taken as bold/italic too; every other one is left to the standard rule.
+ */
+const cjkEmphasis: TokenizerAndRendererExtension = {
+  name: "cjkEmphasis",
+  level: "inline",
+  start: (src) => src.indexOf("*"),
+  tokenizer(src) {
+    const m = /^(\*\*|\*(?!\*))(?=\S)([^\n]*?\S)\1(?!\*)/.exec(src);
+    if (!m) return undefined;
+    const inner = m[2];
+    if (!PUNCT.test(inner[0]) && !PUNCT.test(inner[inner.length - 1])) return undefined;
+    if (m[1] === "*" && inner.includes("*")) return undefined;
+    return { type: "cjkEmphasis", raw: m[0], strong: m[1] === "**", tokens: this.lexer.inlineTokens(inner) };
+  },
+  renderer(t) {
+    const tagName = (t as unknown as { strong: boolean }).strong ? "strong" : "em";
+    return `<${tagName}>${this.parser.parseInline((t as Tokens.Generic).tokens!)}</${tagName}>`;
+  },
+};
+
 const tag: TokenizerAndRendererExtension = {
   name: "tag",
   level: "inline",
@@ -168,7 +194,7 @@ const koDate: TokenizerAndRendererExtension = {
 function makeMarked() {
   const m = new Marked({ gfm: true, breaks: true });
   m.use({
-    extensions: [koDate, mathBlock, wiki, highlight, tag, mathInline, blockId],
+    extensions: [koDate, mathBlock, wiki, highlight, cjkEmphasis, tag, mathInline, blockId],
     renderer: {
       // Clickable task boxes: data-task is the n-th task in the note (see toggleTask).
       // ```mermaid blocks show as code until drawn. The source stays in the <code> text, not an

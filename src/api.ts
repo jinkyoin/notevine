@@ -452,6 +452,8 @@ export const api = {
     invoke<{ notes: ContextNote[]; private_excluded: string[] }>("ai_context", { question, limit }),
   /** The given notes that carry #비공개 (never sent to AI). */
   aiPrivateNotes: (paths: string[]) => invoke<string[]>("ai_private_notes", { paths }),
+  /** Text of a non-note file (text, Office, hwpx) to send to AI. PDFs are read in the UI. */
+  aiFileText: (path: string) => invoke<string>("ai_file_text", { path }),
   /** Starts an AI run; events arrive on `onEvent`. Resolves once the CLI has been started. */
   aiRun: (
     requestId: string,
@@ -459,13 +461,14 @@ export const api = {
     system: string,
     prompt: string,
     notes: string[],
+    files: { path: string; text: string }[],
     model: string | null,
     web: boolean,
     onEvent: (e: AiEvent) => void,
   ) => {
     const ch = new Channel<AiEvent>();
     ch.onmessage = onEvent;
-    return invoke<void>("ai_run", { requestId, provider, system, prompt, notes, model, web, onEvent: ch });
+    return invoke<void>("ai_run", { requestId, provider, system, prompt, notes, files, model, web, onEvent: ch });
   },
   aiCancel: (requestId: string) => invoke<boolean>("ai_cancel", { requestId }),
   /** Makes an empty `.canvas` board in `dir`; returns its path. */

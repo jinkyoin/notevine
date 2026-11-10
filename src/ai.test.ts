@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asksForTemplate, asksForWeb, chatPrompt, journalNotesInRange, matchTemplate, namesWeb, pickProvider, qaSystem, supportsWeb, weekRange, withInstructions, writeIntent, writePrompt } from "./ai";
+import { asksForTemplate, COMMON_INSTRUCTIONS, asksForWeb, chatPrompt, journalNotesInRange, matchTemplate, namesWeb, pickProvider, qaSystem, supportsWeb, weekRange, withInstructions, writeIntent, writePrompt } from "./ai";
 
 describe("ai helpers", () => {
   it("allows the web only when asked to", () => {
@@ -73,12 +73,22 @@ describe("ai helpers", () => {
   });
 
   it("adds the folder's answer instructions after the app's own rules, which still win", () => {
-    expect(withInstructions("규칙", "")).toBe("규칙");
-    expect(withInstructions("규칙", "  \n ")).toBe("규칙");
+    // The common instructions go with every request, set or not.
+    for (const none of ["", "  \n "]) {
+      const base = withInstructions("규칙", none);
+      expect(base.startsWith("규칙\n\n" + COMMON_INSTRUCTIONS)).toBe(true);
+      expect(base).not.toContain("<사용자 지침>");
+      expect(base).toMatch(/앞의 규칙.*따른다/);
+    }
+    expect(COMMON_INSTRUCTIONS).toContain("> [!종류] 제목");
+    expect(COMMON_INSTRUCTIONS).toContain("```mermaid");
+    expect(COMMON_INSTRUCTIONS).toContain("![설명](https://…)");
     const s = withInstructions("규칙", " 결론부터 세 줄로 ");
     expect(s.startsWith("규칙\n\n")).toBe(true);
     expect(s).toContain("<사용자 지침>\n결론부터 세 줄로\n</사용자 지침>");
     expect(s.indexOf("규칙")).toBeLessThan(s.indexOf("결론부터"));
+    expect(s.indexOf("<공통 지침>")).toBeLessThan(s.indexOf("<사용자 지침>"));
+    expect(s).toContain("둘이 다르면 사용자 지침을 따른다");
     expect(s).toMatch(/앞의 규칙.*따른다/);
     expect(withInstructions("규칙", "가".repeat(5000))).toContain("가".repeat(4000) + "\n</사용자 지침>");
     expect(withInstructions("규칙", "가".repeat(5000))).not.toContain("가".repeat(4001));

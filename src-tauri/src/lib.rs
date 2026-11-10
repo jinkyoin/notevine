@@ -7,6 +7,7 @@ mod drive;
 mod error;
 mod extras;
 mod file_open;
+mod filetext;
 mod history;
 mod index;
 mod parse;
@@ -222,6 +223,7 @@ pub fn run() {
             ai::ai_cancel,
             ai::ai_login,
             ai::ai_private_notes,
+            filetext::ai_file_text,
             commands::resolve_link,
             commands::backlinks,
             commands::delete_entry,

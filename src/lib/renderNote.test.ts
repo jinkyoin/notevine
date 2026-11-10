@@ -14,6 +14,19 @@ describe("noteToHtml", () => {
     expect(html).toContain("<table>");
   });
 
+  it("bolds text ending or starting with punctuation when a Korean particle touches the marker", () => {
+    expect(noteToHtml("**전이 학습(transfer learning)**의 한 형태다.")).toContain(
+      "<strong>전이 학습(transfer learning)</strong>의 한 형태다.",
+    );
+    expect(noteToHtml("이것은**\"인용\"**이다")).toContain("이것은<strong>&quot;인용&quot;</strong>이다");
+    expect(noteToHtml("*기울임(예)*을 쓴다")).toContain("<em>기울임(예)</em>을 쓴다");
+    expect(noteToHtml("**굵게 *안에* 기울임(a)**다")).toContain("<strong>굵게 <em>안에</em> 기울임(a)</strong>다");
+    // Unchanged: plain bold, a lone star, spaces inside the markers, code.
+    expect(noteToHtml("**굵게**와 2 * 3 * 4")).toContain("<strong>굵게</strong>와 2 * 3 * 4");
+    expect(noteToHtml("** (아님) **이다")).not.toContain("<strong>");
+    expect(noteToHtml("`**(코드)**의`")).toContain("<code>**(코드)**의</code>");
+  });
+
   it("turns Notevine syntax into clickable elements", () => {
     const html = noteToHtml("[[회의록#결정|지난 회의]] ![[그림.png|300]] ==중요== #업무/기획 a#b\n[문서](https://x.y) [노트](../a.md)");
     expect(html).toContain('<a href="#" class="wikilink" data-target="회의록" data-heading="결정">지난 회의</a>');

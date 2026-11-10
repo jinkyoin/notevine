@@ -30,7 +30,8 @@ import { useApp } from "./store";
 import { findNode, noteTitle } from "./lib/tree";
 import { appendText, applyChanges, editSystem, OPEN_NOTE_ALIAS, parseEdits, planEdit, type Edit, type Planned } from "./lib/aiEdits";
 import { day } from "./lib/folderTable";
-import { notesUnder } from "./lib/aiAttach";
+import { entriesUnder } from "./lib/aiAttach";
+import { fileText } from "./lib/fileText";
 
 import { tx } from "./i18n";
 export interface ChatMessage {
@@ -105,12 +106,16 @@ export interface EditProposal {
   chatIndex: number;
 }
 
-/** A note or folder dropped on the question box, with the notes it sends. */
+/** A note, file or folder dropped on the question box, with the notes and file texts it sends. */
 export interface Attached {
   path: string;
   notes: string[];
+  /** Files other than notes (PDF, Office, ...), their text read when dropped. */
+  files?: { path: string; text: string }[];
   /** #비공개 notes in it, left out. */
   privateCount: number;
+  /** Files in it whose text could not be read (a scanned PDF, a broken file), left out. */
+  unreadCount?: number;
 }
 
 interface AiState {
@@ -284,15 +289,30 @@ export const useAi = create<AiState>((set, get) => {
 
     async attach(path) {
       if (get().attached.some((a) => a.path === path)) return;
-      const notes = notesUnder(app().tree, path);
-      if (notes === null) return app().toast(tx("노트나 폴더만 AI에 보낼 수 있습니다"), "error");
+      const found = entriesUnder(app().tree, path);
+      if (found === null) return app().toast(tx("노트, 폴더, 글자를 읽을 수 있는 파일(PDF·문서·텍스트)만 AI에 보낼 수 있습니다"), "error");
+      const { notes } = found;
       const hidden = new Set(notes.length ? await api.aiPrivateNotes(notes).catch(() => notes) : []);
       const sendable = notes.filter((p) => !hidden.has(p));
-      if (!sendable.length) {
-        return app().toast(hidden.size ? tx("#비공개 노트뿐이라 보낼 노트가 없습니다: {0}", noteTitle(path)) : tx("폴더에 보낼 노트가 없습니다: {0}", noteTitle(path)), "error");
+      // Files are read now, so a scanned PDF is known at once rather than at the question.
+      const read = await Promise.all(
+        found.files.map((p) =>
+          fileText(p).then(
+            (text) => ({ path: p, text: text.trim(), error: "" }),
+            (e) => ({ path: p, text: "", error: errorMessage(e) }),
+          ),
+        ),
+      );
+      const files = read.filter((f) => f.text).map(({ path: p, text }) => ({ path: p, text }));
+      const unread = read.filter((f) => !f.text);
+      if (!sendable.length && !files.length) {
+        if (found.files.length === 1 && !notes.length) {
+          return app().toast(unread[0].error || tx("파일에서 글자를 찾지 못했습니다 (그림으로만 된 PDF일 수 있습니다): {0}", noteTitle(path)), "error");
+        }
+        return app().toast(hidden.size ? tx("#비공개 노트뿐이라 보낼 노트가 없습니다: {0}", noteTitle(path)) : tx("폴더에 보낼 노트나 파일이 없습니다: {0}", noteTitle(path)), "error");
       }
       if (get().attached.some((a) => a.path === path)) return;
-      set({ attached: [...get().attached, { path, notes: sendable, privateCount: hidden.size }] });
+      set({ attached: [...get().attached, { path, notes: sendable, files, privateCount: hidden.size, unreadCount: unread.length }] });
     },
 
     detach(path) {
@@ -509,6 +529,7 @@ export const useAi = create<AiState>((set, get) => {
         {
           web,
           onProgress: (m) => update({ progress: [...(get().chat[idx]?.progress ?? []), ...m.split("\n")] }),
+          files: [...new Map(get().attached.flatMap((a) => a.files ?? []).map((f) => [f.path, f])).values()],
         },
       );
       set({ running: handle });

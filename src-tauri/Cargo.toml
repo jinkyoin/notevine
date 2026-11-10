@@ -37,6 +37,9 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-autostart = "2"
 ureq = { version = "2", features = ["json"] }
 encoding_rs = "0.8"
+# FR-AI-03: text of Office/한글(hwpx) files sent to AI. Same versions the updater/plist already use.
+zip = { version = "9.3", default-features = false, features = ["deflate-flate2"] }
+quick-xml = "0.42"
 keyring = { version = "3", features = ["windows-native"] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"

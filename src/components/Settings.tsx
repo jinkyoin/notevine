@@ -1,5 +1,5 @@
 // SCR-16 설정: 일반 · 편집기 · 단축키 · 파일·링크 · 프리셋 · AI · 플러그인 · 히스토리 · 백업 · 정보.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { allCommands, keysFromEvent, keysOf, onCommandsChanged, type Command } from "../commands";
@@ -628,16 +628,26 @@ function AiSettings() {
 
 /** How the AI answers in this note folder: sent with every AI request (질문·글 고치기·주간 회고). */
 function AiInstructions() {
-  const config = useApp((s) => s.config);
-  const { saveConfig } = useApp.getState();
-  const [draft, setDraft] = useState(config.ai_instructions);
-  useEffect(() => setDraft(config.ai_instructions), [config.ai_instructions]);
-  const save = () => draft !== config.ai_instructions && void saveConfig({ ...config, ai_instructions: draft });
+  const saved = useApp((s) => s.config.ai_instructions);
+  const [draft, setDraft] = useState(saved);
+  const latest = useRef(draft);
+  latest.current = draft;
+  useEffect(() => setDraft(saved), [saved]);
+  // Saved on blur, and also when the settings close: Esc or a click outside closes them
+  // before the box loses focus, so blur alone would drop what was typed.
+  const save = () => {
+    const { config, saveConfig } = useApp.getState();
+    if (latest.current !== config.ai_instructions) void saveConfig({ ...config, ai_instructions: latest.current });
+  };
+  useEffect(() => save, []);
   return (
     <>
       <h3 className="set-sub">{tx("답변 지침 (이 노트 폴더)")}</h3>
       <p className="muted small">
         {tx("AI가 이 노트 폴더에서 답할 때 따를 말투·길이·형식을 적습니다. 모든 AI 요청에 함께 보내고, 노트 폴더 안에 저장되어 다른 PC에서도 같이 쓰입니다. 노트를 고치는 방식이나 #비공개 노트 같은 앱의 규칙은 바꾸지 못합니다.")}
+      </p>
+      <p className="muted small">
+        {tx("모든 노트 폴더에는 공통 지침이 먼저 들어갑니다: 앱의 서식(표·강조 상자·형광펜 등)을 최대한 활용해 보기 좋게 쓰고, 이미지가 필요하면 그림(Mermaid)으로 그리거나 웹 이미지 링크로 넣습니다. 여기 적은 지침이 공통 지침과 다르면 여기 지침을 따릅니다.")}
       </p>
       <textarea
         className="ai-instructions"

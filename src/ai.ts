@@ -179,6 +179,7 @@ export function matchTemplate<T extends { title: string }>(question: string, tem
 const QA_BASE = [
   "너는 사용자의 개인 업무 노트를 바탕으로 답하는 한국어 도우미다.",
   "근거로 쓴 노트는 해당 문장 끝에 [[노트 제목]] 형식으로 표시한다. 제목은 note 태그의 title 값을 그대로 쓴다.",
+  "<참고 노트>의 file 태그는 노트 폴더 안의 파일(PDF·문서 등)에서 뽑은 글이다. 근거로 쓰면 [[파일 이름]] 형식으로 title 값(확장자 포함)을 그대로 표시하고, PDF는 [p.쪽] 표시로 쪽을 밝힐 수 있다.",
   "답은 간결한 마크다운으로 쓴다. 인사말이나 불필요한 서론은 쓰지 않는다.",
 ];
 
@@ -283,17 +284,37 @@ export interface RunHandle {
 const INSTRUCTIONS_CAP = 4000;
 
 /**
- * The note folder's answer instructions (settings → AI), put after the app's own rules.
- * They shape tone and format only: where they clash with the rules above (how changes
- * are proposed, private notes), the rules win.
+ * Answer instructions every request carries, in every note folder: write with what the
+ * read view shows (see renderNote.ts, callout.ts), and give pictures as diagrams or links.
+ */
+export const COMMON_INSTRUCTIONS = [
+  "<공통 지침>",
+  "- 이 앱(Notevine) 읽기 모드가 보여 주는 마크다운 서식을 최대한 활용해 보기 좋게 쓴다. 내용에 맞는 서식만 쓰고, 서식을 위해 내용을 늘리지 않는다.",
+  "  - 제목(##, ###)으로 나누고, 목록·번호 목록·할 일 목록(- [ ])을 쓴다.",
+  "  - 비교·정리는 표로, 핵심 단어는 **굵게**나 ==형광펜==으로 강조한다.",
+  "  - 눈에 띄어야 할 내용은 강조 상자로 쓴다: 첫 줄 `> [!종류] 제목`, 다음 줄부터 `> 내용`. 종류는 중요·주의·참고·팁·결정·질문·아이디어 중에서 고른다.",
+  "  - 수식은 $…$(문장 안)이나 $$…$$(따로 한 줄)로, 코드는 언어를 적은 코드 블록으로 쓴다.",
+  "  - 노트를 가리킬 때는 [[노트 제목]]을 쓴다. #태그는 사용자가 요청할 때만 붙인다.",
+  "- 이미지가 필요하면 다음 중 하나로 넣는다.",
+  "  - 직접 그린다: 흐름·구조·순서·일정·비율·관계는 ```mermaid 코드 블록(flowchart, sequenceDiagram, gantt, pie, mindmap 등)으로 그린다.",
+  "  - 링크를 단다: 웹에 있는 이미지는 실제로 있는 주소만 ![설명](https://…) 형식으로 넣는다. 주소를 지어내지 않는다.",
+  "</공통 지침>",
+].join("\n");
+
+/**
+ * The common instructions, then the note folder's answer instructions (settings → AI),
+ * put after the app's own rules. They shape tone and format only: where they clash with
+ * the rules above (how changes are proposed, private notes), the rules win.
  */
 export function withInstructions(system: string, instructions: string): string {
   const text = Array.from(instructions.trim()).slice(0, INSTRUCTIONS_CAP).join("");
-  if (!text) return system;
+  const rules = "앞의 규칙(변경 제안 형식, 보낸 노트만 다루기, 결과 글만 출력하기 등)과 부딪히면 앞의 규칙을 따른다.";
+  if (!text) return [system, COMMON_INSTRUCTIONS, `위 공통 지침은 답의 형식에 적용한다. ${rules}`].join("\n\n");
   return [
     system,
+    COMMON_INSTRUCTIONS,
     `<사용자 지침>\n${text}\n</사용자 지침>`,
-    "위 사용자 지침은 답의 말투·길이·형식에 적용한다. 앞의 규칙(변경 제안 형식, 보낸 노트만 다루기 등)과 부딪히면 앞의 규칙을 따른다.",
+    `공통 지침과 사용자 지침은 답의 말투·길이·형식에 적용하고, 둘이 다르면 사용자 지침을 따른다. ${rules}`,
   ].join("\n\n");
 }
 
@@ -306,7 +327,7 @@ export function runAi(
   onText: (text: string) => void,
   onNotice?: (m: string) => void,
   onModel?: (model: string) => void,
-  opts: { web?: boolean; onProgress?: (m: string) => void } = {},
+  opts: { web?: boolean; onProgress?: (m: string) => void; files?: { path: string; text: string }[] } = {},
 ): RunHandle {
   const id = `ai-${Date.now()}-${++seq}`;
   let acc = "";
@@ -324,7 +345,7 @@ export function runAi(
         resolve({ text: e.text, cost: e.cost_usd });
       } else if (e.kind === "error") reject(new Error(e.message));
     };
-    api.aiRun(id, provider, system, prompt, notes, aiPrefs.model(provider) || null, !!opts.web, onEvent).catch((err) => reject(err instanceof Error ? err : new Error(String((err as { message?: string })?.message ?? err))));
+    api.aiRun(id, provider, system, prompt, notes, opts.files ?? [], aiPrefs.model(provider) || null, !!opts.web, onEvent).catch((err) => reject(err instanceof Error ? err : new Error(String((err as { message?: string })?.message ?? err))));
   });
   return { id, done, cancel: () => void api.aiCancel(id).catch(() => {}) };
 }

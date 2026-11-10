@@ -25,7 +25,7 @@ fs.writeFileSync(path.join(VAULT, "메모.md"), "# 메모\n\n[[첨부/계획서.
   // 1) Clicking the PDF in the file tree opens it in the app, Korean text selectable.
   await page.click('.tree-row:has-text("첨부"), li:has-text("첨부") >> nth=0').catch(() => {});
   await page.evaluate(() => window.__notevine.getState().toggleFolder("첨부", true));
-  await page.click('text="계획서.pdf"');
+  await page.dblclick('text="계획서.pdf"');
   await page.waitForSelector(".pdf-page .textLayer span", { timeout: 15000 });
   const text = await page.$$eval(".pdf-page[data-page='1'] .textLayer span", (ss) => ss.map((s) => s.textContent).join(""));
   console.log("1 pages:", await page.textContent(".pdf-pages"), "| page 1 text:", JSON.stringify(text.slice(0, 40)));

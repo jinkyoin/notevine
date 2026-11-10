@@ -26,7 +26,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, mpsc};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::State;
 use tauri::ipc::Channel;
@@ -49,6 +49,8 @@ const PROVIDER_CACHE_TTL: Duration = Duration::from_secs(60);
 const NOTE_CAP: usize = 12_000;
 /// Characters of all note contents together sent at most.
 const BLOCK_CAP: usize = 60_000;
+/// Characters of one file's text (PDF, Office, ...) sent at most: documents run longer than notes.
+const FILE_CAP: usize = 40_000;
 const TRUNCATED: &str = "…(이하 생략)";
 const SNIPPET_MAX: usize = 160;
 const DEFAULT_CONTEXT_LIMIT: u32 = 8;
@@ -283,6 +285,7 @@ pub fn ai_run(
     system: String,
     prompt: String,
     notes: Vec<String>,
+    files: Option<Vec<FileText>>,
     model: Option<String>,
     web: Option<bool>,
     on_event: Channel<AiEvent>,
@@ -290,11 +293,12 @@ pub fn ai_run(
     let api = crate::ai_api::Api::parse(&provider);
     let p = Provider::parse(&provider).or(api.map(|_| Provider::Claude));
     let p = p.ok_or_else(|| other_err(format!("알 수 없는 AI 제공자입니다: {provider}")))?;
-    let docs = if notes.is_empty() {
+    let mut docs = if notes.is_empty() {
         Vec::new()
     } else {
         with_vault(&state, |v| notes.iter().map(|rel| load_note(v, rel)).collect::<AppResult<Vec<_>>>())?
     };
+    docs.extend(files.unwrap_or_default().into_iter().map(file_doc));
     // Last line of defence: whatever the UI did, a private note never leaves.
     if let Some(d) = docs.iter().find(|d| is_private(&d.content)) {
         return Err(other_err(format!("#{PRIVATE_TAG} 태그가 있는 노트는 AI로 보낼 수 없습니다: {}", d.title)));
@@ -938,6 +942,21 @@ struct NoteDoc {
     path: String,
     title: String,
     content: String,
+    /// Another file's text (PDF, Office, ...) rather than a note.
+    file: bool,
+}
+
+/// The text of a file dropped on the question box, read by the UI (PDF) or `ai_file_text`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct FileText {
+    pub path: String,
+    pub text: String,
+}
+
+/// A dropped file's text as something to send; its title keeps the extension ("제안요청서.pdf").
+fn file_doc(f: FileText) -> NoteDoc {
+    let path = normalize_rel(&f.path);
+    NoteDoc { title: file_name(&path).to_string(), path, content: f.text, file: true }
 }
 
 fn title_of(rel: &str) -> String {
@@ -953,7 +972,7 @@ fn load_note(v: &Vault, rel: &str) -> AppResult<NoteDoc> {
         return Err(AppError::NotFound(rel));
     }
     let content = fs::read_to_string(&abs)?;
-    Ok(NoteDoc { title: title_of(&rel), path: rel, content })
+    Ok(NoteDoc { title: title_of(&rel), path: rel, content, file: false })
 }
 
 fn attr(s: &str) -> String {
@@ -996,7 +1015,7 @@ fn notes_block(docs: &[NoteDoc]) -> (String, Option<String>) {
             continue;
         }
         let len = d.content.chars().count();
-        let cap = NOTE_CAP.min(budget);
+        let cap = if d.file { FILE_CAP } else { NOTE_CAP }.min(budget);
         let body = if len > cap {
             cut.push(format!("{}(앞 {}자)", d.title, thousands(cap)));
             budget -= cap;
@@ -1005,9 +1024,10 @@ fn notes_block(docs: &[NoteDoc]) -> (String, Option<String>) {
             budget -= len;
             d.content.clone()
         };
-        out.push_str(&format!("<note path=\"{}\" title=\"{}\">\n", attr(&d.path), attr(&d.title)));
+        let tag = if d.file { "file" } else { "note" };
+        out.push_str(&format!("<{tag} path=\"{}\" title=\"{}\">\n", attr(&d.path), attr(&d.title)));
         out.push_str(body.trim_end_matches('\n'));
-        out.push_str("\n</note>\n");
+        out.push_str(&format!("\n</{tag}>\n"));
     }
     out.push_str("</참고 노트>\n\n");
 
@@ -1495,7 +1515,7 @@ mod tests {
     // ----- prompt assembly -----
 
     fn doc(path: &str, content: &str) -> NoteDoc {
-        NoteDoc { path: path.into(), title: title_of(path), content: content.into() }
+        NoteDoc { path: path.into(), title: title_of(path), content: content.into(), file: false }
     }
 
     #[test]
@@ -1508,6 +1528,19 @@ mod tests {
         );
         assert_eq!(notice, None);
         assert_eq!(notes_block(&[]), (String::new(), None));
+    }
+
+    #[test]
+    fn notes_block_wraps_dropped_files_with_a_larger_cap() {
+        let pdf = file_doc(FileText { path: "자료\\제안요청서.pdf".into(), text: "과업 범위".into() });
+        assert_eq!(pdf.title, "제안요청서.pdf");
+        let (block, _) = notes_block(&[doc("회의.md", "본문"), pdf]);
+        assert!(block.contains("<note path=\"회의.md\" title=\"회의\">\n본문\n</note>\n"), "{block}");
+        assert!(block.contains("<file path=\"자료/제안요청서.pdf\" title=\"제안요청서.pdf\">\n과업 범위\n</file>\n"), "{block}");
+        let long = file_doc(FileText { path: "긴.pdf".into(), text: "가".repeat(FILE_CAP + 5) });
+        let (block, notice) = notes_block(&[long]);
+        assert!(block.contains(&format!("{}\n{TRUNCATED}\n</file>", "가".repeat(FILE_CAP))));
+        assert_eq!(notice.as_deref(), Some("길어서 앞부분만 보낸 노트: 긴.pdf(앞 40,000자)"));
     }
 
     #[test]

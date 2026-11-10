@@ -38,6 +38,44 @@ describe("clipPage", () => {
   });
 });
 
+describe("clipPage tables", () => {
+  const page = (table: string) =>
+    `<html><head><title>표 정리</title></head><body><article><h1>표 정리</h1>
+<p>본문으로 뽑히도록 충분히 긴 문단이다. 아래 표는 배점과 기간을 정리한 것이다. 표가 마크다운 표로 남는지 본다. 한 문장 더 쓴다.</p>
+${table}
+<p>표 다음 문단도 충분히 길게 쓴다. 본문 판정은 글자 수를 보기 때문에 이렇게 길게 적어 둔다. 끝.</p></article></body></html>`;
+  const md = (table: string) => clipPage(page(table), "https://x.example/a")!.markdown;
+
+  it("keeps a table as a markdown table", () => {
+    const out = md(`<table><thead><tr><th>항목</th><th>배점</th></tr></thead>
+<tbody><tr><td>기술 <b>평가</b></td><td>80</td></tr><tr><td>가격 | 평가</td><td>20</td></tr></tbody></table>`);
+    expect(out).toContain("| 항목 | 배점 |\n| --- | --- |\n| 기술 **평가** | 80 |\n| 가격 \\| 평가 | 20 |");
+  });
+
+  it("uses the first row as the header when there is no th, and fills merged cells", () => {
+    const out = md(`<table><tr><td>구분</td><td colspan="2">기간</td></tr>
+<tr><td rowspan="2">1차</td><td>착수</td><td>1월</td></tr><tr><td>완료</td><td>3월</td></tr></table>`);
+    expect(out).toContain("| 구분 | 기간 |  |\n| --- | --- | --- |\n| 1차 | 착수 | 1월 |\n|  | 완료 | 3월 |");
+  });
+
+  it("keeps lines inside a cell with <br>", () => {
+    const out = md(`<table><tr><th>단계</th><th>할 일</th></tr><tr><td>준비</td><td><p>요구 분석</p><p>설계</p></td></tr></table>`);
+    expect(out).toContain("| 준비 | 요구 분석<br>설계 |");
+  });
+
+  it("a one-column layout table is just its content", () => {
+    const out = md(`<table><tr><td><p>레이아웃 표 안의 문단이다.</p></td></tr><tr><td><p>두 번째 문단.</p></td></tr></table>`);
+    expect(out).toContain("레이아웃 표 안의 문단이다.\n\n두 번째 문단.");
+    expect(out).not.toContain("| ---");
+  });
+
+  it("a one-row layout table (a notice box) is just its content", () => {
+    const out = md(`<table><tr><td><img src="i.png" alt="!"></td><td><p>이 문서는 <b>오래된 정보</b>를 담고 있습니다.</p></td></tr></table>`);
+    expect(out).toContain("이 문서는 **오래된 정보**를 담고 있습니다.");
+    expect(out).not.toContain("| ---");
+  });
+});
+
 describe("clipFetched", () => {
   const SHELL = (frame: string) => `<html><head><title>겉 페이지</title></head><body>${frame}</body></html>`;
   const page = (html: string, url = "https://blog.example.com/user/1") => ({ url, html });

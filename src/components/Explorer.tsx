@@ -21,6 +21,14 @@ interface Menu {
 
 const DRAG_TYPE = "application/x-notevine-path";
 
+/** Opens a file that isn't a note: PDFs and canvases in the app, the rest in the program Windows uses. */
+function openFile(path: string) {
+  const st = useApp.getState();
+  if (/\.pdf$/i.test(path)) st.openPdf(path);
+  else if (/\.canvas$/i.test(path)) st.openCanvas(path);
+  else void st.openExternal(path); // Excel, Hangul, Word, images…
+}
+
 /** Files dragged in from Windows Explorer (not a row of this tree). */
 const hasOsFiles = (e: React.DragEvent) => e.dataTransfer.types.includes("Files") && !e.dataTransfer.types.includes(DRAG_TYPE);
 
@@ -148,22 +156,23 @@ function Row({ node, depth, onMenu, color }: { node: TreeNode; depth: number; on
         }}
         {...(isFolder
           ? { onClick: () => toggleFolder(node.path) }
-          : openProps((o) =>
-              node.kind === "note"
-                ? openNote(node.path, undefined, undefined, o)
-                : /\.pdf$/i.test(node.path)
-                  ? useApp.getState().openPdf(node.path)
-                  : /\.canvas$/i.test(node.path)
-                    ? useApp.getState().openCanvas(node.path)
-                    : // Excel, Hangul, Word, images…: the program Windows uses for them.
-                      void useApp.getState().openExternal(node.path),
-            ))}
+          : node.kind === "note"
+            ? openProps((o) => openNote(node.path, undefined, undefined, o))
+            : // Other files open on a double click, so a single click (or a drag to the AI box)
+              // doesn't start Excel or Hangul.
+              { onDoubleClick: () => openFile(node.path) })}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
           onMenu({ x: e.clientX, y: e.clientY, node });
         }}
-        title={(isFolder && paraInfo(node.path, useApp.getState().config)) ? `${node.path}\n${paraInfo(node.path, useApp.getState().config)}` : node.path}
+        title={
+          isFolder && paraInfo(node.path, useApp.getState().config)
+            ? `${node.path}\n${paraInfo(node.path, useApp.getState().config)}`
+            : node.kind === "file"
+              ? `${node.path}\n${tx("더블클릭하면 열립니다")}`
+              : node.path
+        }
       >
         <span className="twisty">{isFolder && <Chevron open={expanded} />}</span>
         {isRenaming ? (

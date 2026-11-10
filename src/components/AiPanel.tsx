@@ -390,15 +390,19 @@ function AttachedChips() {
   const { detach } = useAi.getState();
   if (!attached.length) return null;
   return (
-    <ul className="ai-chips" aria-label={tx("AI에 함께 보낼 노트")}>
+    <ul className="ai-chips" aria-label={tx("AI에 함께 보낼 노트와 파일")}>
       {attached.map((a) => {
-        const folder = a.notes.length !== 1 || a.notes[0] !== a.path;
+        const files = a.files ?? [];
+        const single = a.notes.length + files.length === 1 && (a.notes[0] ?? files[0]?.path) === a.path;
+        const folder = !single;
+        const counts = [a.notes.length ? tx("노트 {0}개", a.notes.length) : "", files.length ? tx("파일 {0}개", files.length) : ""].filter(Boolean).join(" · ");
         return (
-          <li key={a.path} className="ai-chip" title={a.notes.join("\n")}>
+          <li key={a.path} className="ai-chip" title={[...a.notes, ...files.map((f) => f.path)].join("\n")}>
             <span>
-              {folder ? "📁" : "📄"} {noteTitle(a.path)}
-              {folder && <span className="muted"> {tx("(노트 {0}개)", a.notes.length)}</span>}
+              {folder ? "📁" : files.length ? "📎" : "📄"} {files.length && !folder ? a.path.split("/").pop() : noteTitle(a.path)}
+              {folder && <span className="muted"> ({counts || tx("노트 {0}개", 0)})</span>}
               {a.privateCount > 0 && <span className="muted"> · {tx("비공개 {0}개 제외", a.privateCount)}</span>}
+              {(a.unreadCount ?? 0) > 0 && <span className="muted"> · {tx("읽지 못한 파일 {0}개 제외", a.unreadCount ?? 0)}</span>}
             </span>
             <button type="button" aria-label={tx("{0} 빼기", noteTitle(a.path))} onClick={() => detach(a.path)}>
               ×
