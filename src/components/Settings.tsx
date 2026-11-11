@@ -8,6 +8,7 @@ import {
   errorMessage,
   type AppSettings,
   type BackupStatus,
+  type CryptKeyStatus,
   type DriveConflict,
   type HistoryStats,
   type McpGrant,
@@ -18,6 +19,7 @@ import {
 import { useApp } from "../store";
 import { useAi } from "../aiStore";
 import { forgetApiModels, ProviderFix } from "./AiPanel";
+import { CryptKeyDialog, type CryptKeyDialogMode } from "./CryptKeyDialog";
 import { PERMISSION_LABEL, usePlugins } from "../plugins";
 import { checkForUpdate } from "../updates";
 
@@ -963,7 +965,10 @@ function BackupSettings() {
   const [st, setSt] = useState<BackupStatus | null>(null);
   const [remote, setRemote] = useState("");
   const [busy, setBusy] = useState(false);
-  const load = () =>
+  const [key, setKey] = useState<CryptKeyStatus | null>(null);
+  const [keyDlg, setKeyDlg] = useState<CryptKeyDialogMode | null>(null);
+  const [movedAside, setMovedAside] = useState<string | null>(null);
+  const load = () => {
     void api
       .backupStatus()
       .then((s) => {
@@ -971,6 +976,11 @@ function BackupSettings() {
         setRemote(s.remote ?? "");
       })
       .catch((e) => toast(errorMessage(e), "error"));
+    void api
+      .cryptKeyStatus()
+      .then(setKey)
+      .catch((e) => toast(errorMessage(e), "error"));
+  };
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
   const run = async (f: () => Promise<unknown>) => {
     setBusy(true);
@@ -993,6 +1003,44 @@ function BackupSettings() {
     if (ok) await run(api.backupTrust);
   };
 
+  const createKey = async () => {
+    setBusy(true);
+    try {
+      setKeyDlg({ kind: "created", code: await api.cryptCreateKey() });
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    } finally {
+      setBusy(false);
+      load();
+    }
+  };
+  const showCode = async () => {
+    try {
+      setKeyDlg({ kind: "show", code: await api.cryptShowRecoveryCode() });
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    }
+  };
+  const enableEncryption = async () => {
+    const ok = await ask(
+      tx("이 노트 폴더 암호화 켜기"),
+      tx("새 저장소로 시작합니다. 지금 저장소는 .git-before-encryption-…로 옮겨 둡니다. 원격 저장소는 새 빈 저장소를 만들어 주소를 넣어 주세요. 옛 원격 저장소는 직접 지워 주세요."),
+      tx("암호화 켜기"),
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const moved = await api.backupEnableEncryption();
+      setMovedAside(moved ?? "");
+      toast(moved ? tx("암호화를 켰습니다 · 옛 저장소는 {0}로 옮겼습니다. 새 빈 원격 저장소를 만들어 주소를 넣어 주세요", moved) : tx("암호화를 켰습니다 · 새 빈 원격 저장소를 만들어 주소를 넣어 주세요"));
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    } finally {
+      setBusy(false);
+      load();
+    }
+  };
+
   if (!st) return <p className="muted small">{tx("확인하는 중…")}</p>;
   if (!st.git) {
     return (
@@ -1006,6 +1054,15 @@ function BackupSettings() {
   }
   return (
     <>
+      {keyDlg && (
+        <CryptKeyDialog
+          mode={keyDlg}
+          onClose={() => {
+            setKeyDlg(null);
+            load();
+          }}
+        />
+      )}
       <p className="muted small">
         {tx("노트 폴더를 Git 저장소로 백업합니다. 백업할 때마다 그 순간의 노트 전체가 남아 언제든 되돌릴 수 있습니다. 원격 저장소(예: GitHub 비공개 저장소)를 넣으면 그곳으로도 보내고, 다른 PC에서 백업한 변경을 받아 와 여러 PC에서 같은 노트를 쓸 수 있습니다. 검색 인덱스·히스토리 DB는 넣지 않습니다.")}
       </p>
@@ -1055,6 +1112,54 @@ function BackupSettings() {
               {tx("저장")}
             </button>
           </Row>
+          <Row
+            label={tx("암호화")}
+            hint={
+              st.encrypted
+                ? tx("원격 저장소에는 노트가 암호화되어 올라갑니다. 열쇠는 이 PC에만 있고, 다른 PC에는 복구 코드로 넣습니다")
+                : tx("노트를 암호화해서 원격 저장소에 올립니다. 켜면 새 저장소로 다시 시작합니다")
+            }
+          >
+            {st.encrypted ? (
+              <>
+                <span className="small">{st.key_ok ? tx("암호화됨 · 열쇠 확인됨") : tx("암호화됨 · 이 PC에 열쇠가 없습니다")}</span>
+                {key?.has_key && (
+                  <button className="btn small" disabled={busy} onClick={() => void showCode()}>
+                    {tx("복구 코드 보기")}
+                  </button>
+                )}
+                {!key?.has_key && (
+                  <button className="btn small" disabled={busy} onClick={() => setKeyDlg({ kind: "import" })}>
+                    {tx("복구 코드 입력")}
+                  </button>
+                )}
+              </>
+            ) : key?.has_key ? (
+              <>
+                <button className="btn small primary" disabled={busy} onClick={() => void enableEncryption()}>
+                  {tx("이 노트 폴더 암호화 켜기")}
+                </button>
+                <button className="btn small" disabled={busy} onClick={() => void showCode()}>
+                  {tx("복구 코드 보기")}
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="btn small primary" disabled={busy} onClick={() => void createKey()}>
+                  {tx("열쇠 만들기")}
+                </button>
+                <button className="btn small" disabled={busy} onClick={() => setKeyDlg({ kind: "import" })}>
+                  {tx("복구 코드 입력")}
+                </button>
+              </>
+            )}
+          </Row>
+          {movedAside !== null && (
+            <p className="muted small">
+              {movedAside ? tx("옛 저장소는 {0}로 옮겨 두었습니다. ", movedAside) : ""}
+              {tx("새 빈 원격 저장소를 만들어 위 원격 저장소 칸에 주소를 넣고, 옛 원격 저장소는 직접 지워 주세요.")}
+            </p>
+          )}
           <Row label={tx("자동 백업")} hint={tx("바뀐 것이 있을 때만 정해진 간격으로 백업합니다. 실패하면 알림으로 알려 드립니다")}>
             <select value={trust.backup_minutes} onChange={(e) => void run(() => api.setBackupMinutes(Number(e.target.value)))}>
               <option value={0}>{tx("끄기 (직접 백업)")}</option>

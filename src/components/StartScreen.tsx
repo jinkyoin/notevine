@@ -2,9 +2,11 @@
 import logo from "../../src-tauri/app-icon.svg?url";
 import { useEffect, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { api, type DriveRoot, type RailFile, type RecentVault } from "../api";
+import { api, errorMessage, type DriveRoot, type RailFile, type RecentVault } from "../api";
 import { useApp } from "../store";
 import { samePath } from "../lib/rail";
+import { takeStartClone } from "../lib/startClone";
+import { suggestFolderName } from "../lib/cloneName";
 
 import { tx } from "../i18n";
 // Reopen the last vault only when the app starts, not after the last rail folder closed (FR-VLT-02).
@@ -15,6 +17,78 @@ function startFolder(rail: RailFile | null, recent: RecentVault[]): string | und
   if (!rail) return recent[0]?.path;
   const active = rail.active ? rail.entries.find((e) => samePath(e.path, rail.active!)) : undefined;
   return (active ?? rail.entries[0])?.path;
+}
+
+/** "Git 저장소에서 받기": 주소와 받을 폴더를 정하면 내려받고 그 노트 폴더를 연다. */
+function CloneDialog({ onClose, onDone }: { onClose: () => void; onDone: (path: string) => Promise<void> }) {
+  const [url, setUrl] = useState("");
+  const [parent, setParent] = useState("");
+  const [name, setName] = useState("");
+  const [nameEdited, setNameEdited] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const changeUrl = (v: string) => {
+    setUrl(v);
+    if (!nameEdited) setName(suggestFolderName(v));
+  };
+  const pickParent = async () => {
+    const dir = await open({ directory: true, multiple: false, title: tx("저장소를 받을 위치 선택") });
+    if (typeof dir === "string") setParent(dir);
+  };
+  const ready = !!url.trim() && !!parent && !!name.trim() && !busy;
+  const go = async () => {
+    setBusy(true);
+    setErr("");
+    try {
+      const dest = parent.replace(/[\\/]+$/, "") + "\\" + name.trim();
+      const path = await api.backupClone(url.trim(), dest);
+      await onDone(path);
+    } catch (e) {
+      setErr(errorMessage(e));
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="modal-backdrop" onMouseDown={() => !busy && onClose()} onKeyDown={(e) => e.key === "Escape" && !busy && onClose()}>
+      <div className="modal" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
+        <h2>{tx("Git 저장소에서 받기")}</h2>
+        <p>{tx("백업해 둔 Git 저장소를 새 폴더로 받아 노트 폴더로 엽니다. 암호화된 저장소는 이 PC의 열쇠로 풀어서 받습니다.")}</p>
+        <input
+          className="api-input"
+          autoFocus
+          spellCheck={false}
+          value={url}
+          placeholder={tx("https://github.com/이름/notes.git")}
+          onChange={(e) => changeUrl(e.target.value)}
+        />
+        <div className="set-actions">
+          <button className="btn small" disabled={busy} onClick={() => void pickParent()}>
+            {tx("받을 위치 선택")}
+          </button>
+          <span className="small clone-parent">{parent || tx("(선택 안 함)")}</span>
+        </div>
+        <input
+          className="api-input"
+          spellCheck={false}
+          value={name}
+          placeholder={tx("폴더 이름")}
+          onChange={(e) => {
+            setName(e.target.value);
+            setNameEdited(true);
+          }}
+        />
+        {err && <p className="error small">{err}</p>}
+        <div className="modal-actions">
+          <button className="btn ghost" disabled={busy} onClick={onClose}>
+            {tx("취소")}
+          </button>
+          <button className="btn primary" disabled={!ready} onClick={() => void go()}>
+            {busy ? tx("받는 중…") : tx("받기")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -45,6 +119,7 @@ export function StartScreen({ adding = false }: { adding?: boolean }) {
       choice.current++;
     };
   }, []);
+  const [cloning, setCloning] = useState(takeStartClone);
   const [recent, setRecent] = useState<RecentVault[]>([]);
   const [drives, setDrives] = useState<DriveRoot[]>([]);
   const [checking, setChecking] = useState<string | null>(null);
@@ -113,6 +188,7 @@ export function StartScreen({ adding = false }: { adding?: boolean }) {
 
   return (
     <div className="start">
+      {cloning && <CloneDialog onClose={() => setCloning(false)} onDone={async (path) => (setCloning(false), await openVault(path))} />}
       <div className="start-card">
         {adding && (
           <button className="btn ghost small start-cancel" title="Esc" onClick={cancelAdding}>
@@ -131,6 +207,15 @@ export function StartScreen({ adding = false }: { adding?: boolean }) {
           </button>
           <button className="btn" onClick={() => pick(tx("새 노트 폴더로 쓸 폴더 선택 (빈 폴더 권장)"))}>
             {tx("새 노트 폴더 만들기")}
+          </button>
+          <button
+            className="btn"
+            onClick={() => {
+              cancelChoice();
+              setCloning(true);
+            }}
+          >
+            {tx("Git 저장소에서 받기")}
           </button>
         </div>
 

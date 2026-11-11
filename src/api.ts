@@ -232,6 +232,16 @@ export interface BackupStatus {
   behind: number;
   last_at: number | null;
   last_message: string | null;
+  /** The repository's files are stored encrypted (Git backup encryption). */
+  encrypted: boolean;
+  /** This PC holds the key that matches the encrypted repository. */
+  key_ok: boolean;
+}
+
+/** The encryption key kept on this PC. */
+export interface CryptKeyStatus {
+  has_key: boolean;
+  key_id: string | null;
 }
 
 export interface BackupResult {
@@ -527,6 +537,16 @@ export const api = {
   /** "" removes the remote. */
   backupSetRemote: (url: string) => invoke<void>("backup_set_remote", { url }),
   backupNow: (message: string) => invoke<BackupResult>("backup_now", { message }),
+  cryptKeyStatus: () => invoke<CryptKeyStatus>("crypt_key_status"),
+  /** Makes this PC's key; returns its recovery code. Fails when a key already exists. */
+  cryptCreateKey: () => invoke<string>("crypt_create_key"),
+  cryptShowRecoveryCode: () => invoke<string>("crypt_show_recovery_code"),
+  /** Returns the key id. Fails when a different key already exists. */
+  cryptImportKey: (code: string) => invoke<string>("crypt_import_key", { code }),
+  /** Starts a new encrypted repository; returns the folder the old `.git` was moved to, or null. */
+  backupEnableEncryption: () => invoke<string | null>("backup_enable_encryption"),
+  /** Clones `url` into `dest` (an absolute path to a new or empty folder); returns the path to open. */
+  backupClone: (url: string, dest: string) => invoke<string>("backup_clone", { url, dest }),
   listPlugins: () => invoke<PluginInfo[]>("list_plugins"),
   pluginSource: (id: string) => invoke<string>("plugin_source", { id }),
   /** Turns a plugin on, for its code as it is now, or off. */

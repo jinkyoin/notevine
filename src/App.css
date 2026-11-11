@@ -3951,3 +3951,26 @@ select {
 .note-title-input {
   padding-left: 6px;
 }
+
+.recovery-code {
+  display: block;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--mono, monospace);
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  word-break: break-all;
+  user-select: all;
+}
+.recovery-input {
+  width: 100%;
+  margin-bottom: 8px;
+  font-family: var(--mono, monospace);
+}
+.clone-parent {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

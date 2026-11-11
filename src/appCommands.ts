@@ -4,6 +4,7 @@ import { useApp } from "./store";
 import { useAi } from "./aiStore";
 import { WRITE_LABEL, type WriteTask } from "./ai";
 import { findNode } from "./lib/tree";
+import { requestStartClone } from "./lib/startClone";
 import type { FolderMode } from "./store";
 
 import { tx } from "./i18n";
@@ -77,6 +78,16 @@ export function registerAppCommands(): () => void {
       keywords: tx("백업 git 동기화 저장 깃 커밋 푸시 sync backup"),
       when: hasVault,
       run: () => st().backupNow(),
+    },
+    {
+      id: "backup.clone",
+      title: tx("Git 저장소에서 받기"),
+      keywords: tx("깃 git clone 클론 복제 저장소 내려받기 받기 백업 복원"),
+      when: () => hasVault() && !st().adding,
+      run: () => {
+        requestStartClone();
+        st().setAdding(true);
+      },
     },
     {
       id: "canvas.new",

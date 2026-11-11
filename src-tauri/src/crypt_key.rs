@@ -6,7 +6,9 @@
 
 use std::sync::Mutex;
 
-use crate::crypt::{MasterKey, parse_recovery_code, recovery_code};
+use serde::Serialize;
+
+use crate::crypt::{MasterKey, key_id, parse_recovery_code, recovery_code};
 use crate::error::{AppError, AppResult};
 
 const SERVICE: &str = "Notevine";
@@ -124,6 +126,65 @@ pub fn key_store() -> Box<dyn KeyStore> {
     Box::new(OsKeyStore::new())
 }
 
+#[derive(Serialize)]
+pub struct CryptKeyStatus {
+    pub has_key: bool,
+    pub key_id: Option<String>,
+}
+
+fn status_of(store: &dyn KeyStore) -> AppResult<CryptKeyStatus> {
+    let k = store.load()?;
+    Ok(CryptKeyStatus { has_key: k.is_some(), key_id: k.as_ref().map(key_id) })
+}
+
+/// 열쇠가 없을 때만 새로 만들고 복구 코드를 돌려준다.
+fn create_key_in(store: &dyn KeyStore) -> AppResult<String> {
+    if store.load()?.is_some() {
+        return Err(sys("이 PC에는 이미 열쇠가 있습니다"));
+    }
+    let k = MasterKey::generate();
+    store.save(&k)?;
+    Ok(recovery_code(&k))
+}
+
+fn show_code_in(store: &dyn KeyStore) -> AppResult<String> {
+    match store.load()? {
+        Some(k) => Ok(recovery_code(&k)),
+        None => Err(sys("이 PC에 암호화 열쇠가 없습니다")),
+    }
+}
+
+/// 복구 코드로 열쇠를 넣는다. 다른 열쇠가 이미 있으면 덮어쓰지 않고 오류를 낸다.
+fn import_key_in(store: &dyn KeyStore, code: &str) -> AppResult<String> {
+    let k = parse_recovery_code(code)?;
+    match store.load()? {
+        None => store.save(&k)?,
+        Some(old) if old.as_bytes() == k.as_bytes() => {}
+        Some(_) => return Err(sys("이 PC에는 이미 다른 열쇠가 있습니다")),
+    }
+    Ok(key_id(&k))
+}
+
+#[tauri::command]
+pub fn crypt_key_status() -> AppResult<CryptKeyStatus> {
+    status_of(key_store().as_ref())
+}
+
+#[tauri::command]
+pub fn crypt_create_key() -> AppResult<String> {
+    create_key_in(key_store().as_ref())
+}
+
+#[tauri::command]
+pub fn crypt_show_recovery_code() -> AppResult<String> {
+    show_code_in(key_store().as_ref())
+}
+
+#[tauri::command]
+pub fn crypt_import_key(code: String) -> AppResult<String> {
+    import_key_in(key_store().as_ref(), &code)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -164,6 +225,47 @@ mod tests {
             std::env::remove_var("NOTEVINE_KEY_STORE");
             std::env::remove_var("NOTEVINE_TEST_KEY");
         }
+    }
+
+    #[test]
+    fn create_key_makes_one_then_refuses() {
+        let s = MemoryKeyStore::default();
+        let code = create_key_in(&s).unwrap();
+        assert_eq!(show_code_in(&s).unwrap(), code);
+        assert!(status_of(&s).unwrap().has_key);
+        let err = create_key_in(&s).unwrap_err().to_string();
+        assert!(err.contains("이미 열쇠가 있습니다"), "{err}");
+        assert_eq!(show_code_in(&s).unwrap(), code);
+    }
+
+    #[test]
+    fn show_code_without_key_errors() {
+        let s = MemoryKeyStore::default();
+        assert!(show_code_in(&s).unwrap_err().to_string().contains("열쇠가 없습니다"));
+        let st = status_of(&s).unwrap();
+        assert!(!st.has_key && st.key_id.is_none());
+    }
+
+    #[test]
+    fn import_key_saves_when_empty_and_accepts_same() {
+        let s = MemoryKeyStore::default();
+        let k = MasterKey::generate();
+        let id = import_key_in(&s, &recovery_code(&k)).unwrap();
+        assert_eq!(id, key_id(&k));
+        assert_eq!(s.load().unwrap().unwrap().as_bytes(), k.as_bytes());
+        assert_eq!(import_key_in(&s, &recovery_code(&k)).unwrap(), id);
+        assert_eq!(status_of(&s).unwrap().key_id.as_deref(), Some(id.as_str()));
+    }
+
+    #[test]
+    fn import_key_never_overwrites_a_different_key() {
+        let s = MemoryKeyStore::default();
+        let old = MasterKey::generate();
+        s.save(&old).unwrap();
+        let err = import_key_in(&s, &recovery_code(&MasterKey::generate())).unwrap_err().to_string();
+        assert!(err.contains("이미 다른 열쇠가 있습니다"), "{err}");
+        assert_eq!(s.load().unwrap().unwrap().as_bytes(), old.as_bytes());
+        assert!(import_key_in(&s, "garbage").is_err());
     }
 
     #[test]
