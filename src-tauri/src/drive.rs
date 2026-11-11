@@ -219,9 +219,7 @@ pub fn place(root: &Path, local_base: &Path, drive: Option<DriveKind>) -> Placem
     let _ = fs::write(local.join("vault-path.txt"), root.display().to_string());
 
     let warning = move_history(&app, &local).err().map(|e| e.to_string());
-    for suffix in ["", "-wal", "-shm"] {
-        let _ = fs::remove_file(app.join(format!("index.db{suffix}"))); // a cache; rebuilt here
-    }
+    crate::index::remove_all_in(&app); // a cache; rebuilt in the new place
     let tabs = app.join(WORKSPACE);
     if tabs.exists() && (local.join(WORKSPACE).exists() || fs::copy(&tabs, local.join(WORKSPACE)).is_ok()) {
         let _ = fs::remove_file(&tabs);
@@ -513,11 +511,13 @@ mod tests {
         let app = d.root.join(APP_DIR);
         fs::write(app.join("index.db"), "cache").unwrap();
         fs::write(app.join("index.db-wal"), "cache").unwrap();
+        fs::write(crate::index::file_in(&app), "cache").unwrap();
         fs::write(app.join("workspace.json"), r#"{"open_path":"a.md"}"#).unwrap();
         fs::write(app.join("config.json"), "{}").unwrap();
         let p = place(&d.root, &d.base, Some(DriveKind::Google));
         assert!(!app.join("index.db").exists());
         assert!(!app.join("index.db-wal").exists());
+        assert!(!crate::index::file_in(&app).exists());
         assert!(!app.join("workspace.json").exists());
         assert!(p.dir.join("workspace.json").exists());
         assert!(app.join("config.json").exists(), "settings stay and sync");

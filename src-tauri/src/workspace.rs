@@ -491,9 +491,24 @@ pub fn create_from_template_at(
     };
     let content = match template {
         Some(t) => render_template_file(v, t, stem(&name), now)?,
-        None => String::new(),
+        None => blank_note(now),
     };
     v.create_note(&dir, Some(&name), &content)
+}
+
+/// What a new blank note starts with: the default properties, `date` set to today.
+/// `type` and `status` are picked from lists in the properties panel.
+pub fn blank_note(now: DateTime<Local>) -> String {
+    format!(
+        "---
+type: 
+date: {}
+status: 
+---
+
+",
+        now.format("%Y-%m-%d")
+    )
 }
 
 /// A template's text with its variables filled in and the `folder` key removed:
@@ -745,6 +760,12 @@ pub fn ideas(state: State<AppState>) -> AppResult<Vec<IdeaItem>> {
     with_vault(&state, idea_list)
 }
 
+/// Task boxes of every note for the 할 일 tab (FR-PRS-09).
+#[tauri::command]
+pub fn tasks(state: State<AppState>, with_done: bool) -> AppResult<Vec<crate::index::TaskRef>> {
+    with_vault(&state, |v| v.index().tasks(with_done))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -976,7 +997,17 @@ type: guide
         let b = create_from_template_at(&v, "", None, None, now()).unwrap();
         assert_eq!((a.as_str(), b.as_str()), ("제목 없음.md", "제목 없음 1.md"));
         assert!(read(&dir, &a).contains("# 제목 없음\n\n- 일시: 2026-10-28 09:05"));
-        assert_eq!(read(&dir, &b), "");
+        assert_eq!(
+            read(&dir, &b),
+            "---
+type: 
+date: 2026-10-28
+status: 
+---
+
+",
+            "a blank note starts with the default properties"
+        );
         assert!(matches!(create_from_template_at(&v, "", None, Some("없음.md"), now()), Err(AppError::NotFound(_))));
     }
 

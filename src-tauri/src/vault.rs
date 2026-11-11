@@ -129,7 +129,7 @@ impl Vault {
         fs::create_dir_all(root.join(APP_DIR))?;
         fs::create_dir_all(&placement.dir)?;
         let history = History::open(&placement.dir.join("history.db"))?;
-        let index = Index::open(&placement.dir.join("index.db"))?;
+        let index = Index::open_in(&placement.dir)?;
         Ok(Self {
             root,
             store: placement.dir,
@@ -901,7 +901,7 @@ mod tests {
         assert_eq!(v.info().drive, Some(DriveKind::Google));
         assert!(v.info().store_on_this_pc);
         assert!(v.store_dir().join("history.db").exists());
-        assert!(v.store_dir().join("index.db").exists());
+        assert!(crate::index::file_in(&v.store_dir()).exists());
         assert!(!app.join("history.db").exists());
         assert!(!app.join("index.db").exists());
         assert!(app.is_dir(), "settings still sync through .app");

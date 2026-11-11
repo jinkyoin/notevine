@@ -125,7 +125,7 @@ fn start_scan(vault: &Vault) -> JoinHandle<()> {
     let store = vault.store_dir();
     let root = vault.root().to_path_buf();
     std::thread::spawn(move || {
-        if let Err(e) = Index::open(&store.join("index.db")).and_then(|ix| ix.scan(&root)) {
+        if let Err(e) = Index::open(&crate::index::file_in(&store)).and_then(|ix| ix.scan(&root)) {
             eprintln!("notevine mcp: 검색 인덱스: {e}");
         }
     })
@@ -993,7 +993,7 @@ mod tests {
         let mut server = Server::new(vault, config.path());
         server.scanning = Mutex::new(Some(std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(200));
-            Index::open(&store.join("index.db")).and_then(|ix| ix.scan(&root)).unwrap();
+            Index::open(&crate::index::file_in(&store)).and_then(|ix| ix.scan(&root)).unwrap();
         })));
         let (hits, err) = call(&mut server, "search_notes", json!({ "text": ["예산"] }));
         assert!(!err && hits.contains("회의.md"), "{hits}");

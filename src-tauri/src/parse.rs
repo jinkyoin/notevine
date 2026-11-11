@@ -1,5 +1,5 @@
 //! Extracts index data from a note's markdown text: frontmatter properties,
-//! tags, and wiki/markdown links. Pure and panic-free on any input.
+//! tags, wiki/markdown links and task boxes. Pure and panic-free on any input.
 
 use std::collections::HashSet;
 
@@ -31,6 +31,18 @@ pub struct Link {
     pub line: u32,
 }
 
+/// A task box line: `- [ ] text`, `* [x] text`, `1. [ ] text`, also inside `>` quotes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Task {
+    /// 1-based line number in the full content.
+    pub line: u32,
+    pub done: bool,
+    /// The text after the box, trimmed.
+    pub text: String,
+    /// `YYYY-MM-DD` written after 📅 in the text, when it is a real date.
+    pub due: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ValueType {
@@ -57,6 +69,8 @@ pub struct Parsed {
     pub tags: Vec<String>,
     /// In document order.
     pub links: Vec<Link>,
+    /// In document order; none inside code fences.
+    pub tasks: Vec<Task>,
     /// Content with the frontmatter block removed.
     pub body: String,
     /// Set when a frontmatter block exists but is not valid YAML (or not a map).
@@ -77,7 +91,7 @@ pub fn parse(content: &str) -> Parsed {
         None => (0, content),
     };
     out.body = body.to_string();
-    scan_body(body, lines_before_body, &mut out.links, &mut tags);
+    scan_body(body, lines_before_body, &mut out.links, &mut out.tasks, &mut tags);
     out.tags = tags.list;
     out
 }
@@ -256,7 +270,7 @@ fn nfc(s: &str) -> String {
     s.nfc().collect()
 }
 
-fn scan_body(body: &str, lines_before: usize, links: &mut Vec<Link>, tags: &mut TagSet) {
+fn scan_body(body: &str, lines_before: usize, links: &mut Vec<Link>, tasks: &mut Vec<Task>, tags: &mut TagSet) {
     let mut fence: Option<(char, usize)> = None;
     for (i, raw) in body.split('\n').enumerate() {
         let line = raw.strip_suffix('\r').unwrap_or(raw);
@@ -270,10 +284,52 @@ fn scan_body(body: &str, lines_before: usize, links: &mut Vec<Link>, tags: &mut 
             fence = Some(f);
             continue;
         }
-        let ctx =
-            Line { text: line, code: code_spans(line), no: u32::try_from(lines_before + i + 1).unwrap_or(u32::MAX) };
+        let no = u32::try_from(lines_before + i + 1).unwrap_or(u32::MAX);
+        if let Some((done, text)) = task_box(line) {
+            let due = due_date(text);
+            tasks.push(Task { line: no, done, text: text.to_string(), due });
+        }
+        let ctx = Line { text: line, code: code_spans(line), no };
         ctx.scan(0, line.len(), links, tags);
     }
+}
+
+/// `(done, text)` for a task box line with some text after the box.
+fn task_box(line: &str) -> Option<(bool, &str)> {
+    let mut rest = line.trim_start();
+    // Blockquote markers: `> `, `>> `, `> > `.
+    while let Some(r) = rest.strip_prefix('>') {
+        rest = r.trim_start();
+    }
+    let after_marker = if let Some(r) = rest.strip_prefix(['-', '*', '+']) {
+        r
+    } else {
+        let digits = rest.chars().take_while(char::is_ascii_digit).count();
+        if digits == 0 {
+            return None;
+        }
+        rest[digits..].strip_prefix(['.', ')'])?
+    };
+    let r = after_marker.strip_prefix(" [")?;
+    let mut chars = r.chars();
+    let done = match chars.next()? {
+        ' ' => false,
+        'x' | 'X' => true,
+        _ => return None,
+    };
+    let r = chars.as_str().strip_prefix(']')?;
+    if !(r.is_empty() || r.starts_with(char::is_whitespace)) {
+        return None;
+    }
+    let text = r.trim();
+    (!text.is_empty()).then_some((done, text))
+}
+
+/// The real date after 📅 in a task's text.
+fn due_date(text: &str) -> Option<String> {
+    let (_, after) = text.split_once('📅')?;
+    let date: String = after.trim_start().chars().take(10).collect();
+    chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d").ok().map(|d| d.format("%Y-%m-%d").to_string())
 }
 
 /// Opening code fence: 3+ backticks or tildes (any indentation).
@@ -553,6 +609,24 @@ mod tests {
 
     fn link(target: &str, anchor: Option<&str>, alias: Option<&str>, kind: LinkKind, line: u32) -> Link {
         Link { target: target.into(), anchor: anchor.map(Into::into), alias: alias.map(Into::into), kind, line }
+    }
+
+    #[test]
+    fn tasks_with_line_state_and_due_date() {
+        let text = "---\ntitle: x\n---\n# 할 일\n- [ ] 보고서 쓰기 📅 2026-11-12\n  * [x] 자료 모으기\n1. [X] 회의 잡기\n> - [ ] 인용 속 할 일\n```\n- [ ] 코드 속\n```\n- [] 아님\n-[ ] 아님\n- [ ]\n- [ ] 날짜 아님 📅 2026-13\n";
+        let p = parse(text);
+        let got: Vec<(u32, bool, &str, Option<&str>)> =
+            p.tasks.iter().map(|t| (t.line, t.done, t.text.as_str(), t.due.as_deref())).collect();
+        assert_eq!(
+            got,
+            [
+                (5, false, "보고서 쓰기 📅 2026-11-12", Some("2026-11-12")),
+                (6, true, "자료 모으기", None),
+                (7, true, "회의 잡기", None),
+                (8, false, "인용 속 할 일", None),
+                (15, false, "날짜 아님 📅 2026-13", None),
+            ]
+        );
     }
 
     #[test]

@@ -925,5 +925,20 @@
  "도구 이름과 대상만 남기고 노트 내용은 남기지 않습니다": "Only the tool and its target are kept, never note text",
  "새로 고침": "Refresh",
  "아직 없습니다": "None yet",
- "거부·실패": "Refused or failed"
+ "거부·실패": "Refused or failed",
+ "할 일": "Tasks",
+ "할 일 모아 보기": "Show all tasks",
+ "완료 포함": "Show done",
+ "기한 지남": "Overdue",
+ "다가오는 일": "Upcoming",
+ "기한 없음": "No due date",
+ "완료": "Done",
+ "노트가 그사이 바뀌어 할 일을 바꾸지 못했습니다. 목록을 새로 고친 뒤 다시 해 주세요": "The note changed in the meantime, so the task was not changed. Refresh the list and try again",
+ "노트에 '- [ ] 할 일'처럼 적으면 여기에 모입니다. 기한은 '📅 2026-11-12'처럼 붙입니다.": "Write '- [ ] task' in any note and it shows up here. Add a due date like '📅 2026-11-12'.",
+ "자료": "Resource",
+ "프로젝트": "Project",
+ "업무일지": "Work log",
+ "회의록": "Meeting notes",
+ "안내": "Guide",
+ "(선택 안 함)": "(none)"
 }

@@ -24,7 +24,7 @@ pub enum AppError {
     Trash(String),
     #[error("{0}")]
     Json(#[from] serde_json::Error),
-    #[error("히스토리 저장소 오류: {0}")]
+    #[error("앱 데이터베이스(검색 색인·히스토리) 오류: {0}")]
     Db(#[from] rusqlite::Error),
     /// The OS or a library refused (tray, start-up entry, network...).
     #[error("{0}")]

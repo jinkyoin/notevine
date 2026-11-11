@@ -310,6 +310,19 @@ export interface IdeaItem {
   mtime: number;
 }
 
+/** A task box in some note (FR-PRS-09). */
+export interface TaskItem {
+  path: string;
+  title: string;
+  /** 1-based line in the whole note. */
+  line: number;
+  done: boolean;
+  text: string;
+  /** YYYY-MM-DD after 📅, or null. */
+  due: string | null;
+  mtime: number;
+}
+
 export interface DiffLine {
   kind: "same" | "add" | "del";
   text: string;
@@ -456,6 +469,7 @@ export const api = {
   /** PARA project folder + overview note; returns the note's path. */
   createProject: (name: string) => invoke<string>("create_project", { name }),
   ideas: () => invoke<IdeaItem[]>("ideas"),
+  tasks: (withDone: boolean) => invoke<TaskItem[]>("tasks", { withDone }),
   restoreVersion: (path: string, id: number) => invoke<void>("restore_version", { path, id }),
   versionDiff: (path: string, fromId: number | null, toId: number | null) =>
     invoke<DiffLine[]>("version_diff", { path, fromId, toId }),

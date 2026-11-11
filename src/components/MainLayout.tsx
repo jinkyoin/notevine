@@ -12,6 +12,7 @@ import { TabBar } from "./TabBar";
 import { Backlinks } from "./Backlinks";
 import { RelocateDialog } from "./RelocateDialog";
 import { SearchPanel } from "./SearchPanel";
+import { TaskList } from "./TaskList";
 import { QuickOpen } from "./QuickOpen";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { HistoryPanel } from "./HistoryPanel";
@@ -253,13 +254,24 @@ export function MainLayout() {
               <button role="tab" className={sidebarTab === "search" ? "on" : ""} onClick={focusSearch} title="Ctrl+Shift+F">
                 {tx("검색")}
               </button>
+              <button role="tab" className={sidebarTab === "tasks" ? "on" : ""} onClick={() => setSidebarTab("tasks")}>
+                {tx("할 일")}
+              </button>
               {preset && (
                 <button role="tab" className={sidebarTab === "ideas" ? "on" : ""} onClick={() => setSidebarTab("ideas")}>
                   {tx("아이디어")}
                 </button>
               )}
             </div>
-            {sidebarTab === "search" ? <SearchPanel /> : sidebarTab === "ideas" && preset ? <IdeaBoard /> : <Explorer />}
+            {sidebarTab === "search" ? (
+              <SearchPanel />
+            ) : sidebarTab === "tasks" ? (
+              <TaskList />
+            ) : sidebarTab === "ideas" && preset ? (
+              <IdeaBoard />
+            ) : (
+              <Explorer />
+            )}
             <PanelResizer side="left" />
           </aside>
         )}

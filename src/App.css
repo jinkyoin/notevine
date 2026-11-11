@@ -1328,6 +1328,18 @@ button {
   padding: 3px 6px;
   font-size: 13px;
 }
+.prop-value select.prop-choice {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 4px;
+  width: 100%;
+  min-width: 0;
+  cursor: pointer;
+}
 .prop-text {
   display: flex;
   align-items: center;
@@ -2065,6 +2077,56 @@ kbd {
 .idea-group.inbox h4 {
   border-top: 1px solid var(--border);
   padding-top: 8px;
+}
+
+/* 할 일 모아 보기 (FR-PRS-09) */
+.task-done-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.task-group li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  cursor: default;
+}
+.task-group li input {
+  margin: 3px 0 0;
+  flex: none;
+  cursor: pointer;
+}
+.task-body {
+  all: unset;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow-wrap: anywhere;
+}
+.task-body:focus-visible {
+  outline: 2px solid var(--accent);
+  border-radius: 3px;
+}
+.task-group li.done .task-text {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+.task-meta {
+  display: flex;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.task-due.late {
+  color: var(--danger, #e03131);
+}
+.task-group.overdue h4 {
+  color: var(--danger, #e03131);
 }
 
 /* SCR-16 설정 */

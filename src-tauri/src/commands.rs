@@ -63,7 +63,7 @@ pub fn open_vault(app: AppHandle, state: State<AppState>, path: String) -> AppRe
     // Bring the index up to date in the background on its own connection,
     // so a large vault doesn't block the UI (NFR-PRF-01).
     std::thread::spawn(move || {
-        let result = Index::open(&store.join("index.db")).and_then(|ix| ix.scan(&root));
+        let result = Index::open(&crate::index::file_in(&store)).and_then(|ix| ix.scan(&root));
         let _ = app.emit("index-ready", result.map(|s| s.indexed + s.unchanged).map_err(|e| e.to_string()));
     });
     Ok(info)
@@ -282,7 +282,7 @@ pub fn preview_move(state: State<AppState>, path: String, new_parent: String) ->
 #[tauri::command(async)]
 pub fn rebuild_index(state: State<AppState>) -> AppResult<usize> {
     let (store, root) = with_vault(&state, |v| Ok((v.store_dir(), v.root().to_path_buf())))?;
-    Index::rebuild(&store.join("index.db"), &root)
+    Index::rebuild(&crate::index::file_in(&store), &root)
 }
 
 #[tauri::command]

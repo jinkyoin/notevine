@@ -240,6 +240,15 @@ export function registerAppCommands(): () => void {
       },
     })),
     {
+      id: "tasks.list",
+      title: tx("할 일 모아 보기"),
+      when: hasVault,
+      run: () => {
+        st().setPanels({ leftOpen: true });
+        st().setSidebarTab("tasks");
+      },
+    },
+    {
       id: "ideas.board",
       title: tx("아이디어 보드"),
       when: () => hasVault() && st().config.preset_enabled,

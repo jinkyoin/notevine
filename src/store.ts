@@ -73,7 +73,7 @@ export interface EditorApi {
 }
 
 export type Modal = "palette" | "quickMemo" | "template" | "settings" | "deleted" | "mdHelp" | "manual" | "clip" | "insertTemplate" | null;
-export type SidebarTab = "files" | "search" | "ideas";
+export type SidebarTab = "files" | "search" | "tasks" | "ideas";
 /** How a folder is shown in place of the editor: properties table, status board, calendar or link graph. */
 export type FolderMode = "table" | "board" | "calendar" | "graph";
 
@@ -799,7 +799,8 @@ export const useApp = create<AppStore>((set, get) => {
     },
 
     async createNote(dir) {
-      const path = await attempt(() => api.createNote(dir));
+      // A blank note: starts with the default properties (type·date·status).
+      const path = await attempt(() => api.createFromTemplate(dir, null, null));
       if (!path) return;
       set({ readMode: false }); // a new note is for writing
       await get().refreshTree();
@@ -948,7 +949,7 @@ export const useApp = create<AppStore>((set, get) => {
       if (dir && !findNode(get().tree, dir)) {
         await attempt(() => api.createFolder(parentOf(dir), baseOf(dir)));
       }
-      const created = await attempt(() => api.createNote(dir, name));
+      const created = await attempt(() => api.createFromTemplate(dir, name, null));
       if (!created) return;
       await get().refreshTree();
       get().openNote(created, undefined, undefined, opts);
@@ -1368,8 +1369,8 @@ export const useApp = create<AppStore>((set, get) => {
     toast(message, kind = "info", action) {
       const id = ++toastSeq;
       set({ toasts: [...get().toasts, { id, kind, message, action }] });
-      // Errors stay until dismissed (SCR-17).
-      if (kind === "info") setTimeout(() => get().dismissToast(id), 4000);
+      // Errors stay longer, to be read, but don't pile up on screen (SCR-17).
+      setTimeout(() => get().dismissToast(id), kind === "error" ? 10_000 : 4000);
     },
 
     dismissToast(id) {

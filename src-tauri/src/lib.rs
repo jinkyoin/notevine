@@ -222,6 +222,7 @@ pub fn run() {
             workspace::quick_memo,
             workspace::create_project,
             workspace::ideas,
+            workspace::tasks,
             extras::cmd::restore_version,
             extras::cmd::version_diff,
             extras::cmd::deleted_notes,

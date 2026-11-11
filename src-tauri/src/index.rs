@@ -1,4 +1,4 @@
-//! Search/link index in `.app/index.db` (DR-02). It is a cache: deleting it or
+//! Search/link index in `.app/index-v<schema>.db` (DR-02). It is a cache: deleting it or
 //! finding it corrupt just means it is rebuilt from the .md files (NFR-REL-03).
 
 use std::collections::HashMap;
@@ -16,7 +16,7 @@ use crate::paths::{APP_DIR, is_hidden, is_note, name_key, parent_rel, resolve_re
 
 /// Bump when the schema or what `parse` extracts changes: an index built by an
 /// older version is thrown away and rebuilt from the files.
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
 
 const SCHEMA: &str = "
 CREATE TABLE notes (
@@ -59,6 +59,14 @@ CREATE TABLE properties (
 );
 CREATE INDEX properties_kv ON properties(key, value);
 CREATE INDEX properties_note ON properties(note_id);
+CREATE TABLE tasks (
+  note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+  line    INTEGER NOT NULL,
+  done    INTEGER NOT NULL,
+  text    TEXT NOT NULL,
+  due     TEXT                      -- YYYY-MM-DD or NULL
+);
+CREATE INDEX tasks_note ON tasks(note_id);
 CREATE VIRTUAL TABLE notes_fts USING fts5(title, body, tokenize = 'trigram');
 ";
 
@@ -70,6 +78,19 @@ pub struct Index {
 pub struct NoteRef {
     pub path: String,
     pub title: String,
+}
+
+/// A task box in some note (FR-PRS-09).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct TaskRef {
+    pub path: String,
+    pub title: String,
+    pub line: u32,
+    pub done: bool,
+    pub text: String,
+    pub due: Option<String>,
+    /// The note's last modified time, ms since epoch.
+    pub mtime: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -148,7 +169,49 @@ pub(crate) fn like_prefix(dir: &str) -> String {
     s
 }
 
+/// The index file in a vault's store folder. Its name carries the schema version, so
+/// an older and a newer Notevine (or an MCP server started by an older one) never
+/// rebuild each other's index: on Windows a file another process holds open can't be
+/// deleted, and the rebuild would fail.
+pub fn file_in(store: &Path) -> std::path::PathBuf {
+    store.join(format!("index-v{SCHEMA_VERSION}.db"))
+}
+
+/// Index files of other schema versions (and the unversioned `index.db` of before).
+fn other_versions(store: &Path) -> Vec<std::path::PathBuf> {
+    let current = format!("index-v{SCHEMA_VERSION}.db");
+    let Ok(entries) = fs::read_dir(store) else { return Vec::new() };
+    entries
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| {
+            let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            let base = name.trim_end_matches("-wal").trim_end_matches("-shm");
+            base != current && (base == "index.db" || (base.starts_with("index-v") && base.ends_with(".db")))
+        })
+        .collect()
+}
+
+/// Removes every index file in a store folder, whatever its version (best effort).
+pub fn remove_all_in(store: &Path) {
+    for f in other_versions(store) {
+        let _ = fs::remove_file(f);
+    }
+    for suffix in ["", "-wal", "-shm"] {
+        let _ = fs::remove_file(format!("{}{suffix}", file_in(store).display()));
+    }
+}
+
 impl Index {
+    /// Opens the index of a store folder ([`file_in`]). Index files of other versions
+    /// are removed when nothing has them open; one still in use stays for its owner.
+    pub fn open_in(store: &Path) -> AppResult<Self> {
+        for old in other_versions(store) {
+            let _ = fs::remove_file(old);
+        }
+        Self::open(&file_in(store))
+    }
+
     /// Opens the index, rebuilding the file from scratch when it is missing,
     /// from an older schema, or unreadable.
     pub fn open(file: &Path) -> AppResult<Self> {
@@ -403,6 +466,29 @@ impl Index {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
+    /// Task boxes of all notes, open ones first; `with_done` adds the finished ones.
+    /// Within each: by due date (none last), then the newest note first, then line.
+    pub fn tasks(&self, with_done: bool) -> AppResult<Vec<TaskRef>> {
+        let mut st = self.conn.prepare(
+            "SELECT n.path, n.title, t.line, t.done, t.text, t.due, n.mtime
+             FROM tasks t JOIN notes n ON n.id = t.note_id
+             WHERE ?1 OR t.done = 0
+             ORDER BY t.done, t.due IS NULL, t.due, n.mtime DESC, n.path, t.line",
+        )?;
+        let rows = st.query_map(params![with_done], |r| {
+            Ok(TaskRef {
+                path: r.get(0)?,
+                title: r.get(1)?,
+                line: r.get(2)?,
+                done: r.get(3)?,
+                text: r.get(4)?,
+                due: r.get(5)?,
+                mtime: r.get(6)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
     /// Notes that may hold links to `rel` or to anything under it (a folder):
     /// the candidates to rewrite on rename/move.
     pub fn referrers(&self, rel: &str) -> AppResult<Vec<String>> {
@@ -509,6 +595,11 @@ fn write_prepared(tx: &Transaction, p: &Prepared) -> AppResult<()> {
         for p in &parsed.properties {
             st.execute(params![id, p.key, p.value, value_type_str(&p.value_type)])?;
         }
+        let mut st =
+            tx.prepare_cached("INSERT INTO tasks (note_id, line, done, text, due) VALUES (?1, ?2, ?3, ?4, ?5)")?;
+        for t in &parsed.tasks {
+            st.execute(params![id, t.line, t.done, t.text, t.due])?;
+        }
     }
     tx.execute(
         "INSERT INTO notes_fts (rowid, title, body) VALUES (?1, ?2, ?3)",
@@ -596,6 +687,59 @@ mod tests {
     }
 
     #[test]
+    fn tasks_open_first_by_due_and_follow_the_note() {
+        let (_d, ix) = setup();
+        ix.upsert(
+            "a.md",
+            "- [ ] 나중 📅 2026-12-01
+- [x] 끝남
+- [ ] 기한 없음
+",
+            0,
+            10,
+            0,
+        )
+        .unwrap();
+        ix.upsert(
+            "b.md",
+            "---
+x: 1
+---
+- [ ] 먼저 📅 2026-11-12
+",
+            0,
+            20,
+            0,
+        )
+        .unwrap();
+        let open: Vec<(String, u32, String)> =
+            ix.tasks(false).unwrap().into_iter().map(|t| (t.path, t.line, t.text)).collect();
+        assert_eq!(
+            open,
+            [
+                ("b.md".into(), 4, "먼저 📅 2026-11-12".into()),
+                ("a.md".into(), 1, "나중 📅 2026-12-01".into()),
+                ("a.md".into(), 3, "기한 없음".into()),
+            ]
+        );
+        let all = ix.tasks(true).unwrap();
+        assert_eq!(all.len(), 4);
+        assert!(all[3].done && all[3].text == "끝남");
+        ix.upsert(
+            "a.md",
+            "- [x] 나중
+",
+            0,
+            30,
+            0,
+        )
+        .unwrap();
+        assert_eq!(ix.tasks(false).unwrap().len(), 1, "a note's old tasks are replaced");
+        ix.remove("b.md").unwrap();
+        assert!(ix.tasks(false).unwrap().is_empty());
+    }
+
+    #[test]
     fn upsert_replaces_previous_rows() {
         let (_d, ix) = setup();
         ix.upsert("a.md", "one", 0, 0, 0).unwrap();
@@ -635,6 +779,28 @@ mod tests {
         fs::remove_file(root.join("b.md")).unwrap();
         fs::write(root.join("일지/a.md"), "changed").unwrap();
         assert_eq!(ix.scan(root).unwrap(), ScanStats { indexed: 1, unchanged: 0, removed: 1 });
+    }
+
+    #[test]
+    fn each_schema_has_its_own_file_and_old_ones_go_when_free() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path();
+        assert_eq!(file_in(store), store.join(format!("index-v{SCHEMA_VERSION}.db")));
+        // An older Notevine (or its MCP server) still has the old index open.
+        let legacy = store.join("index.db");
+        let old = Connection::open(&legacy).unwrap();
+        old.execute_batch("CREATE TABLE notes (id INTEGER); PRAGMA user_version = 5;").unwrap();
+        let ix = Index::open_in(store).unwrap();
+        ix.upsert("a.md", "- [ ] 일", 0, 0, 0).unwrap();
+        assert_eq!(ix.tasks(false).unwrap().len(), 1);
+        let v: i64 = old.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap();
+        assert_eq!(v, 5, "the other version's index is left alone");
+        drop(old);
+        drop(ix);
+        // Once nothing holds it, the next open clears it away.
+        let _ix = Index::open_in(store).unwrap();
+        assert!(!legacy.exists());
+        assert!(file_in(store).exists());
     }
 
     #[test]
