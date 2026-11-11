@@ -10,7 +10,9 @@ use std::process::Command;
 use std::sync::{Mutex, MutexGuard};
 
 use chrono::{DateTime, Local, TimeZone};
-use notevine_lib::backup::{backup_in, backup_with_exe, enable_encryption_in, init_in, set_remote_in, status_with_key};
+use notevine_lib::backup::{
+    backup_in, backup_with_exe, clone_in, enable_encryption_in, init_in, set_remote_in, status_with_key,
+};
 use notevine_lib::crypt::{CRYPT_FILE, MasterKey, crypt_file_text, recovery_code};
 
 const NO_KEY: &str = "이 PC에 이 노트 폴더의 암호화 열쇠가 없습니다. 설정 > 백업에서 복구 코드를 넣어 주세요";
@@ -401,4 +403,105 @@ fn a_filter_without_the_key_commits_nothing() {
     let _env = KeyEnv::new(None);
     assert!(backup_with_exe(&a, "백업", Some(&key), exe()).is_err());
     assert_eq!(git(&a, &["rev-list", "--all"]), "");
+}
+
+#[test]
+fn clone_brings_plain_notes() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let url = bare_remote(tmp.path());
+    let a = encrypted_vault(tmp.path(), &key);
+    set_remote_in(&a, &url).unwrap();
+    assert!(backup_with_exe(&a, "올림", Some(&key), exe()).unwrap().pushed);
+
+    let dest = tmp.path().join("받음");
+    clone_in(&url, &dest, Some(&key), exe()).unwrap();
+    assert_eq!(read(&dest.join("회의.md")), "예산 확정\n");
+    assert!(status_with_key(&dest, Some(&key)).unwrap().key_ok);
+    assert_eq!(git(&dest, &["status", "--porcelain"]), "");
+    // It keeps working as a vault: a change goes back up encrypted.
+    std::fs::write(dest.join("회의.md"), "예산 확정\n추가\n").unwrap();
+    assert!(backup_with_exe(&dest, "받은 곳에서", Some(&key), exe()).unwrap().pushed);
+    assert!(git_raw(Path::new(&url), &["show", "HEAD:회의.md"]).stdout.starts_with(b"NVENC"));
+
+    // An existing empty folder works too.
+    let empty = vault(tmp.path(), "비어 있음");
+    clone_in(&url, &empty, Some(&key), exe()).unwrap();
+    assert_eq!(read(&empty.join("회의.md")), "예산 확정\n추가\n");
+}
+
+#[test]
+fn clone_without_key_leaves_nothing() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let url = bare_remote(tmp.path());
+    let a = encrypted_vault(tmp.path(), &key);
+    set_remote_in(&a, &url).unwrap();
+    assert!(backup_with_exe(&a, "올림", Some(&key), exe()).unwrap().pushed);
+    let msg = "이 저장소의 암호화 열쇠가 이 PC에 없습니다. 복구 코드를 먼저 넣어 주세요";
+
+    let dest = tmp.path().join("받음");
+    let e = clone_in(&url, &dest, None, exe()).unwrap_err().to_string();
+    assert_eq!(e, msg);
+    assert!(!dest.exists());
+
+    let other = MasterKey::generate();
+    let e = clone_in(&url, &dest, Some(&other), exe()).unwrap_err().to_string();
+    assert_eq!(e, msg);
+    assert!(!dest.exists());
+
+    // A pre-existing empty folder stays, emptied again.
+    let empty = vault(tmp.path(), "비어 있음");
+    assert!(clone_in(&url, &empty, None, exe()).is_err());
+    assert!(empty.is_dir());
+    assert_eq!(std::fs::read_dir(&empty).unwrap().count(), 0);
+}
+
+#[test]
+fn clone_refuses_a_non_empty_folder() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let url = bare_remote(tmp.path());
+    let a = encrypted_vault(tmp.path(), &key);
+    set_remote_in(&a, &url).unwrap();
+    assert!(backup_with_exe(&a, "올림", Some(&key), exe()).unwrap().pushed);
+
+    let dest = vault(tmp.path(), "받음");
+    std::fs::write(dest.join("내 노트.md"), "지우면 안 됨\n").unwrap();
+    let e = clone_in(&url, &dest, Some(&key), exe()).unwrap_err().to_string();
+    assert_eq!(e, "받을 폴더가 비어 있지 않습니다");
+    assert_eq!(read(&dest.join("내 노트.md")), "지우면 안 됨\n");
+    assert_eq!(std::fs::read_dir(&dest).unwrap().count(), 1);
+}
+
+#[test]
+fn clone_of_a_plain_repository_works() {
+    if !installed() {
+        return;
+    }
+    let _env = KeyEnv::new(None);
+    let tmp = tempfile::tempdir().unwrap();
+    let url = bare_remote(tmp.path());
+    let p = vault(tmp.path(), "plain");
+    std::fs::write(p.join("회의.md"), "평문\n").unwrap();
+    set_remote_in(&p, &url).unwrap();
+    assert!(backup_in(&p, "평문", None).unwrap().pushed);
+
+    let dest = tmp.path().join("받음");
+    clone_in(&url, &dest, None, exe()).unwrap();
+    assert_eq!(read(&dest.join("회의.md")), "평문\n");
+    assert!(git_raw(&dest, &["config", "--local", "--get", "filter.notevine.process"]).stdout.is_empty());
+    assert!(!status_with_key(&dest, None).unwrap().encrypted);
 }

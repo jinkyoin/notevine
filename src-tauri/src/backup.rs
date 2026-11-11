@@ -300,6 +300,73 @@ fn configure_filter(dir: &Path, exe: &Path) -> AppResult<()> {
     Ok(())
 }
 
+/// Receives the repository at `url` into `dest` (not there yet, or an empty folder).
+/// An encrypted repository is checked against `key` before anything is checked out,
+/// then checked out through the filter so the notes arrive as plain text. On any
+/// error `dest` is left as it was found: gone, or empty again.
+pub fn clone_in(url: &str, dest: &Path, key: Option<&MasterKey>, exe: &Path) -> AppResult<()> {
+    let url = url.trim();
+    if url.is_empty() {
+        return Err(AppError::System("저장소 주소를 넣어 주세요".into()));
+    }
+    let existed = dest.exists();
+    if existed && !std::fs::read_dir(dest).is_ok_and(|mut d| d.next().is_none()) {
+        return Err(AppError::System("받을 폴더가 비어 있지 않습니다".into()));
+    }
+    let result = clone_into(url, dest, key, exe);
+    if result.is_err() {
+        if existed {
+            // Back to the empty folder it was.
+            if let Ok(rd) = std::fs::read_dir(dest) {
+                for e in rd.flatten() {
+                    let p = e.path();
+                    let _ = if p.is_dir() { std::fs::remove_dir_all(&p) } else { std::fs::remove_file(&p) };
+                }
+            }
+        } else {
+            let _ = std::fs::remove_dir_all(dest);
+        }
+    }
+    result
+}
+
+fn clone_into(url: &str, dest: &Path, key: Option<&MasterKey>, exe: &Path) -> AppResult<()> {
+    let parent = match dest.parent() {
+        Some(p) if !p.as_os_str().is_empty() => p,
+        _ => Path::new("."),
+    };
+    std::fs::create_dir_all(parent)?;
+    let dest_arg = dest.to_string_lossy();
+    git(parent, &["clone", "-q", "--no-checkout", "--", url, &dest_arg])?;
+
+    // An empty remote has no commits: nothing to check out, nothing encrypted.
+    let has_head = git(dest, &["rev-parse", "--verify", "-q", "HEAD"]).is_ok();
+    let encrypted = has_head && !git(dest, &["ls-tree", "HEAD", "--", CRYPT_FILE])?.is_empty();
+    if encrypted {
+        let text = git(dest, &["show", &format!("HEAD:{CRYPT_FILE}")])?;
+        if !key_matches(key, crypt_file_key_id(&text).as_deref()) {
+            return Err(AppError::System(
+                "이 저장소의 암호화 열쇠가 이 PC에 없습니다. 복구 코드를 먼저 넣어 주세요".into(),
+            ));
+        }
+    }
+    keep_line_endings(dest)?;
+    if encrypted {
+        configure_filter(dest, exe)?;
+    }
+    if git(dest, &["config", "user.name"]).is_err() {
+        git(dest, &["config", "user.name", "Notevine"])?;
+    }
+    if git(dest, &["config", "user.email"]).is_err() {
+        git(dest, &["config", "user.email", "notevine@localhost"])?;
+    }
+    if has_head {
+        // For an encrypted repository the smudge filter decrypts on the way out.
+        git(dest, &["reset", "-q", "--hard", "HEAD"])?;
+    }
+    Ok(())
+}
+
 /// Writes `text` to `path` unless it is exactly that already.
 fn write_if_changed(path: &Path, text: &str) -> AppResult<()> {
     if std::fs::read(path).ok().as_deref() != Some(text.as_bytes()) {
@@ -590,6 +657,18 @@ pub async fn backup_enable_encryption(state: State<'_, AppState>) -> AppResult<O
     // The repository there now is the one the app just made.
     remember_trust(&state, &dir)?;
     Ok(moved)
+}
+
+/// Receives a Git repository into a new folder (decrypting an encrypted one); returns
+/// the folder for the front end to open.
+#[tauri::command]
+pub async fn backup_clone(state: State<'_, AppState>, url: String, dest: String) -> AppResult<String> {
+    let key = crate::crypt_key::key_store().load()?;
+    let exe = std::env::current_exe()?;
+    let dest_path = std::path::PathBuf::from(&dest);
+    clone_in(&url, &dest_path, key.as_ref(), &exe)?;
+    remember_trust(&state, &dest_path)?;
+    Ok(dest)
 }
 
 #[cfg(test)]

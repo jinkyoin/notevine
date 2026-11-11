@@ -223,6 +223,7 @@ pub fn run() {
             backup::backup_set_remote,
             backup::backup_now,
             backup::backup_enable_encryption,
+            backup::backup_clone,
             canvas::create_canvas,
             canvas::save_canvas,
             plugins::list_plugins,
