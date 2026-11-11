@@ -309,25 +309,38 @@ pub fn clone_in(url: &str, dest: &Path, key: Option<&MasterKey>, exe: &Path) -> 
     if url.is_empty() {
         return Err(AppError::System("저장소 주소를 넣어 주세요".into()));
     }
+    if !dest.is_absolute() {
+        return Err(AppError::System("받을 폴더는 전체 경로로 주세요".into()));
+    }
     let existed = dest.exists();
     if existed && !std::fs::read_dir(dest).is_ok_and(|mut d| d.next().is_none()) {
         return Err(AppError::System("받을 폴더가 비어 있지 않습니다".into()));
     }
-    let result = clone_into(url, dest, key, exe);
-    if result.is_err() {
-        if existed {
-            // Back to the empty folder it was.
-            if let Ok(rd) = std::fs::read_dir(dest) {
-                for e in rd.flatten() {
-                    let p = e.path();
-                    let _ = if p.is_dir() { std::fs::remove_dir_all(&p) } else { std::fs::remove_file(&p) };
-                }
+    let Err(first) = clone_into(url, dest, key, exe) else {
+        return Ok(());
+    };
+    let cleaned: std::io::Result<()> = if existed {
+        // Back to the empty folder it was.
+        std::fs::read_dir(dest).and_then(|rd| {
+            for e in rd {
+                let p = e?.path();
+                if p.is_dir() { std::fs::remove_dir_all(&p)? } else { std::fs::remove_file(&p)? }
             }
-        } else {
-            let _ = std::fs::remove_dir_all(dest);
-        }
+            Ok(())
+        })
+    } else {
+        std::fs::remove_dir_all(dest).or_else(|e| if dest.exists() { Err(e) } else { Ok(()) })
+    };
+    match cleaned {
+        Ok(()) => Err(first),
+        Err(_) => Err(AppError::System(format!("{first}. 받다 만 폴더를 지우지 못했습니다: {}", dest.display()))),
     }
-    result
+}
+
+/// Any branch of `origin` fetched into this repository (not counting `origin/HEAD`).
+fn has_remote_branches(dir: &Path) -> AppResult<bool> {
+    let refs = git(dir, &["for-each-ref", "--format=%(refname)", "refs/remotes"])?;
+    Ok(refs.lines().any(|r| !r.is_empty() && !r.ends_with("/HEAD")))
 }
 
 fn clone_into(url: &str, dest: &Path, key: Option<&MasterKey>, exe: &Path) -> AppResult<()> {
@@ -339,8 +352,12 @@ fn clone_into(url: &str, dest: &Path, key: Option<&MasterKey>, exe: &Path) -> Ap
     let dest_arg = dest.to_string_lossy();
     git(parent, &["clone", "-q", "--no-checkout", "--", url, &dest_arg])?;
 
-    // An empty remote has no commits: nothing to check out, nothing encrypted.
+    // Empty only if the remote has no branches at all. Branches but an unborn HEAD
+    // (the remote's default branch is another name) must never pass as an empty remote.
     let has_head = git(dest, &["rev-parse", "--verify", "-q", "HEAD"]).is_ok();
+    if !has_head && has_remote_branches(dest)? {
+        return Err(AppError::System("원격 저장소의 기본 브랜치를 찾지 못했습니다".into()));
+    }
     let encrypted = has_head && !git(dest, &["ls-tree", "HEAD", "--", CRYPT_FILE])?.is_empty();
     if encrypted {
         let text = git(dest, &["show", &format!("HEAD:{CRYPT_FILE}")])?;
@@ -510,6 +527,13 @@ pub fn backup_with_exe(dir: &Path, message: &str, key: Option<&MasterKey>, exe: 
     let branch = git(dir, &["rev-parse", "--abbrev-ref", "HEAD"])?;
     git(dir, &["fetch", "-q", "origin"])?;
     let remote_branch = format!("origin/{branch}");
+    if crypt.is_some()
+        && git(dir, &["rev-parse", "--verify", "-q", &remote_branch]).is_err()
+        && has_remote_branches(dir)?
+    {
+        // The remote holds other branches but not ours: not this encrypted repository.
+        return Err(AppError::System(NOT_THIS_REPO.into()));
+    }
     if git(dir, &["rev-parse", "--verify", "-q", &remote_branch]).is_ok() {
         // Before any merge or push: the remote must be this same encrypted repository.
         if let Some(id) = &crypt {
@@ -667,8 +691,10 @@ pub async fn backup_clone(state: State<'_, AppState>, url: String, dest: String)
     let exe = std::env::current_exe()?;
     let dest_path = std::path::PathBuf::from(&dest);
     clone_in(&url, &dest_path, key.as_ref(), &exe)?;
+    // The same spelling the vault code uses, so the trust entry matches when it opens.
+    let dest_path = crate::vault::canonical_root(&dest_path)?;
     remember_trust(&state, &dest_path)?;
-    Ok(dest)
+    Ok(dest_path.to_string_lossy().into_owned())
 }
 
 #[cfg(test)]

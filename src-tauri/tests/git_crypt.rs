@@ -505,3 +505,53 @@ fn clone_of_a_plain_repository_works() {
     assert!(git_raw(&dest, &["config", "--local", "--get", "filter.notevine.process"]).stdout.is_empty());
     assert!(!status_with_key(&dest, None).unwrap().encrypted);
 }
+
+#[test]
+fn clone_of_a_master_head_remote_is_refused() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    // The remote's HEAD names `master`, but Notevine pushed `main`.
+    let remote = tmp.path().join("remote.git");
+    std::fs::create_dir(&remote).unwrap();
+    git(&remote, &["init", "-q", "--bare", "-b", "master"]);
+    let url = remote.to_string_lossy().to_string();
+    let a = encrypted_vault(tmp.path(), &key);
+    set_remote_in(&a, &url).unwrap();
+    assert!(backup_with_exe(&a, "올림", Some(&key), exe()).unwrap().pushed);
+
+    let dest = tmp.path().join("받음");
+    let e = clone_in(&url, &dest, Some(&key), exe()).unwrap_err().to_string();
+    assert_eq!(e, "원격 저장소의 기본 브랜치를 찾지 못했습니다");
+    assert!(!dest.exists());
+}
+
+#[test]
+fn backup_refuses_a_remote_with_only_other_branches() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let url = bare_remote(tmp.path());
+    let a = encrypted_vault(tmp.path(), &key);
+    set_remote_in(&a, &url).unwrap();
+    git(&a, &["push", "-q", "origin", "main:other"]);
+    let before = git(Path::new(&url), &["for-each-ref"]);
+
+    std::fs::write(a.join("회의.md"), "예산 확정\n바뀜\n").unwrap();
+    let e = backup_with_exe(&a, "백업", Some(&key), exe()).unwrap_err().to_string();
+    assert_eq!(e, NOT_THIS_REPO);
+    assert_eq!(git(Path::new(&url), &["for-each-ref"]), before, "nothing was sent");
+}
+
+#[test]
+fn clone_refuses_a_relative_folder() {
+    let key = MasterKey::generate();
+    let e = clone_in("x", Path::new("x/y"), Some(&key), exe()).unwrap_err().to_string();
+    assert_eq!(e, "받을 폴더는 전체 경로로 주세요");
+}
