@@ -29,5 +29,8 @@ public/THIRD-PARTY-NOTICES.txt
 # Notevine vault data created while testing
 .app/
 
+# Manual slides made from docs/사용자매뉴얼.md, kept local
+docs/사용자매뉴얼.pptx
+
 # Claude Code local data (agent worktrees, settings)
 .claude/
