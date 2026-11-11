@@ -21,8 +21,13 @@ const HKDF_SALT: &[u8] = b"notevine-crypt-v1";
 const CROCKFORD: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 /// The 32-byte secret every other key is derived from.
-#[derive(Debug)]
 pub struct MasterKey(pub(crate) [u8; 32]);
+
+impl std::fmt::Debug for MasterKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("MasterKey(<redacted>)")
+    }
+}
 
 impl MasterKey {
     /// A fresh random key from the OS random source.
@@ -257,6 +262,37 @@ mod tests {
             assert_eq!(key_id(&k), s("key_id"));
             assert_eq!(recovery_code(&k), s("recovery_code"));
             assert_eq!(decrypt(&k, &unhex(&s("cipher_hex"))).unwrap(), plain);
+        }
+    }
+
+    #[test]
+    fn master_key_debug_is_redacted() {
+        assert_eq!(format!("{:?}", key()), "MasterKey(<redacted>)");
+    }
+
+    #[test]
+    fn malformed_input_is_rejected_without_panic() {
+        let k = key();
+        let c = encrypt(&k, b"hello");
+        for len in [0, 13, 14, 29] {
+            assert!(decrypt(&k, &c[..len]).is_err(), "len {len}");
+        }
+        assert!(decrypt(&k, &c[..14]).is_err());
+        // Foreign magic, long enough.
+        let mut t = c.clone();
+        t[..5].copy_from_slice(b"XXXXX");
+        assert!(!is_encrypted(&t));
+        assert!(decrypt(&k, &t).is_err());
+        // Wrong version byte.
+        let mut t = c.clone();
+        t[5] = 0x02;
+        assert!(!is_encrypted(&t));
+        assert!(decrypt(&k, &t).is_err());
+        // Any header byte, including the key id, is authenticated.
+        for i in 0..14 {
+            let mut t = c.clone();
+            t[i] ^= 1;
+            assert!(decrypt(&k, &t).is_err(), "header byte {i}");
         }
     }
 
