@@ -125,6 +125,8 @@ pub fn run_process_filter(mut input: impl Read, mut output: impl Write, key: Opt
     write_text(&mut output, "git-filter-server")?;
     write_text(&mut output, "version=2")?;
     write_flush(&mut output)?;
+    // Git sends its capabilities only after it has read this welcome.
+    output.flush()?;
     let offered = read_list(&mut input)?.unwrap_or_default();
     for cap in ["clean", "smudge"] {
         if offered.iter().any(|l| l.strip_prefix("capability=") == Some(cap)) {
