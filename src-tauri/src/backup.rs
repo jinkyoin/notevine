@@ -36,10 +36,13 @@ const GITIGNORE: &str = "# Notevine: 검색 인덱스·히스토리 DB는 Git에
 /// must read as they are.
 const GITATTRIBUTES: &str = "# Notevine: 이 노트 폴더는 원격에 암호화되어 올라갑니다
 * filter=notevine diff=notevine merge=notevine -text
-.gitattributes !filter !diff !merge
-.gitignore !filter !diff !merge
-.notevine-crypt !filter !diff !merge
+/.gitattributes !filter !diff !merge
+/.gitignore !filter !diff !merge
+/.notevine-crypt !filter !diff !merge
 ";
+
+/// The only paths an encrypted vault commits as they are (all at the root).
+const PLAIN_FILES: [&str; 3] = [".gitattributes", ".gitignore", CRYPT_FILE];
 
 /// Where `enable_encryption_in` puts the old repository. It holds plain history, so
 /// it never goes into the new one.
@@ -86,6 +89,13 @@ pub struct BackupResult {
 }
 
 fn git(dir: &Path, args: &[&str]) -> AppResult<String> {
+    let out = git_bytes(dir, args, None)?;
+    Ok(String::from_utf8_lossy(&out).trim_end().to_string())
+}
+
+/// [`git`] with `input` on stdin (none: stdin is closed) and stdout as it is.
+fn git_bytes(dir: &Path, args: &[&str], input: Option<&[u8]>) -> AppResult<Vec<u8>> {
+    use std::process::Stdio;
     let mut c = Command::new("git");
     // Korean file names as they are, not as "í…".
     c.args(["-c", "core.quotepath=false"])
@@ -95,25 +105,41 @@ fn git(dir: &Path, args: &[&str]) -> AppResult<String> {
         .current_dir(dir)
         // Never wait for a password typed in a console nobody sees.
         .env("GIT_TERMINAL_PROMPT", "0")
-        .env("LC_ALL", "C");
+        .env("LC_ALL", "C")
+        .stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         c.creation_flags(CREATE_NO_WINDOW);
     }
-    let out = c.output().map_err(|e| {
+    let mut child = c.spawn().map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             AppError::System("Git이 설치되어 있지 않습니다. https://git-scm.com 에서 설치해 주세요".into())
         } else {
             AppError::Io(e)
         }
     })?;
+    // From another thread: Git may fill stdout before it has read all of stdin.
+    let writer = match (input, child.stdin.take()) {
+        (Some(data), Some(mut stdin)) => {
+            let data = data.to_vec();
+            Some(std::thread::spawn(move || std::io::Write::write_all(&mut stdin, &data)))
+        }
+        _ => None,
+    };
+    let out = child.wait_with_output()?;
+    let wrote = writer.map(|w| w.join());
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
         let err = if err.is_empty() { String::from_utf8_lossy(&out.stdout).trim().to_string() } else { err };
         return Err(AppError::System(explain(&err)));
     }
-    Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
+    if let Some(wrote) = wrote {
+        wrote.map_err(|_| AppError::System("Git에 입력을 넘기지 못했습니다".into()))??;
+    }
+    Ok(out.stdout)
 }
 
 /// Git's message, with the usual causes said plainly first.
@@ -292,6 +318,11 @@ pub fn enable_encryption_in(
     now: DateTime<Local>,
 ) -> AppResult<Option<String>> {
     let old = dir.join(".git");
+    // Read from the file only: the repository may not be one the user allowed yet.
+    let marked = std::fs::read_to_string(dir.join(CRYPT_FILE)).ok();
+    if old.exists() && marked.as_deref().and_then(crypt_file_key_id).is_some_and(|id| id == key_id(key)) {
+        return Err(AppError::System("이미 암호화된 노트 폴더입니다".into()));
+    }
     let moved = if old.exists() {
         let stamp = now.format("%Y%m%d-%H%M%S").to_string();
         let mut name = format!("{MOVED_ASIDE}{stamp}");
@@ -306,16 +337,56 @@ pub fn enable_encryption_in(
         None
     };
     init_in(dir)?;
-    write_if_changed(&dir.join(".gitattributes"), GITATTRIBUTES)?;
+    // Encrypted from here on, even if a later step fails: the next backup sees the
+    // marker and the filter config and refuses to commit plain text.
     write_if_changed(&dir.join(CRYPT_FILE), &crypt_file_text(key))?;
+    configure_filter(dir, exe)?;
+    write_if_changed(&dir.join(".gitattributes"), GITATTRIBUTES)?;
+    ignore_moved_aside(dir)?;
+    Ok(moved)
+}
+
+/// Keeps moved-aside repositories (plain history) out of the backup.
+fn ignore_moved_aside(dir: &Path) -> AppResult<()> {
     let ignore = dir.join(".gitignore");
-    let text = std::fs::read_to_string(&ignore)?;
+    let text = match std::fs::read_to_string(&ignore) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => GITIGNORE.to_string(),
+        Err(e) => return Err(e.into()),
+    };
     if !text.lines().any(|l| l.trim() == MOVED_ASIDE_IGNORE) {
         let sep = if text.is_empty() || text.ends_with('\n') { "" } else { "\n" };
         std::fs::write(&ignore, format!("{text}{sep}{MOVED_ASIDE_IGNORE}\n"))?;
     }
-    configure_filter(dir, exe)?;
-    Ok(moved)
+    Ok(())
+}
+
+/// Every staged path except the three root files must go through the notevine filter.
+/// A `.gitattributes` in a subfolder (or `.git/info/attributes`) can switch it off or
+/// name a filter that isn't defined, and Git would then stage the note as it is.
+fn unencrypted_staged(dir: &Path) -> AppResult<Vec<String>> {
+    let files = git_bytes(dir, &["ls-files", "-z"], None)?;
+    if files.is_empty() {
+        return Ok(Vec::new());
+    }
+    let out = git_bytes(dir, &["check-attr", "-z", "--stdin", "filter"], Some(&files))?;
+    let out = String::from_utf8_lossy(&out);
+    // `<path> NUL filter NUL <value> NUL`, once per path.
+    let fields: Vec<&str> = out.split('\0').collect();
+    let mut bad = Vec::new();
+    for rec in fields.chunks(3) {
+        if let [path, _, value] = rec
+            && *value != "notevine"
+            && !PLAIN_FILES.contains(path)
+        {
+            bad.push(path.to_string());
+        }
+    }
+    let listed = String::from_utf8_lossy(&files).split('\0').filter(|p| !p.is_empty()).count();
+    if fields.len() / 3 < listed {
+        return Err(AppError::System("Git이 파일의 암호화 설정을 알려 주지 않았습니다".into()));
+    }
+    Ok(bad)
 }
 
 /// [`backup_with_exe`] with this program as the filter of an encrypted vault.
@@ -345,10 +416,21 @@ pub fn backup_with_exe(dir: &Path, message: &str, key: Option<&MasterKey>, exe: 
         // The app owns these: a deleted or edited one must not let plain text through.
         write_if_changed(&dir.join(".gitattributes"), GITATTRIBUTES)?;
         write_if_changed(&dir.join(CRYPT_FILE), &crypt_file_text(key))?;
+        ignore_moved_aside(dir)?;
         configure_filter(dir, exe)?;
     }
     let mut r = BackupResult::default();
     git(dir, &["add", "-A"])?;
+    if crypt.is_some() {
+        let bad = unencrypted_staged(dir)?;
+        if !bad.is_empty() {
+            let _ = git(dir, &["reset", "-q"]);
+            let paths = bad.iter().take(5).map(String::as_str).collect::<Vec<_>>().join(", ");
+            return Err(AppError::System(format!(
+                "암호화되지 않는 파일이 있어 백업을 멈췄습니다: {paths}. 하위 폴더의 .gitattributes 등이 암호화를 끄고 있습니다"
+            )));
+        }
+    }
     let staged = git(dir, &["diff", "--cached", "--name-only"])?;
     r.files = staged.lines().filter(|l| !l.is_empty()).count() as u32;
     if r.files > 0 {

@@ -18,9 +18,9 @@ const NOT_THIS_REPO: &str =
     "원격 저장소가 이 암호화 저장소가 아닙니다(평문 이력이거나 다른 열쇠). 새 빈 저장소를 만들어 주소를 넣어 주세요";
 const GITATTRIBUTES: &str = "# Notevine: 이 노트 폴더는 원격에 암호화되어 올라갑니다
 * filter=notevine diff=notevine merge=notevine -text
-.gitattributes !filter !diff !merge
-.gitignore !filter !diff !merge
-.notevine-crypt !filter !diff !merge
+/.gitattributes !filter !diff !merge
+/.gitignore !filter !diff !merge
+/.notevine-crypt !filter !diff !merge
 ";
 
 static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -307,4 +307,98 @@ fn refuses_a_remote_that_is_not_this_encrypted_repo() {
     let e = backup_with_exe(&a, "A", Some(&key), exe()).unwrap_err().to_string();
     assert_eq!(e, NOT_THIS_REPO);
     assert!(!a.join("x.md").exists());
+}
+
+/// An encrypted vault with one backup made; returns the vault.
+fn encrypted_vault(root: &Path, key: &MasterKey) -> PathBuf {
+    let a = vault(root, "a");
+    std::fs::write(a.join("회의.md"), "예산 확정\n").unwrap();
+    enable_encryption_in(&a, key, exe(), now()).unwrap();
+    assert!(backup_with_exe(&a, "첫 백업", Some(key), exe()).unwrap().committed);
+    a
+}
+
+fn assert_nested_attributes_refused(attributes: &str) {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let a = encrypted_vault(tmp.path(), &key);
+    let before = git(&a, &["rev-list", "--all"]);
+    std::fs::create_dir(a.join("sub")).unwrap();
+    std::fs::write(a.join("sub/.gitattributes"), attributes).unwrap();
+    std::fs::write(a.join("sub/c.md"), "비밀 메모\n").unwrap();
+
+    let e = backup_with_exe(&a, "백업", Some(&key), exe()).unwrap_err().to_string();
+    assert!(e.starts_with("암호화되지 않는 파일이 있어 백업을 멈췄습니다: "), "{e}");
+    assert!(e.contains("sub/c.md"), "{e}");
+    assert!(e.ends_with(". 하위 폴더의 .gitattributes 등이 암호화를 끄고 있습니다"), "{e}");
+    assert_eq!(git(&a, &["rev-list", "--all"]), before, "nothing committed");
+    assert_eq!(git(&a, &["diff", "--cached", "--name-only"]), "", "nothing staged");
+}
+
+#[test]
+fn nested_gitattributes_cannot_switch_encryption_off() {
+    assert_nested_attributes_refused("* -filter\n");
+}
+
+#[test]
+fn nested_gitattributes_cannot_name_an_undefined_filter() {
+    assert_nested_attributes_refused("* filter=lfs\n");
+}
+
+#[test]
+fn enabling_twice_with_the_same_key_changes_nothing() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let a = encrypted_vault(tmp.path(), &key);
+    let head = git(&a, &["rev-parse", "HEAD"]);
+    let e = enable_encryption_in(&a, &key, exe(), now()).unwrap_err().to_string();
+    assert_eq!(e, "이미 암호화된 노트 폴더입니다");
+    assert_eq!(git(&a, &["rev-parse", "HEAD"]), head);
+    assert!(!a.join(".git-before-encryption-20261111-090807").exists());
+}
+
+#[test]
+fn a_deleted_ignore_line_is_restored_before_backup() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let a = vault(tmp.path(), "a");
+    std::fs::write(a.join("회의.md"), "예산\n").unwrap();
+    init_in(&a).unwrap();
+    backup_in(&a, "평문", None).unwrap();
+    let moved = enable_encryption_in(&a, &key, exe(), now()).unwrap().unwrap();
+    std::fs::write(a.join(".gitignore"), "").unwrap();
+    backup_with_exe(&a, "백업", Some(&key), exe()).unwrap();
+    assert!(read(&a.join(".gitignore")).contains("/.git-before-encryption-*/"));
+    assert!(!git(&a, &["ls-files"]).contains(&moved));
+}
+
+#[test]
+fn a_filter_without_the_key_commits_nothing() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let tmp = tempfile::tempdir().unwrap();
+    let a = vault(tmp.path(), "a");
+    std::fs::write(a.join("회의.md"), "예산 확정\n").unwrap();
+    {
+        let _env = KeyEnv::new(Some(&key));
+        enable_encryption_in(&a, &key, exe(), now()).unwrap();
+    }
+    // The app has the key, the filter Git starts does not: Git itself must refuse.
+    let _env = KeyEnv::new(None);
+    assert!(backup_with_exe(&a, "백업", Some(&key), exe()).is_err());
+    assert_eq!(git(&a, &["rev-list", "--all"]), "");
 }
