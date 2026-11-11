@@ -10,6 +10,7 @@ mod file_open;
 mod filetext;
 mod history;
 mod index;
+mod mcp;
 mod parse;
 mod paths;
 mod plugins;
@@ -61,6 +62,18 @@ fn allowed_navigation(url: &tauri::Url, dev: bool) -> bool {
         ("http", Some("localhost")) => dev && url.port() == Some(1420),
         _ => false,
     }
+}
+
+/// `notevine --mcp`: the MCP server for AI tools on this PC, without any window.
+/// `main` must check this before [`run`]: the single-instance plugin there would
+/// hand the arguments to a running app and exit.
+pub fn mcp_requested(args: &[String]) -> bool {
+    args.iter().skip(1).any(|a| a == "--mcp")
+}
+
+/// Runs the MCP server until the AI tool closes it; returns the exit code.
+pub fn run_mcp(args: &[String]) -> i32 {
+    mcp::serve(args)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -223,6 +236,8 @@ pub fn run() {
             ai::ai_cancel,
             ai::ai_login,
             ai::ai_private_notes,
+            mcp::cmd::mcp_status,
+            mcp::cmd::set_mcp,
             filetext::ai_file_text,
             commands::resolve_link,
             commands::backlinks,

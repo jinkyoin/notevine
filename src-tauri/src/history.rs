@@ -31,6 +31,8 @@ pub enum Origin {
     External,
     /// Written by a restore.
     Restore,
+    /// Written by an AI tool through the MCP server (`mcp.rs`).
+    Mcp,
 }
 
 impl Origin {
@@ -39,6 +41,7 @@ impl Origin {
             Origin::App => "app",
             Origin::External => "external",
             Origin::Restore => "restore",
+            Origin::Mcp => "mcp",
         }
     }
 
@@ -46,6 +49,7 @@ impl Origin {
         match s {
             "external" => Origin::External,
             "restore" => Origin::Restore,
+            "mcp" => Origin::Mcp,
             _ => Origin::App,
         }
     }

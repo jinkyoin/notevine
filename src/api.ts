@@ -67,7 +67,7 @@ export interface VersionMeta {
   started_at: number;
   saved_at: number;
   size: number;
-  origin: "app" | "external" | "restore";
+  origin: "app" | "external" | "restore" | "mcp";
 }
 
 export interface SaveOutcome {
@@ -183,6 +183,33 @@ export interface VaultConfig {
 }
 
 /** What this PC's user allowed the open vault to do; kept outside the vault, which can't grant it. */
+/** What AI tools may do with this vault through `notevine --mcp` (src-tauri/src/mcp.rs). */
+export interface McpGrant {
+  enabled: boolean;
+  /** Creating and changing notes too; counts only while enabled. */
+  write: boolean;
+  /** Vault-relative folders AI tools never see. */
+  excluded: string[];
+}
+
+export interface McpActivity {
+  /** ms since epoch */
+  at: number;
+  vault: string;
+  tool: string;
+  target: string;
+  ok: boolean;
+}
+
+export interface McpStatus {
+  grant: McpGrant;
+  /** This app's executable, for the connection commands. */
+  exe: string;
+  vault: string;
+  /** Newest first. */
+  activity: McpActivity[];
+}
+
 export interface DeviceTrust {
   /** Git may run in the vault's existing `.git`. */
   git: boolean;
@@ -474,6 +501,8 @@ export const api = {
   /** Makes an empty `.canvas` board in `dir`; returns its path. */
   createCanvas: (dir: string, name?: string) => invoke<string>("create_canvas", { dir, name: name ?? null }),
   saveCanvas: (path: string, content: string) => invoke<void>("save_canvas", { path, content }),
+  mcpStatus: () => invoke<McpStatus>("mcp_status"),
+  setMcp: (g: McpGrant) => invoke<McpStatus>("set_mcp", { enabled: g.enabled, write: g.write, excluded: g.excluded }),
   deviceTrust: () => invoke<DeviceTrust>("device_trust"),
   setBackupMinutes: (minutes: number) => invoke<DeviceTrust>("set_backup_minutes", { minutes }),
   setCustomCss: (on: boolean) => invoke<DeviceTrust>("set_custom_css", { on }),

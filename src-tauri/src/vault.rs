@@ -321,6 +321,11 @@ impl Vault {
     /// The file write is what matters: if only the snapshot fails, the save still
     /// succeeds and the snapshot error comes back as a warning.
     pub fn save_note(&self, rel: &str, content: &str, force: bool) -> AppResult<SaveOutcome> {
+        self.save_note_from(rel, content, force, Origin::App)
+    }
+
+    /// [`Self::save_note`], recording who wrote it.
+    pub fn save_note_from(&self, rel: &str, content: &str, force: bool, origin: Origin) -> AppResult<SaveOutcome> {
         let rel = normalize_rel(rel);
         let abs = self.abs(&rel)?;
         let expected = self.known().get(&rel).cloned();
@@ -334,7 +339,7 @@ impl Vault {
         self.write_note(&rel, content)?;
         self.known().insert(rel.clone(), content_hash(content));
         let mut warnings = Vec::new();
-        if let Err(e) = self.history.record(&rel, content, Origin::App, force) {
+        if let Err(e) = self.history.record(&rel, content, origin, force) {
             warnings.push(e.to_string());
         }
         if let Err(e) = self.index.upsert_file(&self.root, &rel) {
@@ -448,6 +453,17 @@ impl Vault {
 
     /// Creates a note in `dir_rel`. Without a name it uses "제목 없음", numbered if taken.
     pub fn create_note(&self, dir_rel: &str, name: Option<&str>, content: &str) -> AppResult<String> {
+        self.create_note_from(dir_rel, name, content, Origin::App)
+    }
+
+    /// [`Self::create_note`], recording who wrote it.
+    pub fn create_note_from(
+        &self,
+        dir_rel: &str,
+        name: Option<&str>,
+        content: &str,
+        origin: Origin,
+    ) -> AppResult<String> {
         let dir_rel = normalize_rel(dir_rel);
         let name = match name {
             Some(n) => {
@@ -462,7 +478,7 @@ impl Vault {
         };
         let rel = join_rel(&dir_rel, &name);
         // Sealed, so the first real edit becomes its own version.
-        self.save_note(&rel, content, true)?;
+        self.save_note_from(&rel, content, true, origin)?;
         Ok(rel)
     }
 

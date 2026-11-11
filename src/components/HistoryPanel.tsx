@@ -4,7 +4,7 @@ import { api, type VersionMeta } from "../api";
 import { useApp } from "../store";
 
 import { dateLocale, tx } from "../i18n";
-export const ORIGIN_LABEL: Record<VersionMeta["origin"], string> = { app: tx("저장"), external: tx("외부 변경"), restore: tx("복원") };
+export const ORIGIN_LABEL: Record<VersionMeta["origin"], string> = { app: tx("저장"), external: tx("외부 변경"), restore: tx("복원"), mcp: tx("AI 도구") };
 
 export function sizeDelta(cur: number, prev: number | undefined): string {
   if (prev === undefined) return tx("처음");

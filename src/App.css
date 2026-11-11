@@ -1857,6 +1857,40 @@ kbd {
 .hist-tag.o-restore {
   color: var(--accent);
 }
+.hist-tag.o-mcp {
+  color: #7a4fc4;
+}
+.mcp-cmd {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin: 4px 0 10px;
+}
+.mcp-cmd code {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  user-select: text;
+}
+.mcp-log {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+.mcp-log li {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+}
+.mcp-log .fail {
+  color: #c0392b;
+}
 .hist-note {
   border-top: 1px solid var(--border);
   margin-top: 8px;

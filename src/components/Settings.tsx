@@ -3,7 +3,18 @@ import { useEffect, useRef, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openPath, openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import { allCommands, keysFromEvent, keysOf, onCommandsChanged, type Command } from "../commands";
-import { api, errorMessage, type AppSettings, type BackupStatus, type DriveConflict, type HistoryStats, type VaultConfig } from "../api";
+import {
+  api,
+  errorMessage,
+  type AppSettings,
+  type BackupStatus,
+  type DriveConflict,
+  type HistoryStats,
+  type McpGrant,
+  type McpStatus,
+  type TreeNode,
+  type VaultConfig,
+} from "../api";
 import { useApp } from "../store";
 import { useAi } from "../aiStore";
 import { forgetApiModels, ProviderFix } from "./AiPanel";
@@ -622,6 +633,145 @@ function AiSettings() {
       </p>
       <AiInstructions />
       <ApiConnections />
+      <McpSettings />
+    </>
+  );
+}
+
+const MCP_TOOL_LABEL: Record<string, string> = {
+  list_notes: tx("목록 보기"),
+  read_note: tx("노트 읽기"),
+  search_notes: tx("노트 검색"),
+  get_backlinks: tx("백링크 보기"),
+  get_note_history: tx("히스토리 보기"),
+  create_note: tx("노트 만들기"),
+  append_to_note: tx("노트에 덧붙이기"),
+  update_note: tx("노트 고치기"),
+};
+
+/** Folders of the vault, for the "연결하지 않을 폴더" picker. */
+function folderPaths(nodes: TreeNode[], out: string[] = []): string[] {
+  for (const n of nodes) {
+    if (n.kind !== "folder") continue;
+    out.push(n.path);
+    if (n.children) folderPaths(n.children, out);
+  }
+  return out;
+}
+
+/** AI tools on this PC reach this vault through `notevine --mcp` (FR-MCP-01~06). */
+function McpSettings() {
+  const tree = useApp((s) => s.tree);
+  const { toast } = useApp.getState();
+  const [st, setSt] = useState<McpStatus | null>(null);
+  const [pick, setPick] = useState("");
+  const load = () => void api.mcpStatus().then(setSt).catch(() => setSt(null));
+  useEffect(load, []);
+  if (!st) return null;
+  const g = st.grant;
+  const save = async (next: McpGrant) => {
+    try {
+      setSt(await api.setMcp(next));
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    }
+  };
+  const folders = folderPaths(tree).filter((f) => !g.excluded.some((x) => x.toLowerCase() === f.toLowerCase()));
+  const q = (s: string) => `"${s}"`;
+  const launch = `${q(st.exe)} --mcp`;
+  const connections: [string, string][] = [
+    [tx("Claude Code (터미널에서 실행)"), `claude mcp add --scope user notevine -- ${launch}`],
+    [
+      tx("Claude Desktop (claude_desktop_config.json에 넣기)"),
+      JSON.stringify({ mcpServers: { notevine: { command: st.exe, args: ["--mcp"] } } }, null, 2),
+    ],
+    [tx("Codex CLI (터미널에서 실행)"), `codex mcp add notevine -- ${launch}`],
+  ];
+  const copy = (text: string) => void navigator.clipboard.writeText(text).then(() => toast(tx("복사했습니다")));
+  return (
+    <>
+      <h3 className="set-sub">{tx("외부 AI 도구 연결 (MCP)")}</h3>
+      <p className="muted small">
+        {tx("Claude Code, Claude Desktop, Codex 같은 이 PC의 AI 도구가 이 노트 폴더의 노트를 찾고 읽게 합니다. 네트워크 포트는 열지 않습니다. #비공개 노트와 아래에서 뺀 폴더는 AI 도구에 보이지 않습니다.")}
+      </p>
+      <Row label={tx("이 노트 폴더를 AI 도구에 연결")} hint={tx("켜면 연결한 AI 도구가 노트를 찾고 읽을 수 있습니다. 읽은 내용은 그 AI 서비스로 보내집니다")}>
+        <input type="checkbox" checked={g.enabled} onChange={(e) => void save({ ...g, enabled: e.target.checked })} />
+      </Row>
+      <Row
+        label={tx("노트 만들기·고치기도 허용")}
+        hint={tx("AI 도구가 쓴 내용은 히스토리에 'AI 도구'로 남아 되돌릴 수 있습니다. 지우기·이름 바꾸기·옮기기는 하지 못합니다")}
+      >
+        <input type="checkbox" disabled={!g.enabled} checked={g.write} onChange={(e) => void save({ ...g, write: e.target.checked })} />
+      </Row>
+      <Row label={tx("연결하지 않을 폴더")} hint={tx("이 폴더와 그 안의 모든 노트는 목록·검색·읽기·쓰기에서 빠집니다")}>
+        <select value={pick} onChange={(e) => setPick(e.target.value)}>
+          <option value="">{tx("폴더 선택")}</option>
+          {folders.map((f) => (
+            <option key={f} value={f}>
+              {f}
+            </option>
+          ))}
+        </select>
+        <button
+          className="btn small"
+          disabled={!pick}
+          onClick={() => {
+            void save({ ...g, excluded: [...g.excluded, pick] });
+            setPick("");
+          }}
+        >
+          {tx("빼기")}
+        </button>
+      </Row>
+      {g.excluded.length > 0 && (
+        <div className="chips pad">
+          {g.excluded.map((f) => (
+            <span key={f} className="chip">
+              {f}
+              <button title={tx("다시 연결")} onClick={() => void save({ ...g, excluded: g.excluded.filter((x) => x !== f) })}>
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {g.enabled && (
+        <>
+          <p className="muted small">{tx("쓰는 AI 도구에 아래 설정을 한 번 넣으면 연결됩니다. AI 도구는 Notevine에서 마지막으로 연 노트 폴더를 따라가므로 노트 폴더를 바꿔도 다시 넣지 않아도 됩니다(그 노트 폴더도 연결을 켜 두어야 합니다). Notevine이 꺼져 있어도 동작합니다.")}</p>
+          {connections.map(([label, text]) => (
+            <div key={label}>
+              <div className="small">{label}</div>
+              <div className="mcp-cmd">
+                <code>{text}</code>
+                <button className="btn ghost small" onClick={() => copy(text)}>
+                  {tx("복사")}
+                </button>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+      <Row label={tx("최근 AI 도구 활동")} hint={tx("도구 이름과 대상만 남기고 노트 내용은 남기지 않습니다")}>
+        <button className="btn small" onClick={load}>
+          {tx("새로 고침")}
+        </button>
+      </Row>
+      {st.activity.length === 0 ? (
+        <p className="muted small pad">{tx("아직 없습니다")}</p>
+      ) : (
+        <ul className="mcp-log pad">
+          {st.activity.map((a, i) => (
+            <li key={i} className={a.ok ? "" : "fail"}>
+              <span className="muted">
+                {new Date(a.at).toLocaleString(dateLocale(), { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+              </span>
+              <span>{MCP_TOOL_LABEL[a.tool] ?? a.tool}</span>
+              <span>{a.target}</span>
+              {!a.ok && <span>{tx("거부·실패")}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
     </>
   );
 }

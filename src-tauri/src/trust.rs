@@ -25,6 +25,19 @@ pub struct PluginGrant {
     pub hash: String,
 }
 
+/// What AI tools may do with this vault through the MCP server (`mcp.rs`).
+/// Off unless the user turns it on in this vault's settings.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct McpGrant {
+    /// Reading, listing and searching notes.
+    pub enabled: bool,
+    /// Also creating and changing notes. Counts only while `enabled` is on.
+    pub write: bool,
+    /// Vault-relative folders AI tools never see, nor anything under them.
+    pub excluded: Vec<String>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct VaultTrust {
@@ -33,6 +46,7 @@ pub struct VaultTrust {
     pub backup_minutes: u32,
     pub custom_css: bool,
     pub plugins: BTreeMap<String, PluginGrant>,
+    pub mcp: McpGrant,
 }
 
 pub struct TrustStore {
