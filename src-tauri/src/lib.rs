@@ -4,6 +4,7 @@ mod backup;
 mod canvas;
 mod commands;
 pub mod crypt;
+pub mod crypt_key;
 mod drive;
 mod error;
 mod extras;
