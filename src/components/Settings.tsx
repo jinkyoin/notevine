@@ -1066,6 +1066,29 @@ function BackupSettings() {
       <p className="muted small">
         {tx("노트 폴더를 Git 저장소로 백업합니다. 백업할 때마다 그 순간의 노트 전체가 남아 언제든 되돌릴 수 있습니다. 원격 저장소(예: GitHub 비공개 저장소)를 넣으면 그곳으로도 보내고, 다른 PC에서 백업한 변경을 받아 와 여러 PC에서 같은 노트를 쓸 수 있습니다. 검색 인덱스·히스토리 DB는 넣지 않습니다.")}
       </p>
+      <Row
+        label={tx("암호화 열쇠")}
+        hint={
+          key?.has_key
+            ? tx("이 PC에 열쇠가 있습니다. 다른 PC에서 암호화된 저장소를 받으려면 복구 코드가 필요합니다")
+            : tx("이 PC에 암호화 열쇠가 없습니다. 새로 만들거나, 다른 PC에서 만든 복구 코드를 넣으세요")
+        }
+      >
+        {key?.has_key ? (
+          <button className="btn small" disabled={busy} onClick={() => void showCode()}>
+            {tx("복구 코드 보기")}
+          </button>
+        ) : (
+          <>
+            <button className="btn small primary" disabled={busy} onClick={() => void createKey()}>
+              {tx("열쇠 만들기")}
+            </button>
+            <button className="btn small" disabled={busy} onClick={() => setKeyDlg({ kind: "import" })}>
+              {tx("복구 코드 입력")}
+            </button>
+          </>
+        )}
+      </Row>
       {st.repo && !st.trusted ? (
         <Row label={tx("저장소 확인")} hint={tx("이미 있던 Git 저장소입니다. 허용하기 전에는 이 PC에서 Git을 실행하지 않습니다")}>
           <button className="btn small primary" disabled={busy} onClick={() => void allow()}>
@@ -1121,37 +1144,19 @@ function BackupSettings() {
             }
           >
             {st.encrypted ? (
-              <>
-                <span className="small">{st.key_ok ? tx("암호화됨 · 열쇠 확인됨") : tx("암호화됨 · 이 PC에 열쇠가 없습니다")}</span>
-                {key?.has_key && (
-                  <button className="btn small" disabled={busy} onClick={() => void showCode()}>
-                    {tx("복구 코드 보기")}
-                  </button>
-                )}
-                {!key?.has_key && (
-                  <button className="btn small" disabled={busy} onClick={() => setKeyDlg({ kind: "import" })}>
-                    {tx("복구 코드 입력")}
-                  </button>
-                )}
-              </>
+              <span className="small">
+                {st.key_ok
+                  ? tx("암호화됨 · 열쇠 확인됨")
+                  : key?.has_key
+                    ? tx("암호화됨 · 이 PC의 열쇠가 이 노트 폴더와 맞지 않습니다")
+                    : tx("암호화됨 · 이 PC에 열쇠가 없습니다")}
+              </span>
             ) : key?.has_key ? (
-              <>
-                <button className="btn small primary" disabled={busy} onClick={() => void enableEncryption()}>
-                  {tx("이 노트 폴더 암호화 켜기")}
-                </button>
-                <button className="btn small" disabled={busy} onClick={() => void showCode()}>
-                  {tx("복구 코드 보기")}
-                </button>
-              </>
+              <button className="btn small primary" disabled={busy} onClick={() => void enableEncryption()}>
+                {tx("이 노트 폴더 암호화 켜기")}
+              </button>
             ) : (
-              <>
-                <button className="btn small primary" disabled={busy} onClick={() => void createKey()}>
-                  {tx("열쇠 만들기")}
-                </button>
-                <button className="btn small" disabled={busy} onClick={() => setKeyDlg({ kind: "import" })}>
-                  {tx("복구 코드 입력")}
-                </button>
-              </>
+              <span className="small muted">{tx("먼저 위에서 열쇠를 만들거나 복구 코드를 넣으세요")}</span>
             )}
           </Row>
           {movedAside !== null && (

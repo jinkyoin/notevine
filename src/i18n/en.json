@@ -969,5 +969,11 @@
  "폴더 이름": "Folder name",
  "받는 중…": "Downloading…",
  "받기": "Get",
- "깃 git clone 클론 복제 저장소 내려받기 받기 백업 복원": "git clone repository download get backup restore"
+ "깃 git clone 클론 복제 저장소 내려받기 받기 백업 복원": "git clone repository download get backup restore",
+ "암호화됨 · 이 PC의 열쇠가 이 노트 폴더와 맞지 않습니다": "Encrypted · This PC's key does not match this note folder",
+ "먼저 위에서 열쇠를 만들거나 복구 코드를 넣으세요": "First create a key above or enter a recovery code",
+ "암호화 열쇠": "Encryption key",
+ "이 PC에 열쇠가 있습니다. 다른 PC에서 암호화된 저장소를 받으려면 복구 코드가 필요합니다": "This PC has a key. You need the recovery code to get an encrypted repository on another PC",
+ "이 PC에 암호화 열쇠가 없습니다. 새로 만들거나, 다른 PC에서 만든 복구 코드를 넣으세요": "This PC has no encryption key. Create one, or enter a recovery code made on another PC",
+ "이 PC에 암호화 열쇠가 없습니다. 암호화된 저장소를 받으려면 먼저 복구 코드를 넣어 주세요": "This PC has no encryption key. To get an encrypted repository, enter the recovery code first"
 }

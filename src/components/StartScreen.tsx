@@ -6,6 +6,7 @@ import { api, errorMessage, type DriveRoot, type RailFile, type RecentVault } fr
 import { useApp } from "../store";
 import { samePath } from "../lib/rail";
 import { takeStartClone } from "../lib/startClone";
+import { CryptKeyDialog } from "./CryptKeyDialog";
 import { suggestFolderName } from "../lib/cloneName";
 
 import { tx } from "../i18n";
@@ -27,6 +28,14 @@ function CloneDialog({ onClose, onDone }: { onClose: () => void; onDone: (path: 
   const [nameEdited, setNameEdited] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [hasKey, setHasKey] = useState<boolean | null>(null);
+  const [importing, setImporting] = useState(false);
+  const loadKey = () =>
+    void api
+      .cryptKeyStatus()
+      .then((k) => setHasKey(k.has_key))
+      .catch(() => setHasKey(null));
+  useEffect(loadKey, []);
   const changeUrl = (v: string) => {
     setUrl(v);
     if (!nameEdited) setName(suggestFolderName(v));
@@ -77,6 +86,23 @@ function CloneDialog({ onClose, onDone }: { onClose: () => void; onDone: (path: 
             setNameEdited(true);
           }}
         />
+        {hasKey === false && (
+          <p className="muted small">
+            {tx("이 PC에 암호화 열쇠가 없습니다. 암호화된 저장소를 받으려면 먼저 복구 코드를 넣어 주세요")}{" "}
+            <button className="btn small" disabled={busy} onClick={() => setImporting(true)}>
+              {tx("복구 코드 입력")}
+            </button>
+          </p>
+        )}
+        {importing && (
+          <CryptKeyDialog
+            mode={{ kind: "import" }}
+            onClose={() => {
+              setImporting(false);
+              loadKey();
+            }}
+          />
+        )}
         {err && <p className="error small">{err}</p>}
         <div className="modal-actions">
           <button className="btn ghost" disabled={busy} onClick={onClose}>
@@ -188,7 +214,10 @@ export function StartScreen({ adding = false }: { adding?: boolean }) {
 
   return (
     <div className="start">
-      {cloning && <CloneDialog onClose={() => setCloning(false)} onDone={async (path) => (setCloning(false), await openVault(path))} />}
+      {cloning && <CloneDialog onClose={() => setCloning(false)} onDone={async (path) => {
+          await openVault(path);
+          setCloning(false);
+        }} />}
       <div className="start-card">
         {adding && (
           <button className="btn ghost small start-cancel" title="Esc" onClick={cancelAdding}>
