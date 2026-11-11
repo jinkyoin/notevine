@@ -6,5 +6,8 @@ fn main() {
     if notevine_lib::mcp_requested(&args) {
         std::process::exit(notevine_lib::run_mcp(&args));
     }
+    if notevine_lib::git_tool_requested(&args) {
+        std::process::exit(notevine_lib::run_git_tool(&args));
+    }
     notevine_lib::run()
 }

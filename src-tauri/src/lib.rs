@@ -10,6 +10,7 @@ mod error;
 mod extras;
 mod file_open;
 mod filetext;
+pub mod git_filter;
 mod history;
 mod index;
 mod mcp;
@@ -76,6 +77,18 @@ pub fn mcp_requested(args: &[String]) -> bool {
 /// Runs the MCP server until the AI tool closes it; returns the exit code.
 pub fn run_mcp(args: &[String]) -> i32 {
     mcp::serve(args)
+}
+
+/// `notevine --git-filter | --git-textconv | --git-merge`: Git runs these as its filter,
+/// diff text converter and merge driver for an encrypted backup. Like `--mcp`, `main`
+/// checks this before [`run`] so no window or single-instance hand-off happens.
+pub fn git_tool_requested(args: &[String]) -> bool {
+    git_filter::requested(args)
+}
+
+/// Runs the Git tool; returns the exit code (0 done, 1 merge conflict, 2 error).
+pub fn run_git_tool(args: &[String]) -> i32 {
+    git_filter::run(args)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
