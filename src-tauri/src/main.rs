@@ -3,11 +3,11 @@
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    if notevine_lib::mcp_requested(&args) {
-        std::process::exit(notevine_lib::run_mcp(&args));
-    }
     if notevine_lib::git_tool_requested(&args) {
         std::process::exit(notevine_lib::run_git_tool(&args));
+    }
+    if notevine_lib::mcp_requested(&args) {
+        std::process::exit(notevine_lib::run_mcp(&args));
     }
     notevine_lib::run()
 }

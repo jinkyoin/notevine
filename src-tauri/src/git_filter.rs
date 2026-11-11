@@ -11,6 +11,13 @@ use crate::crypt::{self, MasterKey};
 use crate::error::{AppError, AppResult};
 
 const MAGIC: &[u8] = b"NVENC";
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+#[cfg(windows)]
+const NO_HOOKS: &str = "core.hooksPath=NUL";
+#[cfg(not(windows))]
+const NO_HOOKS: &str = "core.hooksPath=/dev/null";
+
 /// Most bytes one pkt-line may carry (65520 minus the 4-digit length).
 const MAX_PKT: usize = 65516;
 
@@ -35,7 +42,7 @@ fn read_pkt(r: &mut impl Read) -> AppResult<Option<Pkt>> {
     if n == 0 {
         return Ok(Some(Pkt::Flush));
     }
-    if n < 4 {
+    if !(4..=MAX_PKT + 4).contains(&n) {
         return Err(bad_protocol());
     }
     let mut data = vec![0u8; n - 4];
@@ -86,24 +93,27 @@ fn no_key() -> AppError {
     AppError::System("암호화 열쇠가 이 PC에 없어 암호화·복호화할 수 없습니다".into())
 }
 
-/// A file starting with the magic is encrypted data (maybe of a newer format): never
-/// wrapped again, never taken for plain text.
-fn has_magic(data: &[u8]) -> bool {
-    data.starts_with(MAGIC)
-}
-
+/// Only data that is really ours (full header, known version) is left as it is; any
+/// other input, even one that happens to start with the magic, is plain text to encrypt.
 fn clean(data: Vec<u8>, key: Option<&MasterKey>) -> AppResult<Vec<u8>> {
-    if has_magic(&data) {
+    if crypt::is_encrypted(&data) {
         return Ok(data);
     }
     Ok(crypt::encrypt(key.ok_or_else(no_key)?, &data))
 }
 
+/// Ours: decrypt (a failure is an error). Magic without a valid header (a newer format)
+/// is an error too, never passed through. Anything else is plain text, as it is.
 fn smudge(data: Vec<u8>, key: Option<&MasterKey>) -> AppResult<Vec<u8>> {
-    if !has_magic(&data) {
-        return Ok(data);
+    if crypt::is_encrypted(&data) {
+        return crypt::decrypt(key.ok_or_else(no_key)?, &data);
     }
-    crypt::decrypt(key.ok_or_else(no_key)?, &data)
+    if data.starts_with(MAGIC) {
+        return Err(AppError::System(
+            "알 수 없는 형식의 암호화 파일입니다. Notevine을 최신 버전으로 업데이트하세요".into(),
+        ));
+    }
+    Ok(data)
 }
 
 /// Git's long-running filter protocol (version 2) with the `clean` and `smudge` commands.
@@ -115,9 +125,12 @@ pub fn run_process_filter(mut input: impl Read, mut output: impl Write, key: Opt
     write_text(&mut output, "git-filter-server")?;
     write_text(&mut output, "version=2")?;
     write_flush(&mut output)?;
-    read_list(&mut input)?; // the client's capabilities
-    write_text(&mut output, "capability=clean")?;
-    write_text(&mut output, "capability=smudge")?;
+    let offered = read_list(&mut input)?.unwrap_or_default();
+    for cap in ["clean", "smudge"] {
+        if offered.iter().any(|l| l.strip_prefix("capability=") == Some(cap)) {
+            write_text(&mut output, &format!("capability={cap}"))?;
+        }
+    }
     write_flush(&mut output)?;
     output.flush()?;
 
@@ -152,7 +165,9 @@ pub fn run_process_filter(mut input: impl Read, mut output: impl Write, key: Opt
 
 /// Writes the readable text of a (possibly encrypted) file, for `git diff`.
 pub fn textconv(path: &Path, key: Option<&MasterKey>, mut out: impl Write) -> AppResult<()> {
-    let data = smudge(std::fs::read(path)?, key)?;
+    // A working-tree file Git compares is plain text, even if it starts with the magic.
+    let data = std::fs::read(path)?;
+    let data = if crypt::is_encrypted(&data) { smudge(data, key)? } else { data };
     out.write_all(&data)?;
     Ok(())
 }
@@ -168,22 +183,30 @@ pub fn merge_driver(base: &Path, ours: &Path, theirs: &Path, key: &MasterKey) ->
     if [&b, &o, &t].iter().any(|v| std::str::from_utf8(v).is_err()) {
         return Ok(false);
     }
-    let dir = tempfile::tempdir()?;
+    // Next to `ours` (inside the repository), so a crash never leaves plain copies in %TEMP%.
+    let parent = ours.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let dir = tempfile::tempdir_in(parent)?;
     let (fb, fo, ft) = (dir.path().join("base"), dir.path().join("ours"), dir.path().join("theirs"));
     std::fs::write(&fb, &b)?;
     std::fs::write(&fo, &o)?;
     std::fs::write(&ft, &t)?;
 
+    // Same hardening as backup.rs `git()`: a repository's own settings never run commands.
     let mut c = std::process::Command::new("git");
-    c.args(["merge-file", "--stdout", "-L", "이 PC", "-L", "공통", "-L", "다른 PC"])
+    c.args(["-c", "core.quotepath=false"])
+        .args(["-c", "core.fsmonitor=false", "-c", NO_HOOKS, "-c", "protocol.ext.allow=never"])
+        .args(["merge-file", "--stdout", "-L", "이 PC", "-L", "공통", "-L", "다른 PC"])
         .arg(&fo)
         .arg(&fb)
         .arg(&ft)
+        .current_dir(dir.path())
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("LC_ALL", "C")
         .stdin(std::process::Stdio::null());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        c.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        c.creation_flags(CREATE_NO_WINDOW);
     }
     let out = c.output().map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
@@ -345,13 +368,50 @@ mod tests {
     }
 
     #[test]
-    fn clean_passes_through_anything_with_the_magic() {
+    fn clean_passes_only_real_ciphertext_and_smudge_rejects_unknown_magic() {
         let key = MasterKey::generate();
+        let enc = crypt::encrypt(&key, b"x");
+        let (_, r) = run_filter(&[("clean", &enc)], Some(&key));
+        assert_eq!(r[0].1, enc);
         let future = b"NVENC\x09whatever".to_vec();
-        let (_, r) = run_filter(&[("clean", &future)], Some(&key));
-        assert_eq!(r[0].1, future);
         let (_, r) = run_filter(&[("smudge", &future)], Some(&key));
         assert_eq!(r[0].0, "status=error");
+    }
+
+    #[test]
+    fn clean_encrypts_plain_text_that_starts_with_the_magic() {
+        let key = MasterKey::generate();
+        let plain = b"NVENC vs x264\n";
+        let (_, r) = run_filter(&[("clean", plain)], Some(&key));
+        assert!(crypt::is_encrypted(&r[0].1));
+        let (_, r2) = run_filter(&[("smudge", &r[0].1)], Some(&key));
+        assert_eq!(r2[0].1, plain);
+    }
+
+    #[test]
+    fn oversized_pkt_is_a_protocol_error() {
+        assert!(read_pkt(&mut &b"fff1"[..]).is_err()); // 65521
+        assert!(read_pkt(&mut &b"0003"[..]).is_err());
+        let mut ok = b"fff0".to_vec();
+        ok.extend(vec![b'x'; MAX_PKT]);
+        assert!(matches!(read_pkt(&mut ok.as_slice()), Ok(Some(Pkt::Data(_)))));
+    }
+
+    #[test]
+    fn handshake_offers_only_what_git_offered() {
+        let mut input = Vec::new();
+        for l in ["git-filter-client\n", "version=2\n"] {
+            input.extend(pkt(l.as_bytes()));
+        }
+        input.extend(b"0000");
+        input.extend(pkt(b"capability=smudge\n"));
+        input.extend(pkt(b"capability=delay\n"));
+        input.extend(b"0000");
+        let mut out = Vec::new();
+        run_process_filter(input.as_slice(), &mut out, None).unwrap();
+        let mut r = out.as_slice();
+        read_list(&mut r).unwrap();
+        assert_eq!(read_list(&mut r).unwrap().unwrap(), ["capability=smudge"]);
     }
 
     #[test]
