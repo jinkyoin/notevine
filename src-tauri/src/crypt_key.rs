@@ -21,15 +21,39 @@ fn sys(msg: impl Into<String>) -> AppError {
     AppError::System(msg.into())
 }
 
-pub struct OsKeyStore;
+pub struct OsKeyStore {
+    user: &'static str,
+}
 
-fn entry() -> AppResult<keyring::Entry> {
-    keyring::Entry::new(SERVICE, USER).map_err(|e| sys(format!("자격 증명 저장소를 열지 못했습니다: {e}")))
+impl OsKeyStore {
+    pub fn new() -> OsKeyStore {
+        OsKeyStore { user: USER }
+    }
+
+    /// 시험이 진짜 열쇠를 건드리지 않도록 다른 사용자 이름으로 만든다.
+    #[cfg(test)]
+    pub(crate) fn with_user(user: &'static str) -> OsKeyStore {
+        OsKeyStore { user }
+    }
+
+    fn entry(&self) -> AppResult<keyring::Entry> {
+        entry(self.user)
+    }
+}
+
+impl Default for OsKeyStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn entry(user: &str) -> AppResult<keyring::Entry> {
+    keyring::Entry::new(SERVICE, user).map_err(|e| sys(format!("자격 증명 저장소를 열지 못했습니다: {e}")))
 }
 
 impl KeyStore for OsKeyStore {
     fn load(&self) -> AppResult<Option<MasterKey>> {
-        match entry()?.get_password() {
+        match self.entry()?.get_password() {
             Ok(s) if s.trim().is_empty() => Ok(None),
             Ok(s) => parse_recovery_code(&s).map(Some),
             Err(keyring::Error::NoEntry) => Ok(None),
@@ -38,7 +62,7 @@ impl KeyStore for OsKeyStore {
     }
 
     fn save(&self, k: &MasterKey) -> AppResult<()> {
-        entry()?.set_password(&recovery_code(k)).map_err(|e| sys(format!("열쇠를 저장하지 못했습니다: {e}")))
+        self.entry()?.set_password(&recovery_code(k)).map_err(|e| sys(format!("열쇠를 저장하지 못했습니다: {e}")))
     }
 }
 
@@ -58,8 +82,10 @@ impl KeyStore for MemoryKeyStore {
 }
 
 /// 잘못된 복구 코드를 `load`에서 오류로 돌려주기 위한 저장소.
+#[cfg(debug_assertions)]
 struct FailingKeyStore(String);
 
+#[cfg(debug_assertions)]
 impl KeyStore for FailingKeyStore {
     fn load(&self) -> AppResult<Option<MasterKey>> {
         Err(sys(self.0.clone()))
@@ -70,21 +96,32 @@ impl KeyStore for FailingKeyStore {
     }
 }
 
-pub fn key_store() -> Box<dyn KeyStore> {
-    if std::env::var("NOTEVINE_KEY_STORE").as_deref() == Ok("test") {
-        return match std::env::var("NOTEVINE_TEST_KEY") {
-            Ok(code) => match parse_recovery_code(&code) {
-                Ok(k) => {
-                    let s = MemoryKeyStore::default();
-                    let _ = s.save(&k);
-                    Box::new(s)
-                }
-                Err(e) => Box::new(FailingKeyStore(e.to_string())),
-            },
-            Err(_) => Box::new(MemoryKeyStore::default()),
-        };
+/// 시험용 메모리 저장소 훅은 디버그 빌드에만 들어간다. 릴리스에서는 환경 변수로 열쇠를 바꿔치기할 수 없다.
+#[cfg(debug_assertions)]
+fn test_store() -> Option<Box<dyn KeyStore>> {
+    if std::env::var("NOTEVINE_KEY_STORE").as_deref() != Ok("test") {
+        return None;
     }
-    Box::new(OsKeyStore)
+    Some(match std::env::var("NOTEVINE_TEST_KEY") {
+        Err(std::env::VarError::NotPresent) => Box::new(MemoryKeyStore::default()),
+        Err(e) => Box::new(FailingKeyStore(format!("NOTEVINE_TEST_KEY를 읽지 못했습니다: {e}"))),
+        Ok(code) => match parse_recovery_code(&code) {
+            Ok(k) => {
+                let s = MemoryKeyStore::default();
+                let _ = s.save(&k);
+                Box::new(s)
+            }
+            Err(e) => Box::new(FailingKeyStore(e.to_string())),
+        },
+    })
+}
+
+pub fn key_store() -> Box<dyn KeyStore> {
+    #[cfg(debug_assertions)]
+    if let Some(s) = test_store() {
+        return s;
+    }
+    Box::new(OsKeyStore::new())
 }
 
 #[cfg(test)]
@@ -95,8 +132,34 @@ mod tests {
 
     static ENV_GUARD: Mutex<()> = Mutex::new(());
 
+    /// 환경 변수를 정하고, 버려질 때(패닉 포함) 지운다. 뮤텍스도 함께 쥔다.
+    struct EnvGuard(#[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
+
+    impl EnvGuard {
+        fn new(store: Option<&str>, key: Option<&str>) -> EnvGuard {
+            let g = EnvGuard(ENV_GUARD.lock().unwrap_or_else(|e| e.into_inner()));
+            clear_env();
+            // SAFETY: 환경 변수를 만지는 시험은 ENV_GUARD로 한 번에 하나만 돈다.
+            unsafe {
+                if let Some(v) = store {
+                    std::env::set_var("NOTEVINE_KEY_STORE", v);
+                }
+                if let Some(v) = key {
+                    std::env::set_var("NOTEVINE_TEST_KEY", v);
+                }
+            }
+            g
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            clear_env();
+        }
+    }
+
     fn clear_env() {
-        // SAFETY: 환경 변수를 만지는 시험은 ENV_GUARD로 한 번에 하나만 돈다.
+        // SAFETY: 호출하는 쪽이 ENV_GUARD를 쥐고 있다.
         unsafe {
             std::env::remove_var("NOTEVINE_KEY_STORE");
             std::env::remove_var("NOTEVINE_TEST_KEY");
@@ -114,53 +177,40 @@ mod tests {
 
     #[test]
     fn env_override_supplies_the_key() {
-        let _g = ENV_GUARD.lock().unwrap_or_else(|e| e.into_inner());
         let k = MasterKey::generate();
-        unsafe {
-            std::env::set_var("NOTEVINE_KEY_STORE", "test");
-        }
-        unsafe {
-            std::env::set_var("NOTEVINE_TEST_KEY", recovery_code(&k));
-        }
+        let _g = EnvGuard::new(Some("test"), Some(&recovery_code(&k)));
         let got = key_store().load().unwrap().unwrap();
-        clear_env();
         assert_eq!(got.as_bytes(), k.as_bytes());
     }
 
     #[test]
     fn test_store_without_key_is_empty() {
-        let _g = ENV_GUARD.lock().unwrap_or_else(|e| e.into_inner());
-        clear_env();
-        unsafe {
-            std::env::set_var("NOTEVINE_KEY_STORE", "test");
-        }
-        let got = key_store().load();
-        clear_env();
-        assert!(got.unwrap().is_none());
+        let _g = EnvGuard::new(Some("test"), None);
+        assert!(key_store().load().unwrap().is_none());
     }
 
     #[test]
     fn test_store_with_invalid_key_errors() {
-        let _g = ENV_GUARD.lock().unwrap_or_else(|e| e.into_inner());
-        unsafe {
-            std::env::set_var("NOTEVINE_KEY_STORE", "test");
-        }
-        unsafe {
-            std::env::set_var("NOTEVINE_TEST_KEY", "not a recovery code");
-        }
-        let got = key_store().load();
-        clear_env();
-        assert!(got.is_err());
+        let _g = EnvGuard::new(Some("test"), Some("not a recovery code"));
+        assert!(key_store().load().is_err());
     }
 
     #[test]
-    #[ignore = "실제 자격 증명 관리자를 건드린다. 수동 실행"]
+    #[ignore = "실제 자격 증명 관리자를 건드린다(시험용 사용자 이름). 수동 실행"]
     fn os_store_roundtrip() {
-        let _g = ENV_GUARD.lock().unwrap_or_else(|e| e.into_inner());
-        clear_env();
-        let s = OsKeyStore;
+        let _g = EnvGuard::new(None, None);
+        let s = OsKeyStore::with_user("git-encryption-key-test");
         let k = MasterKey::generate();
-        s.save(&k).unwrap();
-        assert_eq!(s.load().unwrap().unwrap().as_bytes(), k.as_bytes());
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            s.save(&k).unwrap();
+            assert_eq!(s.load().unwrap().unwrap().as_bytes(), k.as_bytes());
+        }));
+        match s.entry().unwrap().delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => {}
+            Err(e) => panic!("시험 자격 증명을 지우지 못했습니다: {e}"),
+        }
+        if let Err(p) = result {
+            std::panic::resume_unwind(p);
+        }
     }
 }
