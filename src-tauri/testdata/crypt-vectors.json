@@ -1,0 +1,23 @@
+[
+  {
+    "cipher_hex": "4e56454e4301549aafed62748c73069242e16e7b745d5ccce2acfe8c58b3",
+    "key_id": "549aafed62748c73",
+    "master_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "plain_hex": "",
+    "recovery_code": "000G40-R40M30-E20918-5GR38E-1W8124-GK2GAH-C5RR34-D1P70X-3RFP63-8"
+  },
+  {
+    "cipher_hex": "4e56454e4301549aafed62748c73c5a518acc640930638c82c9d1d1244ef9f988d778c54dbaa0a",
+    "key_id": "549aafed62748c73",
+    "master_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "plain_hex": "2320ed9a8cec9d980a",
+    "recovery_code": "000G40-R40M30-E20918-5GR38E-1W8124-GK2GAH-C5RR34-D1P70X-3RFP63-8"
+  },
+  {
+    "cipher_hex": "4e56454e4301549aafed62748c73b76b8717494f867b888617681543c63ab03fe558bb1bb23060",
+    "key_id": "549aafed62748c73",
+    "master_hex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "plain_hex": "6c696e65206f6e650a",
+    "recovery_code": "000G40-R40M30-E20918-5GR38E-1W8124-GK2GAH-C5RR34-D1P70X-3RFP63-8"
+  }
+]

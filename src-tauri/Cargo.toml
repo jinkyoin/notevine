@@ -43,6 +43,11 @@ quick-xml = "0.42"
 keyring = { version = "3", features = ["windows-native"] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# Git backup encryption (docs/암호화-형식.md)
+aes-siv = "0.7"
+hkdf = "0.12"
+sha2 = "0.10"
+getrandom = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

@@ -3,6 +3,7 @@ mod ai_api;
 mod backup;
 mod canvas;
 mod commands;
+pub mod crypt;
 mod drive;
 mod error;
 mod extras;
