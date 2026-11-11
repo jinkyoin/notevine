@@ -478,6 +478,13 @@ button {
 .tree-row:hover {
   background: var(--bg-hover);
 }
+.tree:focus {
+  outline: none;
+}
+/* The row Delete applies to, while the keyboard is in the tree. */
+.tree:focus-within .tree-row.selected {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
 .tree-row.active {
   background: var(--bg-active);
   color: var(--accent);

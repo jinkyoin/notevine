@@ -70,6 +70,8 @@ export interface EditorApi {
   replace(from: number, to: number, text: string, expect: string): boolean;
   /** Replaces the whole text via `fn(text, cursor)` and moves the cursor; an undoable edit. */
   rewrite(fn: (text: string, cursor: number) => { text: string; cursor: number }): void;
+  /** Puts the keyboard in the note's body (edit mode). */
+  focus(): void;
 }
 
 export type Modal = "palette" | "quickMemo" | "template" | "settings" | "deleted" | "mdHelp" | "manual" | "clip" | "insertTemplate" | null;

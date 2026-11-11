@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TreeNode } from "../api";
-import { ancestors, baseName, countNotes, findNode, moveTargets, noteTitle, parentPath, remapPath } from "./tree";
+import { ancestors, baseName, countNotes, findNode, moveTargets, noteTitle, parentPath, remapPath, treeKeyAction } from "./tree";
 
 const tree: TreeNode[] = [
   {
@@ -66,5 +66,18 @@ describe("tree helpers", () => {
     expect(remapPath("a/b.md", "a", "x")).toBe("x/b.md");
     expect(remapPath("a", "a", "x")).toBe("x");
     expect(remapPath("ab/c.md", "a", "x")).toBe("ab/c.md");
+  });
+});
+
+describe("treeKeyAction", () => {
+  it("deletes the selected row on Delete and opens it on Enter", () => {
+    expect(treeKeyAction("Delete", false, "a.md")).toBe("delete");
+    expect(treeKeyAction("Enter", false, "a.md")).toBe("open");
+  });
+  it("leaves typing in the name box and an empty selection alone", () => {
+    expect(treeKeyAction("Delete", true, "a.md")).toBeNull();
+    expect(treeKeyAction("Enter", true, "a.md")).toBeNull();
+    expect(treeKeyAction("Delete", false, null)).toBeNull();
+    expect(treeKeyAction("Backspace", false, "a.md")).toBeNull();
   });
 });

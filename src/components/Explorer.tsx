@@ -4,7 +4,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { api, type TreeNode } from "../api";
 import { useApp } from "../store";
-import { baseName, countNotes, findNode, noteTitle, parentPath } from "../lib/tree";
+import { baseName, countNotes, findNode, noteTitle, parentPath, treeKeyAction } from "../lib/tree";
 import { paraActions, paraInfo } from "../lib/para";
 import { openProps } from "./TabBar";
 import { MODE_LABEL } from "./FolderView";
@@ -40,6 +40,14 @@ function dropFiles(e: React.DragEvent, dir: string) {
   void useApp.getState().importFiles(dir, files, folders);
 }
 
+/** Asks, then moves a note, file or folder to the trash. True when it was asked to go. */
+async function confirmRemove(node: TreeNode): Promise<boolean> {
+  const what = node.kind === "folder" ? tx("폴더 \"{0}\"와 안의 모든 파일", node.name) : `"${baseName(node.path)}"`;
+  if (!(await ask(tx("{0}을(를) 휴지통으로 옮길까요?", what), { title: tx("삭제"), kind: "warning" }))) return false;
+  await useApp.getState().remove(node.path);
+  return true;
+}
+
 export function Explorer() {
   const tree = useApp((s) => s.tree);
   const createNote = useApp((s) => s.createNote);
@@ -48,6 +56,30 @@ export function Explorer() {
   const move = useApp((s) => s.move);
   const [menu, setMenu] = useState<Menu | null>(null);
   const [moving, setMoving] = useState<string | null>(null);
+  // The row clicked last. Focus stays in the tree after a click, so Delete applies to it.
+  const [selected, setSelected] = useState<string | null>(null);
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const inInput = (e.target as HTMLElement).tagName === "INPUT";
+    const action = treeKeyAction(e.key, inInput, selected);
+    if (!action) return;
+    const node = findNode(tree, selected!);
+    if (!node) return setSelected(null);
+    e.preventDefault();
+    if (action === "delete") {
+      void confirmRemove(node).then((gone) => gone && setSelected(null));
+      return;
+    }
+    const { openPath, openNote, toggleFolder, editorApi } = useApp.getState();
+    if (node.kind === "folder") toggleFolder(node.path);
+    else if (node.kind === "file") openFile(node.path);
+    else if (openPath === node.path) editorApi?.focus();
+    else {
+      // Leaving the tree lets the editor take the keyboard once the note is loaded.
+      (e.currentTarget as HTMLElement).blur();
+      openNote(node.path);
+    }
+  };
 
   return (
     <div className="explorer">
@@ -62,6 +94,9 @@ export function Explorer() {
       </div>
       <div
         className="tree"
+        // Focusable, so a click on a row keeps the keyboard here (Delete).
+        tabIndex={0}
+        onKeyDown={onKeyDown}
         onContextMenu={(e) => {
           e.preventDefault();
           setMenu({ x: e.clientX, y: e.clientY, node: null });
@@ -78,7 +113,7 @@ export function Explorer() {
       >
         {editing?.mode === "new-folder" && editing.parent === "" && <NewFolderRow parent="" depth={0} project={editing.project} />}
         {tree.map((n) => (
-          <Row key={n.path} node={n} depth={0} onMenu={setMenu} />
+          <Row key={n.path} node={n} depth={0} onMenu={setMenu} selected={selected} onSelect={setSelected} />
         ))}
         {tree.length === 0 && <p className="muted small pad">{tx("노트가 없습니다. ＋로 새 노트를 만드세요.")}</p>}
       </div>
@@ -99,7 +134,21 @@ function Chevron({ open }: { open: boolean }) {
 
 
 /** `color` comes from the nearest colored folder above; a folder's own color wins. */
-function Row({ node, depth, onMenu, color }: { node: TreeNode; depth: number; onMenu: (m: Menu) => void; color?: string }) {
+function Row({
+  node,
+  depth,
+  onMenu,
+  color,
+  selected,
+  onSelect,
+}: {
+  node: TreeNode;
+  depth: number;
+  onMenu: (m: Menu) => void;
+  color?: string;
+  selected: string | null;
+  onSelect: (path: string) => void;
+}) {
   const own = useApp((s) => (node.kind === "folder" ? s.config.folder_colors?.[node.path] : undefined));
   const shown = own ?? color;
   const expanded = useApp((s) => s.expanded.has(node.path));
@@ -121,6 +170,7 @@ function Row({ node, depth, onMenu, color }: { node: TreeNode; depth: number; on
           "tree-row",
           node.kind,
           openPath === node.path ? "active" : "",
+          selected === node.path ? "selected" : "",
           dropHover ? "drop-target" : "",
         ].join(" ")}
         style={{ paddingLeft: 8 + depth * 14, color: shown }}
@@ -161,9 +211,15 @@ function Row({ node, depth, onMenu, color }: { node: TreeNode; depth: number; on
             : // Other files open on a double click, so a single click (or a drag to the AI box)
               // doesn't start Excel or Hangul.
               { onDoubleClick: () => openFile(node.path) })}
+        // After the spread: a note's openProps has its own onMouseDown, which would replace this.
+        onMouseDown={(e) => {
+          onSelect(node.path);
+          if (node.kind === "note" && e.button === 1) e.preventDefault(); // as openProps does
+        }}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
+          onSelect(node.path);
           onMenu({ x: e.clientX, y: e.clientY, node });
         }}
         title={
@@ -190,7 +246,7 @@ function Row({ node, depth, onMenu, color }: { node: TreeNode; depth: number; on
             <NewFolderRow parent={node.path} depth={depth + 1} project={editing.project} />
           )}
           {node.children?.map((c) => (
-            <Row key={c.path} node={c} depth={depth + 1} onMenu={onMenu} color={shown} />
+            <Row key={c.path} node={c} depth={depth + 1} onMenu={onMenu} color={shown} selected={selected} onSelect={onSelect} />
           ))}
         </>
       )}
@@ -263,7 +319,7 @@ function NewFolderRow({ parent, depth, project }: { parent: string; depth: numbe
 }
 
 function ContextMenu({ menu, onClose, onMove }: { menu: Menu; onClose: () => void; onMove: (path: string) => void }) {
-  const { createNote, setEditing, remove, toggleFolder, toast, setVersionView, setModal } = useApp.getState();
+  const { createNote, setEditing, toggleFolder, toast, setVersionView, setModal } = useApp.getState();
   const node = menu.node;
   const folderColor = node?.kind === "folder" ? useApp.getState().config.folder_colors?.[node.path] : undefined;
   const dir = !node ? "" : node.kind === "folder" ? node.path : parentPath(node.path);
@@ -351,10 +407,7 @@ function ContextMenu({ menu, onClose, onMove }: { menu: Menu; onClose: () => voi
       {
         label: tx("삭제"),
         danger: true,
-        run: async () => {
-          const what = isFolder ? tx("폴더 \"{0}\"와 안의 모든 파일", node.name) : `"${baseName(node.path)}"`;
-          if (await ask(tx("{0}을(를) 휴지통으로 옮길까요?", what), { title: tx("삭제"), kind: "warning" })) remove(node.path);
-        },
+        run: () => void confirmRemove(node),
       },
     ]);
   }

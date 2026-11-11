@@ -62,3 +62,13 @@ export function moveTargets(nodes: TreeNode[], path: string): string[] {
   walk(nodes);
   return out;
 }
+
+/**
+ * What a key pressed in the file tree does: Delete moves the selected row to the trash,
+ * Enter opens it (a note: with the cursor in its body). Keys typed into the tree's name
+ * box (new folder, rename) are that box's own.
+ */
+export function treeKeyAction(key: string, inInput: boolean, selected: string | null): "delete" | "open" | null {
+  if (inInput || !selected) return null;
+  return key === "Delete" ? "delete" : key === "Enter" ? "open" : null;
+}

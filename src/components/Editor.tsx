@@ -407,6 +407,9 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
             });
             view.focus();
           },
+          focus: () => {
+            if (view && !readModeRef.current) view.focus();
+          },
         });
         setEditText((fn) => {
           if (!view) return false;
@@ -417,7 +420,9 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
           return true;
         });
         // A new note opens with its name being typed in the tree; don't steal that focus.
-        if (!useApp.getState().editing && !readModeRef.current) view.focus();
+        // Nor after a click in the file tree: the keyboard stays there (Delete on the row).
+        const inTree = document.activeElement?.closest(".tree") != null;
+        if (!useApp.getState().editing && !readModeRef.current && !inTree) view.focus();
       })
       .catch((e) => !disposed && setLoadError(errorMessage(e)));
 
