@@ -16,6 +16,17 @@ export function toggleWrap(state: EditorState, mark: string, close = mark): Tran
     if (range.empty) {
       const word = state.wordAt(range.head);
       if (word) ({ from, to } = word);
+    } else {
+      // Markdown ignores a mark with a space on its inner side ("** 굵게**"), so spaces
+      // at the edges of the selection stay outside the marks.
+      const text = state.sliceDoc(from, to);
+      const lead = text.length - text.trimStart().length;
+      const trail = text.length - text.trimEnd().length;
+      if (lead === text.length) from = to;
+      else {
+        from += lead;
+        to -= trail;
+      }
     }
     const before = state.sliceDoc(from - mark.length, from);
     const after = state.sliceDoc(to, to + close.length);

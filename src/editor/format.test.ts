@@ -28,6 +28,11 @@ describe("format", () => {
     expect(run(st("a [**bc**] d"), (s) => toggleWrap(s, "**"))).toMatchObject({ doc: "a bc d", sel: "bc" });
   });
 
+  it("keeps spaces at the edges of the selection outside the marks", () => {
+    expect(run(st("a[ 품질 관리 ]b"), (s) => toggleWrap(s, "~~"))).toMatchObject({ doc: "a ~~품질 관리~~ b", sel: "품질 관리" });
+    expect(run(st("[  ]"), (s) => toggleWrap(s, "**")).doc).toBe("  ****");
+  });
+
   it("wraps the word at the cursor, or inserts a pair", () => {
     expect(run(st("hello wo|rld"), (s) => toggleWrap(s, "*")).doc).toBe("hello *world*");
     const r = run(st("a | b"), (s) => toggleWrap(s, "~~"));
