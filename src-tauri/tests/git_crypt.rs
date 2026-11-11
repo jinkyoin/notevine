@@ -11,7 +11,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use chrono::{DateTime, Local, TimeZone};
 use notevine_lib::backup::{
-    backup_in, backup_with_exe, clone_in, enable_encryption_in, init_in, set_remote_in, status_with_key,
+    backup_in, backup_with_exe, clone_in, enable_encryption_in, init_in, refresh_filter, set_remote_in, status_with_key,
 };
 use notevine_lib::crypt::{CRYPT_FILE, MasterKey, crypt_file_text, recovery_code};
 
@@ -401,7 +401,8 @@ fn a_filter_without_the_key_commits_nothing() {
     }
     // The app has the key, the filter Git starts does not: Git itself must refuse.
     let _env = KeyEnv::new(None);
-    assert!(backup_with_exe(&a, "백업", Some(&key), exe()).is_err());
+    let e = backup_with_exe(&a, "백업", Some(&key), exe()).unwrap_err().to_string();
+    assert!(e.starts_with("Git 오류: ") && e.contains("암호화 열쇠가 이 PC에 없어 암호화·복호화할 수 없습니다"), "{e}");
     assert_eq!(git(&a, &["rev-list", "--all"]), "");
 }
 
@@ -554,4 +555,143 @@ fn clone_refuses_a_relative_folder() {
     let key = MasterKey::generate();
     let e = clone_in("x", Path::new("x/y"), Some(&key), exe()).unwrap_err().to_string();
     assert_eq!(e, "받을 폴더는 전체 경로로 주세요");
+}
+
+const ENCRYPTED_REMOTE: &str = "원격 저장소가 암호화 저장소입니다. 이 노트 폴더도 암호화를 켠 뒤 백업하세요";
+const NOT_SENT: &str = "원격으로 보낼 백업에 암호화되지 않은 내용이 있어 보내지 않았습니다: ";
+
+fn bare_named(root: &Path, name: &str) -> String {
+    let r = root.join(name);
+    std::fs::create_dir(&r).unwrap();
+    git(&r, &["init", "-q", "--bare", "-b", "main"]);
+    r.to_string_lossy().to_string()
+}
+
+/// An encrypted remote with one backup on `main`; returns its address.
+fn encrypted_remote(root: &Path, key: &MasterKey) -> String {
+    let url = bare_remote(root);
+    let a = encrypted_vault(root, key);
+    set_remote_in(&a, &url).unwrap();
+    assert!(backup_with_exe(&a, "올림", Some(key), exe()).unwrap().pushed);
+    url
+}
+
+#[test]
+fn a_plain_vault_on_another_branch_is_not_pushed_to_an_encrypted_remote() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let url = encrypted_remote(tmp.path(), &key);
+    let before = git(Path::new(&url), &["for-each-ref"]);
+
+    let p = vault(tmp.path(), "plain");
+    git(&p, &["init", "-q", "-b", "master"]);
+    init_in(&p).unwrap();
+    std::fs::write(p.join("평문.md"), "평문 비밀\n").unwrap();
+    set_remote_in(&p, &url).unwrap();
+    let e = backup_in(&p, "평문", None).unwrap_err().to_string();
+    assert_eq!(e, ENCRYPTED_REMOTE);
+    assert_eq!(git(Path::new(&url), &["for-each-ref"]), before, "nothing was sent");
+}
+
+#[test]
+fn a_plain_vault_with_unrelated_history_gets_a_korean_message() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let url = encrypted_remote(tmp.path(), &key);
+    let before = git(Path::new(&url), &["for-each-ref"]);
+
+    let p = vault(tmp.path(), "plain");
+    std::fs::write(p.join("평문.md"), "평문 비밀\n").unwrap();
+    init_in(&p).unwrap();
+    assert!(backup_in(&p, "평문", None).unwrap().committed);
+    set_remote_in(&p, &url).unwrap();
+    let e = backup_in(&p, "평문 2", None).unwrap_err().to_string();
+    assert_eq!(e, ENCRYPTED_REMOTE);
+    assert!(!p.join("회의.md").exists(), "nothing came in");
+    assert_eq!(git(Path::new(&url), &["for-each-ref"]), before, "nothing was sent");
+}
+
+#[test]
+fn a_corrected_remote_works_after_a_refused_one() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let plain_url = bare_named(tmp.path(), "plain.git");
+    let p = vault(tmp.path(), "plain");
+    std::fs::write(p.join("x.md"), "평문\n").unwrap();
+    set_remote_in(&p, &plain_url).unwrap();
+    assert!(backup_in(&p, "평문", None).unwrap().pushed);
+
+    let a = encrypted_vault(tmp.path(), &key);
+    set_remote_in(&a, &plain_url).unwrap();
+    let e = backup_with_exe(&a, "A", Some(&key), exe()).unwrap_err().to_string();
+    assert_eq!(e, NOT_THIS_REPO);
+
+    let new_url = bare_named(tmp.path(), "new.git");
+    set_remote_in(&a, &new_url).unwrap();
+    let r = backup_with_exe(&a, "A", Some(&key), exe()).unwrap();
+    assert!(r.pushed, "{r:?}");
+    assert!(git_raw(Path::new(&new_url), &["cat-file", "-p", "HEAD:회의.md"]).stdout.starts_with(b"NVENC"));
+}
+
+#[test]
+fn status_reports_a_filter_that_cannot_start_and_the_refresh_fixes_it() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let a = encrypted_vault(tmp.path(), &key);
+    // The app was moved: the configured filter is gone.
+    git(&a, &["config", "--local", "filter.notevine.process", "'C:/nowhere/notevine.exe' --git-filter"]);
+    // The same size, so Git has to run the filter to tell whether it changed.
+    std::fs::write(a.join("회의.md"), "예산 변경\n").unwrap();
+
+    let s = status_with_key(&a, Some(&key)).unwrap();
+    assert!(s.problem.is_some(), "{s:?}");
+
+    refresh_filter(&a, exe()).unwrap();
+    let s = status_with_key(&a, Some(&key)).unwrap();
+    assert_eq!((s.problem.clone(), s.changed), (None, 1), "{s:?}");
+
+    let s = status_with_key(&a, None).unwrap();
+    assert_eq!(s.problem.as_deref(), Some(NO_KEY));
+}
+
+#[test]
+fn a_commit_that_bypassed_the_filter_is_never_pushed() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let url = bare_remote(tmp.path());
+    let a = encrypted_vault(tmp.path(), &key);
+    set_remote_in(&a, &url).unwrap();
+    assert!(backup_with_exe(&a, "올림", Some(&key), exe()).unwrap().pushed);
+    let before = git(Path::new(&url), &["for-each-ref"]);
+
+    // Another tool commits without the filter.
+    std::fs::write(a.join("비밀.md"), "평문 비밀\n").unwrap();
+    let off = ["-c", "filter.notevine.process=", "-c", "filter.notevine.required=false"];
+    git(&a, &[&off[..], &["add", "비밀.md"]].concat());
+    git(&a, &[&off[..], &["commit", "-q", "-m", "몰래"]].concat());
+    assert_eq!(git(&a, &["cat-file", "-p", "HEAD:비밀.md"]), "평문 비밀", "the commit holds plain text");
+
+    let e = backup_with_exe(&a, "백업", Some(&key), exe()).unwrap_err().to_string();
+    assert!(e.starts_with(NOT_SENT) && e.contains("비밀.md"), "{e}");
+    assert_eq!(git(Path::new(&url), &["for-each-ref"]), before, "nothing was sent");
 }

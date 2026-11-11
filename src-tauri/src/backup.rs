@@ -52,6 +52,7 @@ const MOVED_ASIDE_IGNORE: &str = "/.git-before-encryption-*/";
 const NO_KEY: &str = "이 PC에 이 노트 폴더의 암호화 열쇠가 없습니다. 설정 > 백업에서 복구 코드를 넣어 주세요";
 const NOT_THIS_REPO: &str =
     "원격 저장소가 이 암호화 저장소가 아닙니다(평문 이력이거나 다른 열쇠). 새 빈 저장소를 만들어 주소를 넣어 주세요";
+const ENCRYPTED_REMOTE: &str = "원격 저장소가 암호화 저장소입니다. 이 노트 폴더도 암호화를 켠 뒤 백업하세요";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct BackupStatus {
@@ -75,6 +76,9 @@ pub struct BackupStatus {
     pub encrypted: bool,
     /// This PC's key is the one the vault is encrypted with.
     pub key_ok: bool,
+    /// Why backups of this vault can't run now (an encrypted vault without its key, or
+    /// Git failing to read the vault), to tell the user instead of skipping silently.
+    pub problem: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -156,6 +160,8 @@ fn explain(err: &str) -> String {
         "원격 저장소를 찾지 못했습니다. 주소를 확인하세요"
     } else if lower.contains("user.email") || lower.contains("user.name") || lower.contains("author identity") {
         "Git 사용자 이름·이메일이 설정되어 있지 않습니다"
+    } else if lower.contains("refusing to merge unrelated histories") {
+        "원격 저장소의 기록이 이 노트 폴더와 관련이 없습니다. 원격 저장소 주소를 확인해 주세요"
     } else {
         ""
     };
@@ -186,13 +192,20 @@ pub fn status_with_key(dir: &Path, key: Option<&MasterKey>) -> AppResult<BackupS
     if let Some(id) = crypt_state(dir) {
         s.encrypted = true;
         s.key_ok = key_matches(key, id.as_deref());
+        if !s.key_ok {
+            s.problem = Some(NO_KEY.into());
+        }
     }
     s.branch = git(dir, &["rev-parse", "--abbrev-ref", "HEAD"]).ok().filter(|b| b != "HEAD");
     s.remote = git(dir, &["remote", "get-url", "origin"]).ok().filter(|r| !r.is_empty());
-    // Without the key the filter can't clean a changed note, so Git may not say how many.
+    // Without the key (or with a filter Git can't start) Git may not say how many
+    // changed; the reason goes to `problem` so a timed backup doesn't stop silently.
     s.changed = match git(dir, &["status", "--porcelain", "-uall"]) {
         Ok(out) => out.lines().count() as u32,
-        Err(_) if s.encrypted && !s.key_ok => 0,
+        Err(e) if s.encrypted => {
+            s.problem.get_or_insert(e.to_string());
+            0
+        }
         Err(e) => return Err(e),
     };
     if let Ok(last) = git(dir, &["log", "-1", "--format=%ct%x09%s"])
@@ -270,22 +283,39 @@ pub fn set_remote_in(dir: &Path, url: &str) -> AppResult<()> {
         init_in(dir)?;
     }
     let has = git(dir, &["remote"])?.lines().any(|r| r == "origin");
+    let old = if has { git(dir, &["remote", "get-url", "origin"]).ok() } else { None };
     match (has, url.is_empty()) {
         (true, true) => git(dir, &["remote", "remove", "origin"]).map(drop),
         (true, false) => git(dir, &["remote", "set-url", "origin", url]).map(drop),
         (false, false) => git(dir, &["remote", "add", "origin", url]).map(drop),
         (false, true) => Ok(()),
+    }?;
+    if old.as_deref() != Some(url) {
+        forget_remote_branches(dir)?;
     }
+    Ok(())
+}
+
+/// Drops what was fetched from an earlier `origin`: a corrected address must not be
+/// judged by the branches of the wrong one.
+fn forget_remote_branches(dir: &Path) -> AppResult<()> {
+    let refs = git(dir, &["for-each-ref", "--format=%(refname)", "refs/remotes/origin"])?;
+    for r in refs.lines().filter(|r| !r.is_empty()) {
+        // `--no-deref`: `origin/HEAD` itself, not the branch it points at.
+        git(dir, &["update-ref", "--no-deref", "-d", r])?;
+    }
+    Ok(())
 }
 
 /// Registers `notevine` as the repository's filter, diff text converter and merge
-/// driver. `exe` is written with `/` and in double quotes, as Git's shell needs it.
+/// driver. `exe` is written with `/` and in single quotes, so Git's shell takes it as
+/// it is (no `$` or backtick expansion).
 fn configure_filter(dir: &Path, exe: &Path) -> AppResult<()> {
     let exe = exe.to_string_lossy().replace('\\', "/");
-    if exe.is_empty() || exe.contains('"') {
+    if exe.is_empty() || exe.contains('\'') {
         return Err(AppError::System(format!("Notevine 실행 파일 경로를 Git에 넣을 수 없습니다: {exe}")));
     }
-    let exe = format!("\"{exe}\"");
+    let exe = format!("'{exe}'");
     for (k, v) in [
         ("filter.notevine.process", format!("{exe} --git-filter")),
         ("filter.notevine.required", "true".to_string()),
@@ -298,6 +328,12 @@ fn configure_filter(dir: &Path, exe: &Path) -> AppResult<()> {
         }
     }
     Ok(())
+}
+
+/// Writes this program into an encrypted vault's filter config again (nothing for a
+/// plain vault), so a moved or updated app keeps working before the next backup.
+pub fn refresh_filter(dir: &Path, exe: &Path) -> AppResult<()> {
+    if crypt_state(dir).is_some() { configure_filter(dir, exe) } else { Ok(()) }
 }
 
 /// Receives the repository at `url` into `dest` (not there yet, or an empty folder).
@@ -473,6 +509,115 @@ fn unencrypted_staged(dir: &Path) -> AppResult<Vec<String>> {
     Ok(bad)
 }
 
+/// Any fetched branch of `origin` (not `origin/HEAD`) with `.notevine-crypt` at its tip.
+/// A branch Git can't answer for counts as encrypted (fail closed).
+fn remote_has_encrypted_branch(dir: &Path) -> AppResult<bool> {
+    let refs = git(dir, &["for-each-ref", "--format=%(refname)", "refs/remotes/origin"])?;
+    for r in refs.lines().filter(|r| !r.is_empty() && *r != "refs/remotes/origin/HEAD") {
+        match git(dir, &["ls-tree", "--name-only", r, "--", CRYPT_FILE]) {
+            Ok(out) if out.is_empty() => {}
+            _ => return Ok(true),
+        }
+    }
+    Ok(false)
+}
+
+/// Objects read from `cat-file --batch` at most this much at a time.
+const OUTGOING_CHUNK: u64 = 32 << 20;
+
+/// Paths of what a push would send that isn't encrypted: every new blob except the
+/// three root files must be ciphertext, and no new tree may hold a symlink or a
+/// submodule (gitlink). Anything Git can't account for is an error.
+fn unencrypted_outgoing(dir: &Path) -> AppResult<Vec<String>> {
+    let unsure = || AppError::System("원격으로 보낼 백업을 확인하지 못해 보내지 않았습니다".into());
+    let list = git(dir, &["rev-list", "--objects", "HEAD", "--not", "--remotes=origin"])?;
+    // `<id>` for a commit, `<id> <path>` for a tree or blob (the root tree: empty path).
+    let objects: Vec<(&str, &str)> =
+        list.lines().filter(|l| !l.is_empty()).map(|l| l.split_once(' ').unwrap_or((l, ""))).collect();
+    if objects.is_empty() {
+        return Ok(Vec::new());
+    }
+    let ids = objects.iter().map(|(id, _)| *id).collect::<Vec<_>>().join("\n") + "\n";
+    let types = git_bytes(dir, &["cat-file", "--batch-check"], Some(ids.as_bytes()))?;
+    let types = String::from_utf8_lossy(&types);
+    let types: Vec<&str> = types.lines().collect();
+    if types.len() != objects.len() {
+        return Err(unsure());
+    }
+    // (id, path, is a tree) of the objects to read, in chunks.
+    let mut chunks: Vec<Vec<(&str, &str, bool)>> = vec![Vec::new()];
+    let mut size = 0u64;
+    for ((id, path), line) in objects.iter().zip(&types) {
+        let mut f = line.split(' ');
+        let (Some(got), Some(kind), Some(len)) = (f.next(), f.next(), f.next().and_then(|n| n.parse::<u64>().ok()))
+        else {
+            return Err(unsure());
+        };
+        if got != *id {
+            return Err(unsure());
+        }
+        let tree = match kind {
+            "commit" => continue,
+            "blob" if PLAIN_FILES.contains(path) => continue,
+            "blob" => false,
+            "tree" => true,
+            _ => return Err(unsure()),
+        };
+        if size + len > OUTGOING_CHUNK && chunks.last().is_some_and(|c| !c.is_empty()) {
+            chunks.push(Vec::new());
+            size = 0;
+        }
+        size += len;
+        if let Some(c) = chunks.last_mut() {
+            c.push((*id, *path, tree));
+        }
+    }
+    let mut bad = Vec::new();
+    for chunk in chunks.iter().filter(|c| !c.is_empty()) {
+        let input = chunk.iter().map(|(id, _, _)| *id).collect::<Vec<_>>().join("\n") + "\n";
+        let out = git_bytes(dir, &["cat-file", "--batch"], Some(input.as_bytes()))?;
+        let mut rest = out.as_slice();
+        for (id, path, tree) in chunk {
+            // `<id> <type> <size>\n<content>\n`
+            let nl = rest.iter().position(|&b| b == b'\n').ok_or_else(unsure)?;
+            let header = String::from_utf8_lossy(&rest[..nl]).to_string();
+            let mut f = header.split(' ');
+            let (Some(got), Some(_), Some(len)) = (f.next(), f.next(), f.next().and_then(|n| n.parse::<usize>().ok()))
+            else {
+                return Err(unsure());
+            };
+            if got != *id || rest.len() < nl + 1 + len + 1 {
+                return Err(unsure());
+            }
+            let content = &rest[nl + 1..nl + 1 + len];
+            rest = &rest[nl + 1 + len + 1..];
+            if !*tree {
+                if !crate::crypt::is_encrypted(content) {
+                    bad.push(path.to_string());
+                }
+                continue;
+            }
+            // Raw tree: `<mode> <name>\0<hash>` per entry; the hash is as long as the id says.
+            let hash_len = id.len() / 2;
+            let mut t = content;
+            while !t.is_empty() {
+                let sp = t.iter().position(|&b| b == b' ').ok_or_else(unsure)?;
+                let nul = t.iter().position(|&b| b == 0).ok_or_else(unsure)?;
+                if nul < sp || t.len() < nul + 1 + hash_len {
+                    return Err(unsure());
+                }
+                let mode = &t[..sp];
+                if mode == b"120000" || mode == b"160000" {
+                    let name = String::from_utf8_lossy(&t[sp + 1..nul]);
+                    bad.push(if path.is_empty() { name.to_string() } else { format!("{path}/{name}") });
+                }
+                t = &t[nul + 1 + hash_len..];
+            }
+        }
+    }
+    Ok(bad)
+}
+
 /// [`backup_with_exe`] with this program as the filter of an encrypted vault.
 pub fn backup_in(dir: &Path, message: &str, key: Option<&MasterKey>) -> AppResult<BackupResult> {
     let exe = if crypt_state(dir).is_some() { std::env::current_exe()? } else { Default::default() };
@@ -506,7 +651,9 @@ pub fn backup_with_exe(dir: &Path, message: &str, key: Option<&MasterKey>, exe: 
     let mut r = BackupResult::default();
     git(dir, &["add", "-A"])?;
     if crypt.is_some() {
-        let bad = unencrypted_staged(dir)?;
+        let bad = unencrypted_staged(dir).inspect_err(|_| {
+            let _ = git(dir, &["reset", "-q"]);
+        })?;
         if !bad.is_empty() {
             let _ = git(dir, &["reset", "-q"]);
             let paths = bad.iter().take(5).map(String::as_str).collect::<Vec<_>>().join(", ");
@@ -525,7 +672,12 @@ pub fn backup_with_exe(dir: &Path, message: &str, key: Option<&MasterKey>, exe: 
         return Ok(r);
     }
     let branch = git(dir, &["rev-parse", "--abbrev-ref", "HEAD"])?;
-    git(dir, &["fetch", "-q", "origin"])?;
+    // `--prune`: branches deleted there (or from a corrected address) don't linger here.
+    git(dir, &["fetch", "-q", "--prune", "origin"])?;
+    if crypt.is_none() && remote_has_encrypted_branch(dir)? {
+        // A plain vault never merges from or sends to an encrypted repository.
+        return Err(AppError::System(ENCRYPTED_REMOTE.into()));
+    }
     let remote_branch = format!("origin/{branch}");
     if crypt.is_some()
         && git(dir, &["rev-parse", "--verify", "-q", &remote_branch]).is_err()
@@ -565,6 +717,16 @@ pub fn backup_with_exe(dir: &Path, message: &str, key: Option<&MasterKey>, exe: 
         1 // the remote has no such branch yet
     };
     if ahead > 0 && git(dir, &["rev-parse", "-q", "--verify", "HEAD"]).is_ok() {
+        if crypt.is_some() {
+            // The last word on what leaves this PC, whatever made the commits.
+            let bad = unencrypted_outgoing(dir)?;
+            if !bad.is_empty() {
+                let paths = bad.iter().take(5).map(String::as_str).collect::<Vec<_>>().join(", ");
+                return Err(AppError::System(format!(
+                    "원격으로 보낼 백업에 암호화되지 않은 내용이 있어 보내지 않았습니다: {paths}"
+                )));
+            }
+        }
         git(dir, &["push", "-q", "-u", "origin", &branch])?;
         r.pushed = true;
     }
@@ -605,14 +767,31 @@ pub fn backup_for(dir: &Path, trusted: bool, message: &str, key: Option<&MasterK
     backup_in(dir, message, key)
 }
 
-/// This PC's key. A key store that fails is an error only for an encrypted vault; Git
-/// is asked whether it is one only in a repository the user allowed.
+/// This PC's key, read only for an encrypted vault (a plain one never touches the
+/// credential store). Git is asked whether it is one only in a repository the user allowed.
 fn load_key(dir: &Path, trusted: bool) -> AppResult<Option<MasterKey>> {
-    match crate::crypt_key::key_store().load() {
-        Ok(k) => Ok(k),
-        Err(e) if trusted && crypt_state(dir).is_some() => Err(e),
-        Err(_) => Ok(None),
+    if !trusted || crypt_state(dir).is_none() {
+        return Ok(None);
     }
+    crate::crypt_key::key_store().load()
+}
+
+/// Status for the commands: an encrypted vault's filter path is written again first,
+/// so a moved app doesn't leave Git unable to read the vault.
+fn status_now(dir: &Path, trusted: bool) -> AppResult<BackupStatus> {
+    let refreshed = if trusted && is_repo(dir) {
+        std::env::current_exe().map_err(AppError::from).and_then(|exe| refresh_filter(dir, &exe))
+    } else {
+        Ok(())
+    };
+    let key = load_key(dir, trusted)?;
+    let mut s = status_for(dir, trusted, key.as_ref())?;
+    if let Err(e) = refreshed
+        && s.encrypted
+    {
+        s.problem.get_or_insert(e.to_string());
+    }
+    Ok(s)
 }
 
 fn is_trusted(state: &State<AppState>, dir: &Path) -> bool {
@@ -630,9 +809,7 @@ fn remember_trust(state: &State<AppState>, dir: &Path) -> AppResult<()> {
 #[tauri::command]
 pub async fn backup_status(state: State<'_, AppState>) -> AppResult<BackupStatus> {
     let dir = vault_root(&state)?;
-    let trusted = is_trusted(&state, &dir);
-    let key = load_key(&dir, trusted)?;
-    status_for(&dir, trusted, key.as_ref())
+    status_now(&dir, is_trusted(&state, &dir))
 }
 
 /// The user allows Git in the `.git` that was already in this folder.
@@ -640,8 +817,7 @@ pub async fn backup_status(state: State<'_, AppState>) -> AppResult<BackupStatus
 pub async fn backup_trust(state: State<'_, AppState>) -> AppResult<BackupStatus> {
     let dir = vault_root(&state)?;
     remember_trust(&state, &dir)?;
-    let key = load_key(&dir, true)?;
-    status_for(&dir, true, key.as_ref())
+    status_now(&dir, true)
 }
 
 #[tauri::command]
@@ -769,6 +945,29 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         booby_trapped_repo(tmp.path());
         assert!(init_for(tmp.path(), false).is_err());
+    }
+
+    #[test]
+    fn unrelated_histories_are_explained_in_korean() {
+        assert_eq!(
+            explain("fatal: refusing to merge unrelated histories"),
+            "원격 저장소의 기록이 이 노트 폴더와 관련이 없습니다. 원격 저장소 주소를 확인해 주세요 (Git: fatal: refusing to merge unrelated histories)"
+        );
+    }
+
+    #[test]
+    fn the_filter_path_is_single_quoted_for_the_shell() {
+        if !installed() {
+            return;
+        }
+        let tmp = tempfile::tempdir().unwrap();
+        git(tmp.path(), &["init", "-q"]).unwrap();
+        configure_filter(tmp.path(), Path::new(r#"C:\a $b`c"\notevine.exe"#)).unwrap();
+        assert_eq!(
+            git(tmp.path(), &["config", "--local", "--get", "filter.notevine.process"]).unwrap(),
+            r#"'C:/a $b`c"/notevine.exe' --git-filter"#
+        );
+        assert!(configure_filter(tmp.path(), Path::new(r"C:\it's\notevine.exe")).is_err());
     }
 
     #[test]

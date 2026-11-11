@@ -236,6 +236,8 @@ export interface BackupStatus {
   encrypted: boolean;
   /** This PC holds the key that matches the encrypted repository. */
   key_ok: boolean;
+  /** Why backups can't run now (no matching key, or Git can't read the vault). */
+  problem: string | null;
 }
 
 /** The encryption key kept on this PC. */

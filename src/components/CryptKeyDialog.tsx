@@ -1,5 +1,5 @@
 // 설정 > 백업 > 암호화: 복구 코드 보여 주기(새 열쇠 / 다시 보기)와 복구 코드 입력.
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 import { api, errorMessage } from "../api";
 import { formatRecoveryInput } from "../lib/recoveryCode";
 import { tx } from "../i18n";
@@ -38,9 +38,16 @@ export function CryptKeyDialog({ mode, onClose }: { mode: CryptKeyDialogMode; on
     }
   };
 
+  // Escape closes only this dialog, not the one it was opened from (e.g. 받기).
+  const escape = (e: KeyboardEvent, close: () => void) => {
+    if (e.key !== "Escape") return;
+    e.stopPropagation();
+    close();
+  };
+
   if (mode.kind === "import") {
     return (
-      <div className="modal-backdrop" onMouseDown={() => onClose(false)} onKeyDown={(e) => e.key === "Escape" && onClose(false)}>
+      <div className="modal-backdrop" onMouseDown={() => onClose(false)} onKeyDown={(e) => escape(e, () => onClose(false))}>
         <div className="modal" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
           <h2>{tx("복구 코드 입력")}</h2>
           <p>{tx("다른 PC에서 만든 암호화 열쇠의 복구 코드를 입력하세요. 이 PC에 이미 다른 열쇠가 있으면 덮어쓰지 않습니다.")}</p>
@@ -74,7 +81,7 @@ export function CryptKeyDialog({ mode, onClose }: { mode: CryptKeyDialogMode; on
     <div
       className="modal-backdrop"
       onMouseDown={() => canClose && onClose(created)}
-      onKeyDown={(e) => e.key === "Escape" && canClose && onClose(created)}
+      onKeyDown={(e) => escape(e, () => canClose && onClose(created))}
     >
       <div className="modal" role="dialog" aria-modal="true" onMouseDown={(e) => e.stopPropagation()}>
         <h2>{created ? tx("암호화 열쇠를 만들었습니다") : tx("복구 코드")}</h2>
@@ -89,6 +96,7 @@ export function CryptKeyDialog({ mode, onClose }: { mode: CryptKeyDialogMode; on
             {copied ? tx("복사했습니다") : tx("복사")}
           </button>
         </div>
+        {copied && <p className="small muted">{tx("Windows 클립보드 기록에 남을 수 있으니 붙여 넣은 뒤 지우세요")}</p>}
         {created && (
           <label className="small">
             <input type="checkbox" checked={kept} onChange={(e) => setKept(e.target.checked)} /> {tx("비밀번호 관리자나 종이에 보관했습니다")}

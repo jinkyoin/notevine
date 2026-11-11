@@ -5,7 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useApp } from "../store";
 import { dispatchKey, setKeyOverrides } from "../commands";
 import { VaultRail } from "./VaultRail";
-import { api } from "../api";
+import { api, errorMessage } from "../api";
 import { Explorer } from "./Explorer";
 import { Editor } from "./Editor";
 import { TabBar } from "./TabBar";
@@ -159,13 +159,23 @@ export function MainLayout() {
 
   // Git backup on a timer (settings → 백업), only when the vault is a repository with changes.
   const backupMinutes = useApp((s) => s.trust.backup_minutes);
+  // A reason it can't run (e.g. no key for an encrypted vault) is told once, not every tick.
   useEffect(() => {
     if (!backupMinutes) return;
+    let told: string | null = null;
+    const tell = (problem: string | null) => {
+      if (problem && problem !== told) useApp.getState().toast(tx("자동 백업을 하지 못했습니다: {0}", problem), "error");
+      told = problem;
+    };
     const id = window.setInterval(() => {
       void api
         .backupStatus()
-        .then((s) => s.repo && s.trusted && (s.changed > 0 || s.ahead > 0) && useApp.getState().backupNow(true))
-        .catch(() => {});
+        .then((s) => {
+          if (!s.repo || !s.trusted) return;
+          tell(s.problem);
+          if (!s.problem && (s.changed > 0 || s.ahead > 0)) void useApp.getState().backupNow(true);
+        })
+        .catch((e) => tell(errorMessage(e)));
     }, backupMinutes * 60_000);
     return () => window.clearInterval(id);
   }, [backupMinutes, vault?.root]);

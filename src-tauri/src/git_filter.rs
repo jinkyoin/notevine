@@ -178,30 +178,14 @@ fn read_plain(path: &Path, key: &MasterKey) -> AppResult<Vec<u8>> {
     smudge(std::fs::read(path)?, Some(key))
 }
 
-/// Merges `ours` and `theirs` over `base`, all encrypted; the result goes to `ours`,
-/// encrypted. `true` = merged cleanly; `false` = conflict (`ours` left as it was).
-pub fn merge_driver(base: &Path, ours: &Path, theirs: &Path, key: &MasterKey) -> AppResult<bool> {
-    let (b, o, t) = (read_plain(base, key)?, read_plain(ours, key)?, read_plain(theirs, key)?);
-    if [&b, &o, &t].iter().any(|v| std::str::from_utf8(v).is_err()) {
-        return Ok(false);
-    }
-    // Next to `ours` (inside the repository), so a crash never leaves plain copies in %TEMP%.
-    let parent = ours.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
-    let dir = tempfile::tempdir_in(parent)?;
-    let (fb, fo, ft) = (dir.path().join("base"), dir.path().join("ours"), dir.path().join("theirs"));
-    std::fs::write(&fb, &b)?;
-    std::fs::write(&fo, &o)?;
-    std::fs::write(&ft, &t)?;
-
-    // Same hardening as backup.rs `git()`: a repository's own settings never run commands.
+/// Git with the same hardening as backup.rs `git()`: a repository's own settings never
+/// run commands.
+fn git_command(args: &[&str], dir: &Path) -> std::process::Command {
     let mut c = std::process::Command::new("git");
     c.args(["-c", "core.quotepath=false"])
         .args(["-c", "core.fsmonitor=false", "-c", NO_HOOKS, "-c", "protocol.ext.allow=never"])
-        .args(["merge-file", "--stdout", "-L", "이 PC", "-L", "공통", "-L", "다른 PC"])
-        .arg(&fo)
-        .arg(&fb)
-        .arg(&ft)
-        .current_dir(dir.path())
+        .args(args)
+        .current_dir(dir)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("LC_ALL", "C")
         .stdin(std::process::Stdio::null());
@@ -210,13 +194,53 @@ pub fn merge_driver(base: &Path, ours: &Path, theirs: &Path, key: &MasterKey) ->
         use std::os::windows::process::CommandExt;
         c.creation_flags(CREATE_NO_WINDOW);
     }
-    let out = c.output().map_err(|e| {
+    c
+}
+
+fn git_output(mut c: std::process::Command) -> AppResult<std::process::Output> {
+    c.output().map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             AppError::System("Git이 설치되어 있지 않습니다. https://git-scm.com 에서 설치해 주세요".into())
         } else {
             AppError::Io(e)
         }
-    })?;
+    })
+}
+
+/// The `.git` directory of the repository `ours` (Git's `%A`) is in. The merge driver's
+/// plain copies go there: out of the note folder the app watches and indexes.
+pub fn merge_scratch_dir(ours: &Path) -> AppResult<std::path::PathBuf> {
+    let parent = ours.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+    let out = git_output(git_command(&["rev-parse", "--absolute-git-dir"], parent))?;
+    let dir = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if !out.status.success() || dir.is_empty() {
+        return Err(AppError::System("합칠 노트의 Git 저장소를 찾지 못했습니다".into()));
+    }
+    Ok(std::path::PathBuf::from(dir))
+}
+
+/// Merges `ours` and `theirs` over `base`, all encrypted; the result goes to `ours`,
+/// encrypted. `true` = merged cleanly; `false` = conflict (`ours` left as it was). The
+/// plain copies live in a `.notevine-merge-*` folder under `scratch` while it runs.
+pub fn merge_driver(base: &Path, ours: &Path, theirs: &Path, key: &MasterKey, scratch: &Path) -> AppResult<bool> {
+    let (b, o, t) = (read_plain(base, key)?, read_plain(ours, key)?, read_plain(theirs, key)?);
+    if [&b, &o, &t].iter().any(|v| std::str::from_utf8(v).is_err()) {
+        return Ok(false);
+    }
+    // Never in %TEMP%: a crash must not leave plain copies outside the repository.
+    let dir = tempfile::Builder::new().prefix(".notevine-merge-").tempdir_in(scratch)?;
+    let (fb, fo, ft) = (dir.path().join("base"), dir.path().join("ours"), dir.path().join("theirs"));
+    std::fs::write(&fb, &b)?;
+    std::fs::write(&fo, &o)?;
+    std::fs::write(&ft, &t)?;
+
+    let fo_s = fo.to_string_lossy();
+    let fb_s = fb.to_string_lossy();
+    let ft_s = ft.to_string_lossy();
+    let out = git_output(git_command(
+        &["merge-file", "--stdout", "-L", "이 PC", "-L", "공통", "-L", "다른 PC", &fo_s, &fb_s, &ft_s],
+        dir.path(),
+    ))?;
     match out.status.code() {
         Some(0) => {
             std::fs::write(ours, crypt::encrypt(key, &out.stdout))?;
@@ -282,7 +306,8 @@ fn run_inner(args: &[String]) -> AppResult<i32> {
                 _ => return Err(usage()),
             };
             let key = load_key()?.ok_or_else(no_key)?;
-            let merged = merge_driver(Path::new(base), Path::new(ours), Path::new(theirs), &key)?;
+            let scratch = merge_scratch_dir(Path::new(ours))?;
+            let merged = merge_driver(Path::new(base), Path::new(ours), Path::new(theirs), &key, &scratch)?;
             Ok(if merged { 0 } else { 1 })
         }
         _ => Err(usage()),
@@ -455,7 +480,7 @@ mod tests {
         let base = write_enc(d.path(), "b", &key, b"a\nb\nc\n");
         let ours = write_enc(d.path(), "o", &key, b"A\nb\nc\n");
         let theirs = write_enc(d.path(), "t", &key, b"a\nb\nC\n");
-        assert!(merge_driver(&base, &ours, &theirs, &key).unwrap());
+        assert!(merge_driver(&base, &ours, &theirs, &key, d.path()).unwrap());
         let merged = std::fs::read(&ours).unwrap();
         assert!(crypt::is_encrypted(&merged));
         assert_eq!(crypt::decrypt(&key, &merged).unwrap(), b"A\nb\nC\n");
@@ -469,7 +494,7 @@ mod tests {
         let ours = write_enc(d.path(), "o", &key, b"a\nX\nc\n");
         let theirs = write_enc(d.path(), "t", &key, b"a\nY\nc\n");
         let before = std::fs::read(&ours).unwrap();
-        assert!(!merge_driver(&base, &ours, &theirs, &key).unwrap());
+        assert!(!merge_driver(&base, &ours, &theirs, &key, d.path()).unwrap());
         assert_eq!(std::fs::read(&ours).unwrap(), before);
     }
 
@@ -481,8 +506,33 @@ mod tests {
         let ours = write_enc(d.path(), "o", &key, &[0xff, 0xfe, 0x00, 0x01]);
         let theirs = write_enc(d.path(), "t", &key, b"b\n");
         let before = std::fs::read(&ours).unwrap();
-        assert!(!merge_driver(&base, &ours, &theirs, &key).unwrap());
+        assert!(!merge_driver(&base, &ours, &theirs, &key, d.path()).unwrap());
         assert_eq!(std::fs::read(&ours).unwrap(), before);
+    }
+
+    #[test]
+    fn merge_copies_go_under_the_git_directory() {
+        let d = tempfile::tempdir().unwrap();
+        let ok = git_output(git_command(&["init", "-q"], d.path())).unwrap();
+        if !ok.status.success() {
+            return; // no Git
+        }
+        let scratch = merge_scratch_dir(&d.path().join(".merge_file_abc")).unwrap();
+        assert_eq!(scratch.canonicalize().unwrap(), d.path().join(".git").canonicalize().unwrap());
+
+        let key = MasterKey::generate();
+        let base = write_enc(d.path(), "b", &key, b"a\nb\nc\n");
+        let ours = write_enc(d.path(), "o", &key, b"A\nb\nc\n");
+        let theirs = write_enc(d.path(), "t", &key, b"a\nb\nC\n");
+        assert!(merge_driver(&base, &ours, &theirs, &key, &scratch).unwrap());
+        let left: Vec<_> = std::fs::read_dir(&scratch)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().starts_with(".notevine-merge-"))
+            .collect();
+        assert!(left.is_empty(), "the plain copies are removed");
+        let names: Vec<_> = std::fs::read_dir(d.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(names.len(), 4, "nothing new in the worktree: {names:?}");
     }
 
     #[test]
