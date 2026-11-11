@@ -695,3 +695,143 @@ fn a_commit_that_bypassed_the_filter_is_never_pushed() {
     assert!(e.starts_with(NOT_SENT) && e.contains("비밀.md"), "{e}");
     assert_eq!(git(Path::new(&url), &["for-each-ref"]), before, "nothing was sent");
 }
+
+#[test]
+fn replaced_objects_cannot_hide_plain_text() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let url = bare_remote(tmp.path());
+    let a = encrypted_vault(tmp.path(), &key);
+    set_remote_in(&a, &url).unwrap();
+    assert!(backup_with_exe(&a, "올림", Some(&key), exe()).unwrap().pushed);
+    let before = git(Path::new(&url), &["for-each-ref"]);
+    let cipher = git(&a, &["rev-parse", "HEAD:회의.md"]);
+
+    // A plain blob committed past the filter, dressed up as ciphertext by `git replace`.
+    std::fs::write(a.join("비밀.md"), "평문 비밀\n").unwrap();
+    let off = ["-c", "filter.notevine.process=", "-c", "filter.notevine.required=false"];
+    git(&a, &[&off[..], &["add", "비밀.md"]].concat());
+    git(&a, &[&off[..], &["commit", "-q", "-m", "몰래"]].concat());
+    let plain = git(&a, &["--no-replace-objects", "rev-parse", "HEAD:비밀.md"]);
+    git(&a, &["replace", &plain, &cipher]);
+    assert!(git_raw(&a, &["cat-file", "blob", &plain]).stdout.starts_with(b"NVENC"), "the replacement is in effect");
+
+    let e = backup_with_exe(&a, "백업", Some(&key), exe()).unwrap_err().to_string();
+    assert!(e.starts_with(NOT_SENT) && e.contains("비밀.md"), "{e}");
+    assert_eq!(git(Path::new(&url), &["for-each-ref"]), before, "nothing was sent");
+}
+
+#[test]
+fn a_nested_repository_is_not_committed() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let a = encrypted_vault(tmp.path(), &key);
+    let before = git(&a, &["rev-list", "--all"]);
+
+    // A folder inside the vault that is a Git repository of its own (a gitlink to Git).
+    let sub = a.join("sub");
+    std::fs::create_dir(&sub).unwrap();
+    git(&sub, &["init", "-q", "-b", "main"]);
+    git(&sub, &["config", "user.name", "x"]);
+    git(&sub, &["config", "user.email", "x@x"]);
+    std::fs::write(sub.join("x.md"), "x\n").unwrap();
+    git(&sub, &["add", "-A"]);
+    git(&sub, &["commit", "-q", "-m", "x"]);
+
+    let e = backup_with_exe(&a, "백업", Some(&key), exe()).unwrap_err().to_string();
+    assert!(e.contains("sub") && e.contains("Git 저장소(또는 링크)라 암호화 백업할 수 없습니다"), "{e}");
+    assert_eq!(git(&a, &["rev-list", "--all"]), before, "nothing committed");
+    assert_eq!(git(&a, &["diff", "--cached", "--name-only"]), "", "nothing staged");
+
+    // Moved out of the vault: backups work again.
+    std::fs::rename(&sub, tmp.path().join("sub-moved")).unwrap();
+    std::fs::write(a.join("회의.md"), "예산 확정\n추가\n").unwrap();
+    assert!(backup_with_exe(&a, "백업", Some(&key), exe()).unwrap().committed);
+}
+
+#[test]
+fn annotated_tags_do_not_follow_the_push() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let url = bare_remote(tmp.path());
+    let a = encrypted_vault(tmp.path(), &key);
+    set_remote_in(&a, &url).unwrap();
+    assert!(backup_with_exe(&a, "올림", Some(&key), exe()).unwrap().pushed);
+
+    git(&a, &["config", "push.followTags", "true"]);
+    git(&a, &["tag", "-a", "v1", "-m", "평문 메모"]);
+    std::fs::write(a.join("회의.md"), "예산 확정\n추가\n").unwrap();
+    assert!(backup_with_exe(&a, "백업", Some(&key), exe()).unwrap().pushed);
+    assert_eq!(git(Path::new(&url), &["for-each-ref", "refs/tags"]), "", "no tag went along");
+}
+
+#[test]
+fn a_narrow_fetch_refspec_still_sees_an_encrypted_branch() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let url = encrypted_remote(tmp.path(), &key);
+    let before = git(Path::new(&url), &["for-each-ref"]);
+
+    let p = vault(tmp.path(), "plain");
+    git(&p, &["init", "-q", "-b", "master"]);
+    init_in(&p).unwrap();
+    std::fs::write(p.join("평문.md"), "평문 비밀\n").unwrap();
+    set_remote_in(&p, &url).unwrap();
+    // Single-branch style: only `master` would be fetched.
+    git(&p, &["config", "remote.origin.fetch", "+refs/heads/master:refs/remotes/origin/master"]);
+    let e = backup_in(&p, "평문", None).unwrap_err().to_string();
+    assert_eq!(e, ENCRYPTED_REMOTE);
+    assert_eq!(git(Path::new(&url), &["for-each-ref"]), before, "nothing was sent");
+}
+
+/// The way out the manual gives for a refused push: undo the local commits (keeping
+/// the files) and back up again, so the filter encrypts them this time.
+#[test]
+fn a_refused_push_recovers_after_resetting_to_the_remote() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let url = bare_remote(tmp.path());
+    let a = encrypted_vault(tmp.path(), &key);
+    set_remote_in(&a, &url).unwrap();
+    assert!(backup_with_exe(&a, "올림", Some(&key), exe()).unwrap().pushed);
+
+    std::fs::write(a.join("비밀.md"), "평문 비밀\n").unwrap();
+    std::fs::write(a.join("회의.md"), "예산 확정\n몰래 고침\n").unwrap();
+    let off = ["-c", "filter.notevine.process=", "-c", "filter.notevine.required=false"];
+    git(&a, &[&off[..], &["add", "-A"]].concat());
+    git(&a, &[&off[..], &["commit", "-q", "-m", "몰래"]].concat());
+    let e = backup_with_exe(&a, "백업", Some(&key), exe()).unwrap_err().to_string();
+    assert!(e.starts_with(NOT_SENT), "{e}");
+
+    // Not `--soft`: that keeps the plain blobs in the index, and an unchanged file is
+    // not cleaned again on the next add.
+    git(&a, &["reset", "-q", "origin/main"]);
+    let r = backup_with_exe(&a, "다시", Some(&key), exe()).unwrap();
+    assert!(r.committed && r.pushed, "{r:?}");
+    for f in ["비밀.md", "회의.md"] {
+        let blob = git_raw(Path::new(&url), &["cat-file", "blob", &format!("HEAD:{f}")]);
+        assert!(blob.stdout.starts_with(b"NVENC"), "{f}");
+    }
+    assert_eq!(read(&a.join("비밀.md")), "평문 비밀\n");
+    assert_eq!(read(&a.join("회의.md")), "예산 확정\n몰래 고침\n");
+}

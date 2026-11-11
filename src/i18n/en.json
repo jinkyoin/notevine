@@ -977,5 +977,6 @@
  "이 PC에 암호화 열쇠가 없습니다. 새로 만들거나, 다른 PC에서 만든 복구 코드를 넣으세요": "This PC has no encryption key. Create one, or enter a recovery code made on another PC",
  "이 PC에 암호화 열쇠가 없습니다. 암호화된 저장소를 받으려면 먼저 복구 코드를 넣어 주세요": "This PC has no encryption key. To get an encrypted repository, enter the recovery code first",
  "자동 백업을 하지 못했습니다: {0}": "Automatic backup didn't run: {0}",
- "Windows 클립보드 기록에 남을 수 있으니 붙여 넣은 뒤 지우세요": "It may stay in the Windows clipboard history, so clear it after pasting"
+ "Windows 클립보드 기록에 남을 수 있으니 붙여 넣은 뒤 지우세요": "It may stay in the Windows clipboard history, so clear it after pasting",
+ "지금은 백업할 수 없습니다: {0}": "Backup can't run right now: {0}"
 }

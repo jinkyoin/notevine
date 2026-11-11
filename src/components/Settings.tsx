@@ -1120,6 +1120,7 @@ function BackupSettings() {
               {busy ? tx("백업하는 중…") : tx("지금 백업")}
             </button>
           </Row>
+          {st.problem && <p className="error small">{tx("지금은 백업할 수 없습니다: {0}", st.problem)}</p>}
           <Row label={tx("원격 저장소")} hint={tx("비워 두면 이 PC에만 백업합니다. 넣으면 백업할 때 노트가 그 저장소로 전송됩니다(비공개 저장소를 쓰세요)")}>
             <input
               className="api-input"

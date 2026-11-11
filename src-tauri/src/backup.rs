@@ -109,6 +109,9 @@ fn git_bytes(dir: &Path, args: &[&str], input: Option<&[u8]>) -> AppResult<Vec<u
         .current_dir(dir)
         // Never wait for a password typed in a console nobody sees.
         .env("GIT_TERMINAL_PROMPT", "0")
+        // `refs/replace/*` must not make Git show one object in place of another: what
+        // is checked has to be exactly what a push sends.
+        .env("GIT_NO_REPLACE_OBJECTS", "1")
         .env("LC_ALL", "C")
         .stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() })
         .stdout(Stdio::piped())
@@ -509,6 +512,25 @@ fn unencrypted_staged(dir: &Path) -> AppResult<Vec<String>> {
     Ok(bad)
 }
 
+/// Paths staged as a symlink or a submodule (gitlink). Git stores those as they are
+/// (a link target, a commit id), never through the filter.
+fn links_staged(dir: &Path) -> AppResult<Vec<String>> {
+    let out = git_bytes(dir, &["ls-files", "-s", "-z"], None)?;
+    let out = String::from_utf8_lossy(&out);
+    let mut bad = Vec::new();
+    // `<mode> <id> <stage>\t<path>` per entry.
+    for rec in out.split('\0').filter(|r| !r.is_empty()) {
+        let Some((meta, path)) = rec.split_once('\t') else {
+            return Err(AppError::System("Git이 백업할 파일 목록을 알려 주지 않았습니다".into()));
+        };
+        let mode = meta.split(' ').next().unwrap_or_default();
+        if mode == "120000" || mode == "160000" {
+            bad.push(path.to_string());
+        }
+    }
+    Ok(bad)
+}
+
 /// Any fetched branch of `origin` (not `origin/HEAD`) with `.notevine-crypt` at its tip.
 /// A branch Git can't answer for counts as encrypted (fail closed).
 fn remote_has_encrypted_branch(dir: &Path) -> AppResult<bool> {
@@ -526,9 +548,9 @@ fn remote_has_encrypted_branch(dir: &Path) -> AppResult<bool> {
 const OUTGOING_CHUNK: u64 = 32 << 20;
 
 /// Paths of what a push would send that isn't encrypted: every new blob except the
-/// three root files must be ciphertext, and no new tree may hold a symlink or a
-/// submodule (gitlink). Anything Git can't account for is an error.
-fn unencrypted_outgoing(dir: &Path) -> AppResult<Vec<String>> {
+/// three root files must be ciphertext that `key` opens, and no new tree may hold a
+/// symlink or a submodule (gitlink). Anything Git can't account for is an error.
+fn unencrypted_outgoing(dir: &Path, key: &MasterKey) -> AppResult<Vec<String>> {
     let unsure = || AppError::System("원격으로 보낼 백업을 확인하지 못해 보내지 않았습니다".into());
     let list = git(dir, &["rev-list", "--objects", "HEAD", "--not", "--remotes=origin"])?;
     // `<id>` for a commit, `<id> <path>` for a tree or blob (the root tree: empty path).
@@ -592,7 +614,8 @@ fn unencrypted_outgoing(dir: &Path) -> AppResult<Vec<String>> {
             let content = &rest[nl + 1..nl + 1 + len];
             rest = &rest[nl + 1 + len + 1..];
             if !*tree {
-                if !crate::crypt::is_encrypted(content) {
+                // Decrypting also proves the header's key id and the content are this key's.
+                if crate::crypt::decrypt(key, content).is_err() {
                     bad.push(path.to_string());
                 }
                 continue;
@@ -638,10 +661,13 @@ pub fn backup_with_exe(dir: &Path, message: &str, key: Option<&MasterKey>, exe: 
     }
     keep_line_endings(dir)?;
     let crypt = crypt_state(dir);
+    // This vault's key (only for an encrypted vault).
+    let mut vault_key = None;
     if let Some(id) = &crypt {
         let Some(key) = key.filter(|k| key_matches(Some(k), id.as_deref())) else {
             return Err(AppError::System(NO_KEY.into()));
         };
+        vault_key = Some(key);
         // The app owns these: a deleted or edited one must not let plain text through.
         write_if_changed(&dir.join(".gitattributes"), GITATTRIBUTES)?;
         write_if_changed(&dir.join(CRYPT_FILE), &crypt_file_text(key))?;
@@ -651,6 +677,16 @@ pub fn backup_with_exe(dir: &Path, message: &str, key: Option<&MasterKey>, exe: 
     let mut r = BackupResult::default();
     git(dir, &["add", "-A"])?;
     if crypt.is_some() {
+        let links = links_staged(dir).inspect_err(|_| {
+            let _ = git(dir, &["reset", "-q"]);
+        })?;
+        if !links.is_empty() {
+            let _ = git(dir, &["reset", "-q"]);
+            let paths = links.iter().take(5).map(String::as_str).collect::<Vec<_>>().join(", ");
+            return Err(AppError::System(format!(
+                "하위 폴더/파일 {paths}는 Git 저장소(또는 링크)라 암호화 백업할 수 없습니다. 노트 폴더 밖으로 옮기거나 .gitignore에 넣으세요"
+            )));
+        }
         let bad = unencrypted_staged(dir).inspect_err(|_| {
             let _ = git(dir, &["reset", "-q"]);
         })?;
@@ -673,7 +709,9 @@ pub fn backup_with_exe(dir: &Path, message: &str, key: Option<&MasterKey>, exe: 
     }
     let branch = git(dir, &["rev-parse", "--abbrev-ref", "HEAD"])?;
     // `--prune`: branches deleted there (or from a corrected address) don't linger here.
-    git(dir, &["fetch", "-q", "--prune", "origin"])?;
+    // Every branch, whatever `remote.origin.fetch` says (a single-branch clone fetches
+    // only its own), so an encrypted branch of another name is always seen.
+    git(dir, &["fetch", "-q", "--prune", "origin", "+refs/heads/*:refs/remotes/origin/*"])?;
     if crypt.is_none() && remote_has_encrypted_branch(dir)? {
         // A plain vault never merges from or sends to an encrypted repository.
         return Err(AppError::System(ENCRYPTED_REMOTE.into()));
@@ -717,9 +755,9 @@ pub fn backup_with_exe(dir: &Path, message: &str, key: Option<&MasterKey>, exe: 
         1 // the remote has no such branch yet
     };
     if ahead > 0 && git(dir, &["rev-parse", "-q", "--verify", "HEAD"]).is_ok() {
-        if crypt.is_some() {
+        if let Some(key) = vault_key {
             // The last word on what leaves this PC, whatever made the commits.
-            let bad = unencrypted_outgoing(dir)?;
+            let bad = unencrypted_outgoing(dir, key)?;
             if !bad.is_empty() {
                 let paths = bad.iter().take(5).map(String::as_str).collect::<Vec<_>>().join(", ");
                 return Err(AppError::System(format!(
@@ -727,7 +765,8 @@ pub fn backup_with_exe(dir: &Path, message: &str, key: Option<&MasterKey>, exe: 
                 )));
             }
         }
-        git(dir, &["push", "-q", "-u", "origin", &branch])?;
+        // Only the branch: an annotated tag (its message is plain text) never goes along.
+        git(dir, &["-c", "push.followTags=false", "push", "--no-follow-tags", "-q", "-u", "origin", &branch])?;
         r.pushed = true;
     }
     Ok(r)
