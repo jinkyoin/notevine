@@ -8,10 +8,12 @@
 use std::path::Path;
 use std::process::Command;
 
+use chrono::{DateTime, Local};
 use serde::Serialize;
 use tauri::State;
 
 use crate::commands::AppState;
+use crate::crypt::{CRYPT_FILE, MasterKey, crypt_file_key_id, crypt_file_text, key_id};
 use crate::error::{AppError, AppResult};
 use crate::trust::vault_root;
 
@@ -29,6 +31,24 @@ const GITIGNORE: &str = "# Notevine: 검색 인덱스·히스토리 DB는 Git에
 .app/workspace.json
 *.notevine-tmp
 ";
+
+/// Every file goes through the notevine filter except the three that Git and the app
+/// must read as they are.
+const GITATTRIBUTES: &str = "# Notevine: 이 노트 폴더는 원격에 암호화되어 올라갑니다
+* filter=notevine diff=notevine merge=notevine -text
+.gitattributes !filter !diff !merge
+.gitignore !filter !diff !merge
+.notevine-crypt !filter !diff !merge
+";
+
+/// Where `enable_encryption_in` puts the old repository. It holds plain history, so
+/// it never goes into the new one.
+const MOVED_ASIDE: &str = ".git-before-encryption-";
+const MOVED_ASIDE_IGNORE: &str = "/.git-before-encryption-*/";
+
+const NO_KEY: &str = "이 PC에 이 노트 폴더의 암호화 열쇠가 없습니다. 설정 > 백업에서 복구 코드를 넣어 주세요";
+const NOT_THIS_REPO: &str =
+    "원격 저장소가 이 암호화 저장소가 아닙니다(평문 이력이거나 다른 열쇠). 새 빈 저장소를 만들어 주소를 넣어 주세요";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct BackupStatus {
@@ -48,6 +68,10 @@ pub struct BackupStatus {
     /// Time (ms) and message of the last backup.
     pub last_at: Option<i64>,
     pub last_message: Option<String>,
+    /// Backups of this vault go to the remote encrypted.
+    pub encrypted: bool,
+    /// This PC's key is the one the vault is encrypted with.
+    pub key_ok: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -123,14 +147,28 @@ fn is_repo(dir: &Path) -> bool {
 }
 
 pub fn status_in(dir: &Path) -> AppResult<BackupStatus> {
+    status_with_key(dir, None)
+}
+
+/// [`status_in`], also telling whether `key` opens an encrypted vault.
+pub fn status_with_key(dir: &Path, key: Option<&MasterKey>) -> AppResult<BackupStatus> {
     let mut s = BackupStatus { git: installed(), ..Default::default() };
     if !s.git || !is_repo(dir) {
         return Ok(s);
     }
     s.repo = true;
+    if let Some(id) = crypt_state(dir) {
+        s.encrypted = true;
+        s.key_ok = key_matches(key, id.as_deref());
+    }
     s.branch = git(dir, &["rev-parse", "--abbrev-ref", "HEAD"]).ok().filter(|b| b != "HEAD");
     s.remote = git(dir, &["remote", "get-url", "origin"]).ok().filter(|r| !r.is_empty());
-    s.changed = git(dir, &["status", "--porcelain", "-uall"])?.lines().count() as u32;
+    // Without the key the filter can't clean a changed note, so Git may not say how many.
+    s.changed = match git(dir, &["status", "--porcelain", "-uall"]) {
+        Ok(out) => out.lines().count() as u32,
+        Err(_) if s.encrypted && !s.key_ok => 0,
+        Err(e) => return Err(e),
+    };
     if let Ok(last) = git(dir, &["log", "-1", "--format=%ct%x09%s"])
         && let Some((t, m)) = last.split_once('\t')
     {
@@ -145,6 +183,30 @@ pub fn status_in(dir: &Path) -> AppResult<BackupStatus> {
         s.behind = it.next().unwrap_or(0);
     }
     Ok(s)
+}
+
+/// `None`: a plain vault. `Some(id)`: an encrypted one, with the key id its
+/// `.notevine-crypt` names (`None` if that can't be read). The working-tree file is
+/// asked first; a deleted one still counts through the last commit or the filter config.
+fn crypt_state(dir: &Path) -> Option<Option<String>> {
+    if !is_repo(dir) {
+        return None;
+    }
+    let file = dir.join(CRYPT_FILE);
+    if file.exists() {
+        return Some(std::fs::read_to_string(file).ok().as_deref().and_then(crypt_file_key_id));
+    }
+    if let Ok(text) = git(dir, &["show", &format!("HEAD:{CRYPT_FILE}")]) {
+        return Some(crypt_file_key_id(&text));
+    }
+    if git(dir, &["config", "--local", "--get", "filter.notevine.process"]).is_ok() {
+        return Some(None);
+    }
+    None
+}
+
+fn key_matches(key: Option<&MasterKey>, id: Option<&str>) -> bool {
+    matches!((key, id), (Some(k), Some(id)) if key_id(k) == id)
 }
 
 /// Makes the vault a repository with the Notevine `.gitignore` (kept if there is one).
@@ -190,14 +252,101 @@ pub fn set_remote_in(dir: &Path, url: &str) -> AppResult<()> {
     }
 }
 
+/// Registers `notevine` as the repository's filter, diff text converter and merge
+/// driver. `exe` is written with `/` and in double quotes, as Git's shell needs it.
+fn configure_filter(dir: &Path, exe: &Path) -> AppResult<()> {
+    let exe = exe.to_string_lossy().replace('\\', "/");
+    if exe.is_empty() || exe.contains('"') {
+        return Err(AppError::System(format!("Notevine 실행 파일 경로를 Git에 넣을 수 없습니다: {exe}")));
+    }
+    let exe = format!("\"{exe}\"");
+    for (k, v) in [
+        ("filter.notevine.process", format!("{exe} --git-filter")),
+        ("filter.notevine.required", "true".to_string()),
+        ("diff.notevine.textconv", format!("{exe} --git-textconv")),
+        ("merge.notevine.driver", format!("{exe} --git-merge %O %A %B %P")),
+        ("merge.notevine.name", "Notevine 암호화 노트 합치기".to_string()),
+    ] {
+        if git(dir, &["config", "--local", "--get", k]).ok().as_deref() != Some(v.as_str()) {
+            git(dir, &["config", "--local", k, &v])?;
+        }
+    }
+    Ok(())
+}
+
+/// Writes `text` to `path` unless it is exactly that already.
+fn write_if_changed(path: &Path, text: &str) -> AppResult<()> {
+    if std::fs::read(path).ok().as_deref() != Some(text.as_bytes()) {
+        std::fs::write(path, text)?;
+    }
+    Ok(())
+}
+
+/// Makes the vault an encrypted repository. A `.git` already there is moved aside
+/// (its new name is returned) because its history holds the notes in plain text; the
+/// fresh repository starts with no commits and no remote, so nothing old can be sent.
+pub fn enable_encryption_in(
+    dir: &Path,
+    key: &MasterKey,
+    exe: &Path,
+    now: DateTime<Local>,
+) -> AppResult<Option<String>> {
+    let old = dir.join(".git");
+    let moved = if old.exists() {
+        let stamp = now.format("%Y%m%d-%H%M%S").to_string();
+        let mut name = format!("{MOVED_ASIDE}{stamp}");
+        let mut n = 2;
+        while dir.join(&name).exists() {
+            name = format!("{MOVED_ASIDE}{stamp}-{n}");
+            n += 1;
+        }
+        std::fs::rename(&old, dir.join(&name))?;
+        Some(name)
+    } else {
+        None
+    };
+    init_in(dir)?;
+    write_if_changed(&dir.join(".gitattributes"), GITATTRIBUTES)?;
+    write_if_changed(&dir.join(CRYPT_FILE), &crypt_file_text(key))?;
+    let ignore = dir.join(".gitignore");
+    let text = std::fs::read_to_string(&ignore)?;
+    if !text.lines().any(|l| l.trim() == MOVED_ASIDE_IGNORE) {
+        let sep = if text.is_empty() || text.ends_with('\n') { "" } else { "\n" };
+        std::fs::write(&ignore, format!("{text}{sep}{MOVED_ASIDE_IGNORE}\n"))?;
+    }
+    configure_filter(dir, exe)?;
+    Ok(moved)
+}
+
+/// [`backup_with_exe`] with this program as the filter of an encrypted vault.
+pub fn backup_in(dir: &Path, message: &str, key: Option<&MasterKey>) -> AppResult<BackupResult> {
+    let exe = if crypt_state(dir).is_some() { std::env::current_exe()? } else { Default::default() };
+    backup_with_exe(dir, message, key, &exe)
+}
+
 /// Commits everything changed, then (with a remote) brings in what other PCs sent
 /// and sends this one's. A merge that would conflict is undone and reported, so
 /// the notes on this PC are never left half-merged.
-pub fn backup_in(dir: &Path, message: &str) -> AppResult<BackupResult> {
+///
+/// An encrypted vault fails closed: without this vault's key nothing is added, and a
+/// remote that isn't this encrypted repository is never merged or pushed to. `exe` is
+/// the `notevine` program Git runs as the filter, written again on every backup so a
+/// moved or updated app keeps working.
+pub fn backup_with_exe(dir: &Path, message: &str, key: Option<&MasterKey>, exe: &Path) -> AppResult<BackupResult> {
     if !is_repo(dir) {
         init_in(dir)?;
     }
     keep_line_endings(dir)?;
+    let crypt = crypt_state(dir);
+    if let Some(id) = &crypt {
+        let Some(key) = key.filter(|k| key_matches(Some(k), id.as_deref())) else {
+            return Err(AppError::System(NO_KEY.into()));
+        };
+        // The app owns these: a deleted or edited one must not let plain text through.
+        write_if_changed(&dir.join(".gitattributes"), GITATTRIBUTES)?;
+        write_if_changed(&dir.join(CRYPT_FILE), &crypt_file_text(key))?;
+        configure_filter(dir, exe)?;
+    }
     let mut r = BackupResult::default();
     git(dir, &["add", "-A"])?;
     let staged = git(dir, &["diff", "--cached", "--name-only"])?;
@@ -213,6 +362,13 @@ pub fn backup_in(dir: &Path, message: &str) -> AppResult<BackupResult> {
     git(dir, &["fetch", "-q", "origin"])?;
     let remote_branch = format!("origin/{branch}");
     if git(dir, &["rev-parse", "--verify", "-q", &remote_branch]).is_ok() {
+        // Before any merge or push: the remote must be this same encrypted repository.
+        if let Some(id) = &crypt {
+            let theirs = git(dir, &["show", &format!("{remote_branch}:{CRYPT_FILE}")]).ok();
+            if theirs.as_deref().and_then(crypt_file_key_id).is_none_or(|t| Some(t) != *id) {
+                return Err(AppError::System(NOT_THIS_REPO.into()));
+            }
+        }
         let behind: u32 = git(dir, &["rev-list", "--count", &format!("HEAD..{remote_branch}")])?.parse().unwrap_or(0);
         if behind > 0 {
             if let Err(e) = git(dir, &["merge", "-q", "--no-edit", &remote_branch]) {
@@ -254,11 +410,11 @@ fn require_trust(dir: &Path, trusted: bool) -> AppResult<()> {
     Ok(())
 }
 
-pub fn status_for(dir: &Path, trusted: bool) -> AppResult<BackupStatus> {
+pub fn status_for(dir: &Path, trusted: bool, key: Option<&MasterKey>) -> AppResult<BackupStatus> {
     if is_repo(dir) && !trusted {
         return Ok(BackupStatus { git: installed(), repo: true, ..Default::default() });
     }
-    Ok(BackupStatus { trusted, ..status_in(dir)? })
+    Ok(BackupStatus { trusted, ..status_with_key(dir, key)? })
 }
 
 pub fn init_for(dir: &Path, trusted: bool) -> AppResult<()> {
@@ -271,9 +427,19 @@ pub fn set_remote_for(dir: &Path, trusted: bool, url: &str) -> AppResult<()> {
     set_remote_in(dir, url)
 }
 
-pub fn backup_for(dir: &Path, trusted: bool, message: &str) -> AppResult<BackupResult> {
+pub fn backup_for(dir: &Path, trusted: bool, message: &str, key: Option<&MasterKey>) -> AppResult<BackupResult> {
     require_trust(dir, trusted)?;
-    backup_in(dir, message)
+    backup_in(dir, message, key)
+}
+
+/// This PC's key. A key store that fails is an error only for an encrypted vault; Git
+/// is asked whether it is one only in a repository the user allowed.
+fn load_key(dir: &Path, trusted: bool) -> AppResult<Option<MasterKey>> {
+    match crate::crypt_key::key_store().load() {
+        Ok(k) => Ok(k),
+        Err(e) if trusted && crypt_state(dir).is_some() => Err(e),
+        Err(_) => Ok(None),
+    }
 }
 
 fn is_trusted(state: &State<AppState>, dir: &Path) -> bool {
@@ -291,7 +457,9 @@ fn remember_trust(state: &State<AppState>, dir: &Path) -> AppResult<()> {
 #[tauri::command]
 pub async fn backup_status(state: State<'_, AppState>) -> AppResult<BackupStatus> {
     let dir = vault_root(&state)?;
-    status_for(&dir, is_trusted(&state, &dir))
+    let trusted = is_trusted(&state, &dir);
+    let key = load_key(&dir, trusted)?;
+    status_for(&dir, trusted, key.as_ref())
 }
 
 /// The user allows Git in the `.git` that was already in this folder.
@@ -299,7 +467,8 @@ pub async fn backup_status(state: State<'_, AppState>) -> AppResult<BackupStatus
 pub async fn backup_trust(state: State<'_, AppState>) -> AppResult<BackupStatus> {
     let dir = vault_root(&state)?;
     remember_trust(&state, &dir)?;
-    status_for(&dir, true)
+    let key = load_key(&dir, true)?;
+    status_for(&dir, true, key.as_ref())
 }
 
 #[tauri::command]
@@ -319,9 +488,26 @@ pub async fn backup_set_remote(state: State<'_, AppState>, url: String) -> AppRe
 #[tauri::command]
 pub async fn backup_now(state: State<'_, AppState>, message: String) -> AppResult<BackupResult> {
     let dir = vault_root(&state)?;
-    let r = backup_for(&dir, is_trusted(&state, &dir), &message)?;
+    let trusted = is_trusted(&state, &dir);
+    let key = load_key(&dir, trusted)?;
+    let r = backup_for(&dir, trusted, &message, key.as_ref())?;
     remember_trust(&state, &dir)?;
     Ok(r)
+}
+
+/// Turns encryption on for the vault with this PC's key; returns the name the old
+/// repository was moved to, if there was one.
+#[tauri::command]
+pub async fn backup_enable_encryption(state: State<'_, AppState>) -> AppResult<Option<String>> {
+    let dir = vault_root(&state)?;
+    let key = crate::crypt_key::key_store().load()?.ok_or_else(|| {
+        AppError::System("이 PC에 암호화 열쇠가 없습니다. 먼저 열쇠를 만들거나 복구 코드를 넣어 주세요".into())
+    })?;
+    let exe = std::env::current_exe()?;
+    let moved = enable_encryption_in(&dir, &key, &exe, Local::now())?;
+    // The repository there now is the one the app just made.
+    remember_trust(&state, &dir)?;
+    Ok(moved)
 }
 
 #[cfg(test)]
@@ -352,7 +538,7 @@ mod tests {
         fs::write(tmp.path().join("a.md"), "b\n").unwrap();
         status_in(tmp.path()).unwrap();
         assert!(!tmp.path().join("fsmonitor-ran").exists(), "core.fsmonitor ran");
-        backup_in(tmp.path(), "백업").unwrap();
+        backup_in(tmp.path(), "백업", None).unwrap();
         assert!(!tmp.path().join("hook-ran").exists(), "pre-commit hook ran");
     }
 
@@ -368,10 +554,10 @@ mod tests {
         fs::write(tmp.path().join(".gitattributes"), "*.md filter=x\n").unwrap();
         fs::write(tmp.path().join("a.md"), "b\n").unwrap();
 
-        let s = status_for(tmp.path(), false).unwrap();
+        let s = status_for(tmp.path(), false, None).unwrap();
         assert!(s.repo && !s.trusted);
         assert_eq!((s.changed, s.branch.clone()), (0, None), "git was not asked");
-        assert!(backup_for(tmp.path(), false, "백업").is_err());
+        assert!(backup_for(tmp.path(), false, "백업", None).is_err());
         assert!(set_remote_for(tmp.path(), false, "https://example.com/x.git").is_err());
         assert!(!tmp.path().join("filter-ran").exists());
     }
@@ -382,10 +568,10 @@ mod tests {
             return;
         }
         let tmp = tempfile::tempdir().unwrap();
-        let s = status_for(tmp.path(), false).unwrap();
+        let s = status_for(tmp.path(), false, None).unwrap();
         assert!(!s.repo && !s.trusted);
         init_for(tmp.path(), false).unwrap();
-        assert!(status_for(tmp.path(), true).unwrap().trusted);
+        assert!(status_for(tmp.path(), true, None).unwrap().trusted);
     }
 
     #[test]
@@ -418,10 +604,10 @@ mod tests {
         let s = status_in(&a).unwrap();
         assert!(s.repo && s.remote.is_some());
         assert_eq!(s.changed, 2); // 회의.md and .gitignore; index.db stays out
-        let r = backup_in(&a, "백업 1").unwrap();
+        let r = backup_in(&a, "백업 1", None).unwrap();
         assert!(r.committed && r.pushed && !r.pulled);
         assert_eq!(r.files, 2);
-        assert_eq!(backup_in(&a, "그대로").unwrap(), BackupResult::default());
+        assert_eq!(backup_in(&a, "그대로", None).unwrap(), BackupResult::default());
 
         // A second PC gets the notes, adds one, and sends it back.
         let b = tmp.path().join("b");
@@ -431,10 +617,10 @@ mod tests {
         keep_line_endings(&b).unwrap();
         assert!(b.join("회의.md").exists());
         fs::write(b.join("아이디어.md"), "새 생각\n").unwrap();
-        assert!(backup_in(&b, "B").unwrap().pushed);
+        assert!(backup_in(&b, "B", None).unwrap().pushed);
 
         fs::write(a.join("할 일.md"), "- 질의서\n").unwrap();
-        let r = backup_in(&a, "백업 2").unwrap();
+        let r = backup_in(&a, "백업 2", None).unwrap();
         assert!(r.committed && r.pulled && r.pushed);
         assert!(a.join("아이디어.md").exists());
         let s = status_in(&a).unwrap();
@@ -444,9 +630,9 @@ mod tests {
         // Both change the same line: nothing is half-merged and the reason is given.
         fs::write(b.join("회의.md"), "# 회의 B\n").unwrap();
         git(&b, &["pull", "-q", "--no-rebase"]).unwrap();
-        backup_in(&b, "B2").unwrap();
+        backup_in(&b, "B2", None).unwrap();
         fs::write(a.join("회의.md"), "# 회의 A\n").unwrap();
-        let e = backup_in(&a, "A2").unwrap_err().to_string();
+        let e = backup_in(&a, "A2", None).unwrap_err().to_string();
         assert!(e.contains("회의.md"), "{e}");
         assert_eq!(fs::read_to_string(a.join("회의.md")).unwrap(), "# 회의 A\n");
         assert!(!a.join(".git/MERGE_HEAD").exists());

@@ -1,0 +1,310 @@
+//! Encrypted Git backup end to end: Git runs the real `notevine` executable as its
+//! filter and merge driver, so these live here (only integration tests get its path).
+//!
+//! The filter child process finds its key through `NOTEVINE_KEY_STORE=test` and
+//! `NOTEVINE_TEST_KEY` (debug builds only), so every test holds one lock while those
+//! variables are set.
+
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::{Mutex, MutexGuard};
+
+use chrono::{DateTime, Local, TimeZone};
+use notevine_lib::backup::{backup_in, backup_with_exe, enable_encryption_in, init_in, set_remote_in, status_with_key};
+use notevine_lib::crypt::{CRYPT_FILE, MasterKey, crypt_file_text, recovery_code};
+
+const NO_KEY: &str = "이 PC에 이 노트 폴더의 암호화 열쇠가 없습니다. 설정 > 백업에서 복구 코드를 넣어 주세요";
+const NOT_THIS_REPO: &str =
+    "원격 저장소가 이 암호화 저장소가 아닙니다(평문 이력이거나 다른 열쇠). 새 빈 저장소를 만들어 주소를 넣어 주세요";
+const GITATTRIBUTES: &str = "# Notevine: 이 노트 폴더는 원격에 암호화되어 올라갑니다
+* filter=notevine diff=notevine merge=notevine -text
+.gitattributes !filter !diff !merge
+.gitignore !filter !diff !merge
+.notevine-crypt !filter !diff !merge
+";
+
+static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+/// Holds the lock and the key variables for the filter child; clears them when dropped.
+struct KeyEnv(#[allow(dead_code)] MutexGuard<'static, ()>);
+
+impl KeyEnv {
+    /// `None`: the test key store with no key in it (never the real OS store).
+    fn new(key: Option<&MasterKey>) -> KeyEnv {
+        let g = KeyEnv(ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner()));
+        // SAFETY: every test in this binary that sets or reads these variables (or runs
+        // Git, whose children read them) holds ENV_LOCK, so no other thread touches them.
+        unsafe {
+            std::env::set_var("NOTEVINE_KEY_STORE", "test");
+            match key {
+                Some(k) => std::env::set_var("NOTEVINE_TEST_KEY", recovery_code(k)),
+                None => std::env::remove_var("NOTEVINE_TEST_KEY"),
+            }
+        }
+        g
+    }
+}
+
+impl Drop for KeyEnv {
+    fn drop(&mut self) {
+        // SAFETY: still holding ENV_LOCK (the guard field drops after this body).
+        unsafe {
+            std::env::remove_var("NOTEVINE_TEST_KEY");
+            std::env::remove_var("NOTEVINE_KEY_STORE");
+        }
+    }
+}
+
+fn exe() -> &'static Path {
+    Path::new(env!("CARGO_BIN_EXE_notevine"))
+}
+
+fn git_raw(dir: &Path, args: &[&str]) -> std::process::Output {
+    Command::new("git")
+        .args(["-c", "core.quotepath=false"])
+        .args(args)
+        .current_dir(dir)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .output()
+        .expect("git runs")
+}
+
+fn git(dir: &Path, args: &[&str]) -> String {
+    let out = git_raw(dir, args);
+    assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8_lossy(&out.stdout).trim_end().to_string()
+}
+
+fn installed() -> bool {
+    Command::new("git").arg("--version").output().is_ok_and(|o| o.status.success())
+}
+
+fn bare_remote(root: &Path) -> String {
+    let remote = root.join("remote.git");
+    std::fs::create_dir(&remote).unwrap();
+    git(&remote, &["init", "-q", "--bare", "-b", "main"]);
+    remote.to_string_lossy().to_string()
+}
+
+fn now() -> DateTime<Local> {
+    Local.with_ymd_and_hms(2026, 11, 11, 9, 8, 7).unwrap()
+}
+
+fn vault(root: &Path, name: &str) -> PathBuf {
+    let d = root.join(name);
+    std::fs::create_dir_all(&d).unwrap();
+    d
+}
+
+/// A second PC: clones with the filter already set so checkout decrypts.
+fn clone_encrypted(root: &Path, url: &str, name: &str) -> PathBuf {
+    let exe = format!("\"{}\"", exe().to_string_lossy().replace('\\', "/"));
+    let process = format!("filter.notevine.process={exe} --git-filter");
+    git(
+        root,
+        &[
+            "-c",
+            &process,
+            "-c",
+            "filter.notevine.required=true",
+            "clone",
+            "-q",
+            "-c",
+            "core.autocrlf=false",
+            "-c",
+            &process,
+            "-c",
+            "filter.notevine.required=true",
+            url,
+            name,
+        ],
+    );
+    let d = root.join(name);
+    git(&d, &["config", "user.name", "b"]);
+    git(&d, &["config", "user.email", "b@x"]);
+    d
+}
+
+fn read(p: &Path) -> String {
+    std::fs::read_to_string(p).unwrap()
+}
+
+#[test]
+fn remote_holds_only_ciphertext() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let url = bare_remote(tmp.path());
+    let a = vault(tmp.path(), "a");
+    std::fs::write(a.join("회의.md"), "예산 확정\n").unwrap();
+
+    assert_eq!(enable_encryption_in(&a, &key, exe(), now()).unwrap(), None);
+    set_remote_in(&a, &url).unwrap();
+    let r = backup_with_exe(&a, "백업", Some(&key), exe()).unwrap();
+    assert!(r.committed && r.pushed, "{r:?}");
+
+    let remote = Path::new(&url);
+    let blob = git_raw(remote, &["show", "HEAD:회의.md"]);
+    assert!(blob.status.success());
+    assert!(blob.stdout.starts_with(b"NVENC"), "{:?}", String::from_utf8_lossy(&blob.stdout));
+    assert!(!String::from_utf8_lossy(&blob.stdout).contains("예산"));
+    assert_eq!(git(remote, &["show", "HEAD:.gitattributes"]), GITATTRIBUTES.trim_end());
+    assert_eq!(git(remote, &["show", &format!("HEAD:{CRYPT_FILE}")]), crypt_file_text(&key).trim_end());
+    // This PC keeps reading its notes as they are.
+    assert_eq!(read(&a.join("회의.md")), "예산 확정\n");
+
+    let s = status_with_key(&a, Some(&key)).unwrap();
+    assert!(s.encrypted && s.key_ok && s.changed == 0, "{s:?}");
+    let s = status_with_key(&a, Some(&MasterKey::generate())).unwrap();
+    assert!(s.encrypted && !s.key_ok);
+}
+
+#[test]
+fn enabling_moves_the_old_repository_aside() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let a = vault(tmp.path(), "a");
+    std::fs::write(a.join("회의.md"), "예산 확정\n").unwrap();
+    init_in(&a).unwrap();
+    assert!(backup_in(&a, "평문 백업", None).unwrap().committed);
+    set_remote_in(&a, "https://example.com/old.git").unwrap();
+
+    let moved = enable_encryption_in(&a, &key, exe(), now()).unwrap();
+    assert_eq!(moved.as_deref(), Some(".git-before-encryption-20261111-090807"));
+    assert!(a.join(".git-before-encryption-20261111-090807/HEAD").exists());
+    assert_eq!(git(&a, &["rev-list", "--all", "--count"]), "0");
+    assert_eq!(git(&a, &["remote"]), "", "the remote is not carried over");
+    assert_eq!(read(&a.join("회의.md")), "예산 확정\n");
+    assert_eq!(read(&a.join(".gitattributes")), GITATTRIBUTES);
+    assert_eq!(read(&a.join(CRYPT_FILE)), crypt_file_text(&key));
+
+    // The old repository (plain history) never goes into the new one.
+    backup_with_exe(&a, "암호화 백업", Some(&key), exe()).unwrap();
+    let files = git(&a, &["ls-files"]);
+    assert!(!files.contains(".git-before-encryption"), "{files}");
+    assert!(files.contains("회의.md"));
+}
+
+#[test]
+fn backup_without_key_commits_nothing() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let tmp = tempfile::tempdir().unwrap();
+    let a = vault(tmp.path(), "a");
+    std::fs::write(a.join("회의.md"), "예산 확정\n").unwrap();
+    {
+        let _env = KeyEnv::new(Some(&key));
+        enable_encryption_in(&a, &key, exe(), now()).unwrap();
+    }
+    let _env = KeyEnv::new(None);
+    let e = backup_with_exe(&a, "백업", None, exe()).unwrap_err().to_string();
+    assert_eq!(e, NO_KEY);
+    let e = backup_with_exe(&a, "백업", Some(&MasterKey::generate()), exe()).unwrap_err().to_string();
+    assert_eq!(e, NO_KEY, "a key for another folder is no key");
+    assert_eq!(git(&a, &["rev-list", "--all"]), "");
+    assert_eq!(git(&a, &["diff", "--cached", "--name-only"]), "", "nothing staged");
+
+    let s = status_with_key(&a, None).unwrap();
+    assert!(s.encrypted && !s.key_ok, "{s:?}");
+}
+
+#[test]
+fn two_pcs_merge_encrypted_notes() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let url = bare_remote(tmp.path());
+    let a = vault(tmp.path(), "a");
+    std::fs::write(a.join("회의.md"), "1\n2\n3\n4\n5\n").unwrap();
+    enable_encryption_in(&a, &key, exe(), now()).unwrap();
+    set_remote_in(&a, &url).unwrap();
+    backup_with_exe(&a, "A1", Some(&key), exe()).unwrap();
+
+    let b = clone_encrypted(tmp.path(), &url, "b");
+    assert_eq!(read(&b.join("회의.md")), "1\n2\n3\n4\n5\n", "the clone decrypts");
+
+    // Different lines: merged through the notevine merge driver.
+    std::fs::write(b.join("회의.md"), "1 B\n2\n3\n4\n5\n").unwrap();
+    assert!(backup_with_exe(&b, "B1", Some(&key), exe()).unwrap().pushed);
+    std::fs::write(a.join("회의.md"), "1\n2\n3\n4\n5 A\n").unwrap();
+    let r = backup_with_exe(&a, "A2", Some(&key), exe()).unwrap();
+    assert!(r.committed && r.pulled && r.pushed, "{r:?}");
+    assert_eq!(read(&a.join("회의.md")), "1 B\n2\n3\n4\n5 A\n");
+    assert!(backup_with_exe(&b, "B2", Some(&key), exe()).unwrap().pulled);
+    assert_eq!(read(&b.join("회의.md")), "1 B\n2\n3\n4\n5 A\n");
+    let blob = git_raw(Path::new(&url), &["show", "HEAD:회의.md"]);
+    assert!(blob.stdout.starts_with(b"NVENC"), "the merge result is encrypted too");
+
+    // The same line: nothing half-merged, the reason given.
+    std::fs::write(b.join("회의.md"), "1 B\n2\n3 B\n4\n5 A\n").unwrap();
+    assert!(backup_with_exe(&b, "B3", Some(&key), exe()).unwrap().pushed);
+    std::fs::write(a.join("회의.md"), "1 B\n2\n3 A\n4\n5 A\n").unwrap();
+    let e = backup_with_exe(&a, "A3", Some(&key), exe()).unwrap_err().to_string();
+    assert!(e.contains("다른 PC에서 같은 노트를 고쳐 합치지 못했습니다") && e.contains("회의.md"), "{e}");
+    assert_eq!(read(&a.join("회의.md")), "1 B\n2\n3 A\n4\n5 A\n");
+    assert!(!a.join(".git/MERGE_HEAD").exists());
+}
+
+#[test]
+fn refuses_a_remote_that_is_not_this_encrypted_repo() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+
+    // A remote holding plain history.
+    let url = bare_remote(tmp.path());
+    let p = vault(tmp.path(), "plain");
+    std::fs::write(p.join("회의.md"), "평문\n").unwrap();
+    set_remote_in(&p, &url).unwrap();
+    assert!(backup_in(&p, "평문", None).unwrap().pushed);
+    let remote_head = git(Path::new(&url), &["rev-parse", "HEAD"]);
+
+    let a = vault(tmp.path(), "a");
+    std::fs::write(a.join("회의.md"), "비밀\n").unwrap();
+    enable_encryption_in(&a, &key, exe(), now()).unwrap();
+    set_remote_in(&a, &url).unwrap();
+    let e = backup_with_exe(&a, "A", Some(&key), exe()).unwrap_err().to_string();
+    assert_eq!(e, NOT_THIS_REPO);
+    assert_eq!(read(&a.join("회의.md")), "비밀\n");
+    assert!(!a.join(".git/MERGE_HEAD").exists());
+    assert_eq!(git(&a, &["ls-files"]).lines().count(), 4, "no file from the remote came in");
+    assert_eq!(git(Path::new(&url), &["rev-parse", "HEAD"]), remote_head, "nothing was sent");
+
+    // A remote encrypted with another key.
+    let other = MasterKey::generate();
+    let url2 = {
+        let r = tmp.path().join("other.git");
+        std::fs::create_dir(&r).unwrap();
+        git(&r, &["init", "-q", "--bare", "-b", "main"]);
+        r.to_string_lossy().to_string()
+    };
+    {
+        drop(_env);
+        let _env = KeyEnv::new(Some(&other));
+        let o = vault(tmp.path(), "o");
+        std::fs::write(o.join("x.md"), "x\n").unwrap();
+        enable_encryption_in(&o, &other, exe(), now()).unwrap();
+        set_remote_in(&o, &url2).unwrap();
+        assert!(backup_with_exe(&o, "O", Some(&other), exe()).unwrap().pushed);
+    }
+    let _env = KeyEnv::new(Some(&key));
+    set_remote_in(&a, &url2).unwrap();
+    let e = backup_with_exe(&a, "A", Some(&key), exe()).unwrap_err().to_string();
+    assert_eq!(e, NOT_THIS_REPO);
+    assert!(!a.join("x.md").exists());
+}

@@ -1,6 +1,6 @@
 mod ai;
 mod ai_api;
-mod backup;
+pub mod backup;
 mod canvas;
 mod commands;
 pub mod crypt;
@@ -222,6 +222,7 @@ pub fn run() {
             plugins::set_plugin_grant,
             backup::backup_set_remote,
             backup::backup_now,
+            backup::backup_enable_encryption,
             canvas::create_canvas,
             canvas::save_canvas,
             plugins::list_plugins,
