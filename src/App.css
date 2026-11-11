@@ -2171,6 +2171,8 @@ textarea.ai-instructions {
 }
 .set-ctl select {
   width: auto;
+  /* A long option (a deep folder path) must not squeeze the label into a column. */
+  max-width: 220px;
 }
 
 .confirm-msg {
