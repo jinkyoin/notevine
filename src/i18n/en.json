@@ -866,7 +866,7 @@
  "(템플릿: 이 형식으로 작성합니다)": "(Template: the result follows this format)",
  "노트에 적용할 안을 만들었습니다.": "A proposal for your notes is ready.",
  "결과를 넣을 노트: {0} (이 제목은 체크와 상관없이 함께 보냅니다)": "Note to write to: {0} (its title is sent whether or not it is checked)",
- "예: 회의록 폴더를 끌어다 놓고 \"지난주에 결정한 것 정리해 줘\", \"○○을 웹에서 찾아 작성해 줘\", \"독서 템플릿에 맞게 작성해 줘\". 노트는 끌어다 놓은 것만 보냅니다. 작성을 요청하면 열린 노트에 넣을 내용을 보여 드리고, 확인한 것만 적용합니다. 열린 노트가 없으면 답을 새 노트로 저장하거나 복사할 수 있습니다.": "For example: drag the meeting notes folder here and ask \"Sum up what we decided last week\", \"Find ○○ on the web and write it up\", \"Write it in my reading template\". Only the notes you drag here are sent. When you ask for writing, you see what would go into the open note and only what you confirm is applied. With no note open, you can save the answer as a new note or copy it.",
+ "예: 회의록 폴더를 끌어다 놓고 \"지난주에 결정한 것 정리해 줘\". 노트는 끌어다 놓은 것만 보내고, 작성한 내용은 확인한 것만 적용합니다.": "For example: drag the meeting notes folder here and ask \"Sum up what we decided last week\". Only the notes you drag here are sent, and only the writing you confirm is applied.",
  "노트 {0}개에 적용했습니다": "Applied to {0} notes",
  "질문하거나 작성할 것을 쓰세요 (Enter 보내기, Shift+Enter 줄바꿈)": "Ask something or say what to write (Enter to send, Shift+Enter for a new line)",
  "다른 폴더로 이동…": "Move to another folder…",

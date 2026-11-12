@@ -2,21 +2,22 @@
 :root {
   --bg: #ffffff;
   --bg-sidebar: #f8f8f9;
-  --bg-rail: #efedf5;
+  --bg-rail: #f1f1f2;
   --bg-hover: #f0f0f2;
-  --bg-active: #ece8f6;
+  --bg-active: #e9eaec;
   --text: #1c1c1f;
   --muted: #73737c;
-  --selection: rgba(90, 58, 148, 0.18);
+  --selection: rgba(31, 111, 120, 0.18);
   --border: #e8e8eb;
-  --accent: #5a3a94;
+  --accent: #1f6f78;
   --accent-text: #ffffff;
   --danger: #c4342b;
   --danger-bg: #fdecea;
   --scroll: rgba(28, 28, 31, 0.2);
-  --shadow: 0 12px 40px rgba(20, 20, 28, 0.14);
+  --shadow: 0 8px 24px rgba(20, 20, 28, 0.1);
   --font: "Pretendard Variable", "Pretendard", "Malgun Gothic", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "D2Coding", "JetBrains Mono", Consolas, monospace;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --sidebar-w: 260px;
   --right-w: 300px;
   --editor-max: 100%;
@@ -25,41 +26,41 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --selection: rgba(184, 161, 232, 0.28);
+    --selection: rgba(108, 195, 203, 0.26);
     --bg: #18181b;
     --bg-sidebar: #1e1e21;
     --bg-rail: #141416;
     --bg-hover: #2a2a2e;
-    --bg-active: #322b44;
+    --bg-active: #303136;
     --text: #ececef;
     --muted: #9a9aa3;
     --border: #2c2c30;
-    --accent: #b8a1e8;
-    --accent-text: #1b1330;
+    --accent: #6cc3cb;
+    --accent-text: #0b2528;
     --danger: #f07167;
     --danger-bg: #3a2322;
     --scroll: rgba(236, 236, 239, 0.22);
-    --shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
-    --selection: rgba(184, 161, 232, 0.28);
+    --selection: rgba(108, 195, 203, 0.26);
     --bg: #18181b;
     --bg-sidebar: #1e1e21;
     --bg-rail: #141416;
     --bg-hover: #2a2a2e;
-    --bg-active: #322b44;
+    --bg-active: #303136;
     --text: #ececef;
     --muted: #9a9aa3;
     --border: #2c2c30;
-    --accent: #b8a1e8;
-    --accent-text: #1b1330;
+    --accent: #6cc3cb;
+    --accent-text: #0b2528;
     --danger: #f07167;
     --danger-bg: #3a2322;
     --scroll: rgba(236, 236, 239, 0.22);
-    --shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+    --shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     color-scheme: dark;
   }
 
@@ -108,8 +109,8 @@ button {
 .btn {
   border: 1px solid var(--border);
   background: var(--bg);
-  border-radius: 7px;
-  padding: 7px 14px;
+  border-radius: 6px;
+  padding: 8px 16px;
   font-weight: 500;
   cursor: pointer;
 }
@@ -129,14 +130,14 @@ button {
   background: transparent;
 }
 .btn.small {
-  padding: 4px 10px;
+  padding: 4px 12px;
   font-size: 12px;
 }
 /* 상단바 백업 단추: 글자 옆의 작은 점 하나. pending은 강조색, warn은 오류색. */
 .backup-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 .backup-dot {
   width: 6px;
@@ -175,6 +176,21 @@ button {
   stroke: none;
   opacity: 0.35;
 }
+/* 선 아이콘 한 벌: 16px, 선 1.5, 글자 색을 따른다 */
+.ui-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  vertical-align: middle;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ui-icon path {
+  vector-effect: non-scaling-stroke;
+}
 
 /* SCR-01 시작 화면 */
 .start {
@@ -194,11 +210,11 @@ button {
 .start-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 .start-brand h1 {
   margin: 0;
-  font-size: 26px;
+  font-size: 28px;
 }
 .logo-mark {
   width: 40px;
@@ -223,7 +239,7 @@ button {
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
-  margin: 0 0 6px;
+  margin: 0 0 8px;
 }
 .recent-list {
   list-style: none;
@@ -235,7 +251,7 @@ button {
 .recent-list li {
   display: flex;
   flex-direction: column;
-  padding: 8px 10px;
+  padding: 8px 12px;
   border-radius: 6px;
   cursor: pointer;
 }
@@ -284,8 +300,8 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 10px 0;
+  gap: 12px;
+  padding: 12px 0;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: none;
@@ -295,13 +311,13 @@ button {
   flex-shrink: 0;
   width: 34px;
   height: 34px;
-  border-radius: 9px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--accent);
   font: inherit;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   display: grid;
   place-items: center;
@@ -322,7 +338,7 @@ button {
   top: 7px;
   width: 4px;
   height: 20px;
-  border-radius: 0 3px 3px 0;
+  border-radius: 0 4px 4px 0;
   background: var(--accent);
 }
 .rail-btn.temp {
@@ -383,7 +399,7 @@ button {
   text-overflow: ellipsis;
 }
 .crumbs .sep {
-  margin: 0 6px;
+  margin: 0 8px;
 }
 .spacer {
   flex: 1;
@@ -435,10 +451,10 @@ button {
   align-items: center;
   gap: 4px;
   height: 33px;
-  padding: 0 8px 0 14px;
+  padding: 0 8px 0 16px;
   box-shadow: inset 0 -1px 0 var(--border);
   background: var(--bg-sidebar);
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--muted);
 }
 .split-bar .split-title {
@@ -458,7 +474,7 @@ button {
   align-items: center;
   gap: 2px;
   height: 34px;
-  padding: 0 6px 0 12px;
+  padding: 0 8px 0 12px;
   flex: none;
 }
 .pane-title {
@@ -530,7 +546,7 @@ button {
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
-  transition: transform 0.12s ease;
+  transition: transform 120ms var(--ease);
 }
 .twisty-icon.open {
   transform: rotate(90deg);
@@ -548,7 +564,7 @@ button {
   white-space: nowrap;
 }
 .tree-count {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .tree-input {
@@ -557,7 +573,7 @@ button {
   font: inherit;
   padding: 1px 4px;
   border: 1px solid var(--accent);
-  border-radius: 3px;
+  border-radius: 4px;
   background: var(--bg);
   color: var(--text);
 }
@@ -572,10 +588,10 @@ button {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 .menu li {
-  padding: 6px 10px;
+  padding: 8px 12px;
   border-radius: 4px;
   cursor: pointer;
 }
@@ -599,8 +615,8 @@ button {
 .menu-swatches {
   display: grid;
   grid-template-columns: repeat(7, 20px);
-  gap: 6px;
-  margin-top: 6px;
+  gap: 8px;
+  margin-top: 8px;
 }
 .menu-swatch {
   width: 20px;
@@ -639,11 +655,11 @@ button {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 4px 5px 10px;
+  padding: 4px 4px 4px 12px;
   border: 1px solid transparent;
   border-bottom: none;
   border-radius: 6px 6px 0 0;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--muted);
   cursor: pointer;
   user-select: none;
@@ -696,7 +712,7 @@ button {
   flex: none;
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: 12px;
   padding: 20px 24px 12px;
 }
 .folder-table-head h2 {
@@ -711,7 +727,7 @@ button {
 }
 .folder-table table {
   border-collapse: collapse;
-  font-size: 13.5px;
+  font-size: 14px;
   min-width: 100%;
 }
 .folder-table th {
@@ -740,7 +756,7 @@ button {
   color: var(--text);
 }
 .folder-table td {
-  padding: 7px 12px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   max-width: 320px;
   overflow: hidden;
@@ -774,8 +790,8 @@ button {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 24px 10px;
+  gap: 12px;
+  padding: 0 24px 12px;
   flex-wrap: wrap;
 }
 .board-bar select {
@@ -784,7 +800,7 @@ button {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 2px 6px;
+  padding: 2px 8px;
 }
 .board-cols {
   flex: 1;
@@ -810,7 +826,7 @@ button {
 }
 .board-col h4 {
   margin: 0;
-  padding: 10px 12px 6px;
+  padding: 12px 12px 8px;
   font-size: 13px;
 }
 .board-col .count {
@@ -828,13 +844,13 @@ button {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 8px 10px;
-  margin: 6px 0 0;
+  padding: 8px 12px;
+  margin: 8px 0 0;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
   cursor: grab;
-  font-size: 13.5px;
+  font-size: 14px;
 }
 .board-col .card:hover {
   border-color: var(--muted);
@@ -868,7 +884,7 @@ button {
   border-bottom: 1px solid var(--border);
 }
 .cal-week {
-  padding: 6px 8px;
+  padding: 8px 8px;
   font-size: 12px;
   color: var(--muted);
   text-align: center;
@@ -884,7 +900,7 @@ button {
 .cal-day {
   min-width: 0;
   min-height: 84px;
-  padding: 4px 6px 6px;
+  padding: 4px 8px 8px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -901,13 +917,13 @@ button {
   justify-content: space-between;
 }
 .cal-num {
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
   min-width: 22px;
   height: 22px;
   line-height: 22px;
   text-align: center;
-  border-radius: 11px;
+  border-radius: 12px;
 }
 .cal-day.today .cal-num {
   background: var(--accent);
@@ -938,7 +954,7 @@ button {
 }
 .cal-day li {
   font-size: 12px;
-  padding: 2px 6px;
+  padding: 2px 8px;
   margin-top: 2px;
   border-radius: 4px;
   background: var(--bg-active);
@@ -979,7 +995,7 @@ button {
   stroke: var(--bg);
   stroke-width: 1.5;
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: opacity 160ms var(--ease);
 }
 .graph-node.lit circle {
   fill: var(--accent);
@@ -1032,7 +1048,7 @@ button {
 }
 .note-title {
   flex: 1;
-  font-size: 26px;
+  font-size: 28px;
   margin: 0 0 12px;
   word-break: break-all;
 }
@@ -1046,8 +1062,8 @@ button {
 .note-title-input {
   min-width: 0;
   font: inherit;
-  font-size: 26px;
-  font-weight: 700;
+  font-size: 28px;
+  font-weight: 600;
   color: var(--text);
   background: var(--bg);
   border: 1px solid var(--accent);
@@ -1106,14 +1122,14 @@ button {
 .side-tabs {
   display: flex;
   gap: 2px;
-  padding: 6px 8px 0;
+  padding: 8px 8px 0;
   flex: none;
 }
 .side-tabs button {
   flex: 1;
   border: none;
   background: transparent;
-  padding: 6px 0;
+  padding: 8px 0;
   border-radius: 6px 6px 0 0;
   color: var(--muted);
   cursor: pointer;
@@ -1157,7 +1173,7 @@ button {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 5px 8px;
+  padding: 4px 8px;
   min-width: 0;
 }
 .search-input {
@@ -1172,14 +1188,14 @@ button {
   align-items: center;
 }
 .filter-row select {
-  padding: 3px 4px;
+  padding: 4px 4px;
   font-size: 12px;
 }
 .condition-form {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 6px;
+  margin-top: 8px;
 }
 .condition-form input {
   flex: 1 1 80px;
@@ -1220,10 +1236,10 @@ button {
   cursor: pointer;
 }
 .saved-run {
-  padding: 2px 4px 2px 9px;
+  padding: 2px 4px 2px 8px;
 }
 .saved-del {
-  padding: 2px 7px 2px 3px;
+  padding: 2px 8px 2px 4px;
   color: var(--muted) !important;
   opacity: 0;
 }
@@ -1245,7 +1261,7 @@ button {
   flex: 1;
 }
 .results li {
-  padding: 6px 8px;
+  padding: 8px 8px;
   border-radius: 6px;
   cursor: pointer;
 }
@@ -1265,10 +1281,10 @@ button {
 .r-snippet mark {
   background: #ffe58f;
   color: #1f2a1f;
-  border-radius: 2px;
+  border-radius: 4px;
 }
 .r-meta {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 
@@ -1282,8 +1298,8 @@ button {
   max-width: calc(100% - 32px);
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   overflow: hidden;
 }
 .palette-input {
@@ -1291,8 +1307,8 @@ button {
   border: none;
   border-bottom: 1px solid var(--border);
   border-radius: 0;
-  padding: 12px 14px;
-  font-size: 15px;
+  padding: 12px 16px;
+  font-size: 14px;
 }
 .palette-input:focus-visible {
   outline: none;
@@ -1300,7 +1316,7 @@ button {
 .palette-list {
   list-style: none;
   margin: 0;
-  padding: 6px;
+  padding: 8px;
   max-height: 50vh;
   overflow: auto;
 }
@@ -1308,7 +1324,7 @@ button {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  padding: 7px 10px;
+  padding: 8px 12px;
   border-radius: 6px;
   cursor: pointer;
 }
@@ -1324,8 +1340,8 @@ button {
   border-bottom: 1px solid var(--border);
 }
 .props-error {
-  margin: 0 12px 6px;
-  padding: 6px 8px;
+  margin: 0 12px 8px;
+  padding: 8px 8px;
   border-radius: 6px;
   background: var(--danger-bg);
   color: var(--danger);
@@ -1335,7 +1351,7 @@ button {
   display: grid;
   grid-template-columns: 76px 1fr 22px;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 2px 8px 2px 12px;
 }
 .prop-key {
@@ -1347,7 +1363,7 @@ button {
 }
 .prop-value input:not([type="checkbox"]) {
   width: 100%;
-  padding: 3px 6px;
+  padding: 4px 8px;
   font-size: 13px;
 }
 .prop-value select.prop-choice {
@@ -1357,7 +1373,7 @@ button {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 3px 4px;
+  padding: 4px 4px;
   width: 100%;
   min-width: 0;
   cursor: pointer;
@@ -1385,7 +1401,7 @@ button {
   align-items: center;
   gap: 2px;
   padding: 1px 4px 1px 8px;
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--bg-active);
   font-size: 12px;
 }
@@ -1401,7 +1417,7 @@ button {
   flex: 1;
 }
 .prop-add {
-  padding: 6px 12px 0;
+  padding: 8px 12px 0;
 }
 .prop-add input {
   width: 100%;
@@ -1415,7 +1431,7 @@ button {
 }
 .panel-heading {
   margin: 0;
-  padding: 10px 12px 6px;
+  padding: 12px 12px 8px;
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
@@ -1442,7 +1458,7 @@ button {
   text-align: left;
   border: none;
   background: transparent;
-  padding: 3px 4px 3px 12px;
+  padding: 4px 4px 4px 12px;
   border-radius: 4px;
   font-size: 12px;
   color: var(--muted);
@@ -1473,13 +1489,13 @@ button {
   flex-direction: column;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 20px 22px 16px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+  padding: 20px 24px 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 .modal h2 {
   margin: 0 0 8px;
-  font-size: 17px;
+  font-size: 16px;
 }
 .modal p {
   margin: 0 0 12px;
@@ -1488,7 +1504,7 @@ button {
 .change-list {
   list-style: none;
   margin: 0 0 16px;
-  padding: 6px;
+  padding: 8px;
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -1497,11 +1513,11 @@ button {
 .change-list li {
   display: flex;
   justify-content: space-between;
-  padding: 4px 6px;
+  padding: 4px 8px;
 }
 .tpl-empty {
   margin: 0;
-  padding: 10px 14px 14px;
+  padding: 12px 16px 16px;
 }
 /* 마크다운 문법 도움말 */
 .modal.md-help {
@@ -1519,7 +1535,7 @@ button {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 6px 12px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border);
 }
 .pdf-name {
@@ -1571,7 +1587,7 @@ button {
 }
 .pdf-page .textLayer .pdf-hl {
   background: rgba(255, 212, 59, 0.45);
-  border-radius: 2px;
+  border-radius: 4px;
 }
 .pdf-pick {
   position: absolute;
@@ -1582,12 +1598,12 @@ button {
   flex: none;
   width: 260px;
   overflow: auto;
-  padding: 10px 12px;
+  padding: 12px 12px;
   border-left: 1px solid var(--border);
 }
 .pdf-form blockquote {
-  margin: 6px 0;
-  padding: 4px 10px;
+  margin: 8px 0;
+  padding: 4px 12px;
   border-left: 3px solid #1c7ed6;
   color: var(--muted);
   font-size: 13px;
@@ -1596,7 +1612,7 @@ button {
   width: 100%;
   font: inherit;
   font-size: 13px;
-  padding: 6px 8px;
+  padding: 8px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
@@ -1606,7 +1622,7 @@ button {
 .pdf-notes {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   margin-top: 12px;
 }
 .pdf-note {
@@ -1614,7 +1630,7 @@ button {
   flex-direction: column;
   gap: 2px;
   text-align: left;
-  padding: 6px 8px;
+  padding: 8px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
@@ -1646,7 +1662,7 @@ button {
   width: 100%;
   margin: 8px 0 4px;
   font: inherit;
-  padding: 7px 10px;
+  padding: 8px 12px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
@@ -1681,8 +1697,8 @@ button {
   font: inherit;
   font-size: 13px;
   text-align: left;
-  padding: 5px 8px;
-  border-radius: 5px;
+  padding: 4px 8px;
+  border-radius: 6px;
   cursor: pointer;
 }
 .manual-toc button:hover {
@@ -1709,7 +1725,7 @@ button {
   margin-bottom: 16px;
 }
 .md-help h3 {
-  margin: 14px 0 6px;
+  margin: 16px 0 8px;
   font-size: 13px;
   color: var(--muted);
 }
@@ -1722,7 +1738,7 @@ button {
   font-size: 13px;
 }
 .md-help td {
-  padding: 5px 8px;
+  padding: 4px 8px;
   border-top: 1px solid var(--border);
   vertical-align: top;
 }
@@ -1736,7 +1752,7 @@ button {
   word-break: break-all;
 }
 .md-help kbd {
-  margin-left: 6px;
+  margin-left: 8px;
 }
 .modal-actions {
   display: flex;
@@ -1760,11 +1776,11 @@ button {
   gap: 8px;
   min-width: 260px;
   max-width: 420px;
-  padding: 10px 8px 10px 14px;
+  padding: 12px 8px 12px 16px;
   border-radius: 8px;
   background: #1e3a23;
   color: #fff;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 .toast span {
   flex: 1;
@@ -1775,7 +1791,7 @@ button {
 .toast-action {
   border: none;
   background: transparent;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   color: #97bc62;
   padding: 0 4px;
@@ -1808,15 +1824,15 @@ button {
 }
 kbd {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 0 5px;
+  padding: 0 4px;
   white-space: nowrap;
 }
 .menu .menu-label {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   cursor: default;
 }
@@ -1826,7 +1842,7 @@ kbd {
 
 /* SCR-13 빠른 메모 · SCR-14 템플릿 */
 .memo-head {
-  padding: 12px 14px 8px;
+  padding: 12px 16px 8px;
   font-weight: 600;
   border-bottom: 1px solid var(--border);
 }
@@ -1835,9 +1851,9 @@ kbd {
   min-height: 160px;
   border: none;
   resize: vertical;
-  padding: 12px 14px;
+  padding: 12px 16px;
   font: inherit;
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.6;
   color: var(--text);
   background: var(--bg);
@@ -1860,15 +1876,15 @@ kbd {
   padding: 0 8px;
 }
 .hist-date {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
-  padding: 6px 4px 2px;
+  padding: 8px 4px 2px;
 }
 .hist-item {
   display: grid;
   grid-template-columns: 72px 1fr auto;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
   border: none;
   background: transparent;
@@ -1882,7 +1898,7 @@ kbd {
   background: var(--bg-hover);
 }
 .hist-tag {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .hist-tag.o-external {
@@ -1892,21 +1908,21 @@ kbd {
   color: var(--accent);
 }
 .hist-tag.o-mcp {
-  color: #7a4fc4;
+  color: #1c7ed6;
 }
 .mcp-cmd {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: flex-start;
-  margin: 4px 0 10px;
+  margin: 4px 0 12px;
 }
 .mcp-cmd code {
   flex: 1;
   min-width: 0;
-  padding: 6px 8px;
+  padding: 8px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  font-size: 11px;
+  font-size: 12px;
   white-space: pre-wrap;
   word-break: break-all;
   user-select: text;
@@ -1934,7 +1950,7 @@ kbd {
 .modal.version-view {
   width: 960px;
   height: 80vh;
-  padding: 16px 18px 14px;
+  padding: 16px 20px 16px;
 }
 .modal.version-view:focus-visible,
 .modal:focus-visible {
@@ -1967,7 +1983,7 @@ kbd {
   background: var(--bg-sidebar);
 }
 .vv-list li {
-  padding: 5px 8px;
+  padding: 4px 8px;
   border-radius: 4px;
   cursor: pointer;
   font-size: 13px;
@@ -1991,7 +2007,7 @@ kbd {
 .vv-modes button {
   border: none;
   background: transparent;
-  padding: 4px 10px;
+  padding: 4px 12px;
   border-radius: 4px;
   cursor: pointer;
   font-size: 12px;
@@ -2024,8 +2040,8 @@ kbd {
 .dl .ln {
   color: var(--muted);
   text-align: right;
-  padding-right: 6px;
-  font-size: 11px;
+  padding-right: 8px;
+  font-size: 12px;
   user-select: none;
 }
 .dl .sign {
@@ -2065,7 +2081,7 @@ kbd {
 }
 .idea-group {
   border-radius: 6px;
-  padding: 2px 0 6px;
+  padding: 2px 0 8px;
 }
 .idea-group.drop {
   outline: 1px dashed var(--accent);
@@ -2090,7 +2106,7 @@ kbd {
   cursor: pointer;
   background: var(--bg);
   border: 1px solid var(--border);
-  margin: 3px 0;
+  margin: 4px 0;
   font-size: 13px;
 }
 .idea-group li.active {
@@ -2112,11 +2128,11 @@ kbd {
 .task-group li {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
+  gap: 8px;
   cursor: default;
 }
 .task-group li input {
-  margin: 3px 0 0;
+  margin: 4px 0 0;
   flex: none;
   cursor: pointer;
 }
@@ -2132,7 +2148,7 @@ kbd {
 }
 .task-body:focus-visible {
   outline: 2px solid var(--accent);
-  border-radius: 3px;
+  border-radius: 4px;
 }
 .task-group li.done .task-text {
   text-decoration: line-through;
@@ -2140,8 +2156,8 @@ kbd {
 }
 .task-meta {
   display: flex;
-  gap: 6px;
-  font-size: 11px;
+  gap: 8px;
+  font-size: 12px;
   color: var(--muted);
 }
 .task-due.late {
@@ -2155,7 +2171,7 @@ kbd {
 .modal.settings {
   width: 720px;
   height: 70vh;
-  padding: 16px 18px;
+  padding: 16px 20px;
 }
 .settings-body {
   flex: 1;
@@ -2173,7 +2189,7 @@ kbd {
   border: none;
   background: transparent;
   text-align: left;
-  padding: 7px 10px;
+  padding: 8px 12px;
   border-radius: 6px;
   cursor: pointer;
 }
@@ -2190,7 +2206,7 @@ kbd {
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  padding: 10px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--border);
 }
 .set-row > div:first-child {
@@ -2202,7 +2218,7 @@ kbd {
   width: 180px;
 }
 .set-sub {
-  margin: 18px 0 4px;
+  margin: 20px 0 4px;
   font-size: 13px;
   color: var(--muted);
 }
@@ -2221,13 +2237,13 @@ textarea.ai-instructions {
 .keys-tools {
   display: flex;
   gap: 8px;
-  margin: 4px 0 6px;
+  margin: 4px 0 8px;
 }
 .keys-tools input {
   flex: 1;
 }
 .keys-row {
-  padding: 6px 0;
+  padding: 8px 0;
 }
 .keys-btn {
   min-width: 120px;
@@ -2250,7 +2266,7 @@ textarea.ai-instructions {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 5px 8px;
+  padding: 4px 8px;
   width: 240px;
 }
 .set-ctl select {
@@ -2283,8 +2299,8 @@ textarea.ai-instructions {
 .ai-head {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 10px 4px;
+  gap: 8px;
+  padding: 8px 12px 4px;
 }
 .ai-head select {
   font: inherit;
@@ -2293,13 +2309,13 @@ textarea.ai-instructions {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 3px 6px;
+  padding: 4px 8px;
 }
 .ai-chat {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 4px 10px;
+  padding: 4px 12px;
 }
 .ai-msg {
   margin: 8px 0;
@@ -2309,7 +2325,7 @@ textarea.ai-instructions {
 .ai-msg.user .ai-text {
   background: var(--bg-active);
   border-radius: 8px;
-  padding: 6px 10px;
+  padding: 8px 12px;
   margin-left: 24px;
 }
 .ai-msg.ai .ai-text {
@@ -2336,9 +2352,9 @@ textarea.ai-instructions {
 }
 .ai-input {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
-  padding: 8px 10px 10px;
+  padding: 8px 12px 12px;
   border-top: 1px solid var(--border);
 }
 /* FR-AI-03 끌어다 놓은 노트·폴더: 입력창 위 칩, 놓는 중 강조, 아래 안내 */
@@ -2350,7 +2366,7 @@ textarea.ai-instructions {
 .ai-chips {
   list-style: none;
   margin: 0;
-  padding: 8px 10px 0;
+  padding: 8px 12px 0;
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
@@ -2390,7 +2406,7 @@ textarea.ai-instructions {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 10px 8px;
+  padding: 0 12px 8px;
 }
 .ai-hint > span {
   flex: 1;
@@ -2411,7 +2427,7 @@ textarea.ai-instructions {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 6px 8px;
+  padding: 8px 8px;
 }
 .ai-input .ai-send {
   flex: none;
@@ -2441,14 +2457,14 @@ textarea.ai-instructions {
   width: 560px;
 }
 .ai-extra {
-  margin: 0 0 10px;
+  margin: 0 0 12px;
 }
 .ai-extra-text {
   max-height: 120px;
   overflow: auto;
   white-space: pre-wrap;
   font-size: 12px;
-  padding: 6px 8px;
+  padding: 8px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg-sidebar);
@@ -2456,7 +2472,7 @@ textarea.ai-instructions {
 .ai-notes label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
   cursor: pointer;
 }
@@ -2468,7 +2484,7 @@ textarea.ai-instructions {
   flex: 1;
 }
 .ai-snippet {
-  padding-left: 22px;
+  padding-left: 24px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2485,13 +2501,13 @@ textarea.ai-instructions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 .ai-single {
   flex: 1;
   min-height: 0;
   display: grid;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 .ai-compare > div,
 .ai-single > div {
@@ -2508,7 +2524,7 @@ textarea.ai-instructions {
   font-family: var(--font);
   font-size: 13px;
   line-height: 1.6;
-  padding: 8px 10px;
+  padding: 8px 12px;
   border: 1px solid var(--border);
   border-radius: 6px;
   color: var(--text);
@@ -2520,7 +2536,7 @@ textarea.ai-instructions {
 }
 
 .ai-h {
-  font-weight: 700;
+  font-weight: 600;
   margin-top: 4px;
 }
 
@@ -2560,13 +2576,13 @@ textarea.ai-instructions {
   background: var(--bg);
   border: 1px solid var(--accent);
   border-radius: 6px;
-  padding: 3px 6px;
+  padding: 4px 8px;
 }
 
 .ai-title-row {
   display: flex;
   align-items: center;
-  padding: 6px 6px 0 10px;
+  padding: 8px 8px 0 12px;
 }
 .ai-title-row .ai-title {
   padding: 0;
@@ -2590,7 +2606,7 @@ textarea.ai-instructions {
 
 .ai-private {
   color: var(--accent);
-  margin: 0 0 6px;
+  margin: 0 0 8px;
 }
 
 .ai-connect-item {
@@ -2598,7 +2614,7 @@ textarea.ai-instructions {
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 .ai-install-row {
   display: flex;
@@ -2607,23 +2623,23 @@ textarea.ai-instructions {
   margin-top: 2px;
 }
 .ai-install code {
-  font-size: 11px;
+  font-size: 12px;
   background: var(--bg-soft, rgba(127, 127, 127, 0.12));
   border-radius: 4px;
-  padding: 2px 5px;
+  padding: 2px 4px;
   user-select: all;
   word-break: break-all;
 }
 
 .ai-web {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: flex-start;
-  margin: 0 0 6px;
+  margin: 0 0 8px;
   cursor: pointer;
 }
 .ai-web input {
-  margin-top: 3px;
+  margin-top: 4px;
   accent-color: var(--accent);
 }
 .ai-web b {
@@ -2632,8 +2648,8 @@ textarea.ai-instructions {
 .ai-progress {
   max-height: 120px;
   overflow: auto;
-  margin: 4px 0 6px;
-  padding-left: 18px;
+  margin: 4px 0 8px;
+  padding-left: 20px;
   word-break: break-all;
 }
 
@@ -2654,8 +2670,8 @@ textarea.ai-instructions {
   position: fixed;
   z-index: 50;
   transform: translate(-50%, calc(-100% - 6px));
-  padding: 3px 8px;
-  border-radius: 5px;
+  padding: 4px 8px;
+  border-radius: 6px;
   background: var(--text);
   color: var(--bg);
   font-size: 12px;
@@ -2707,7 +2723,7 @@ textarea.ai-instructions {
 }
 .fb-text {
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
 }
 .fb-mode {
@@ -2727,7 +2743,7 @@ textarea.ai-instructions {
   color: var(--muted);
   font: inherit;
   font-size: 12px;
-  padding: 4px 10px;
+  padding: 4px 12px;
   cursor: pointer;
 }
 .fb-mode button.on {
@@ -2741,12 +2757,12 @@ textarea.ai-instructions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
   max-width: var(--editor-max);
   margin: 8px auto 0;
   /* Lines up with the note's text, like .note-view. */
-  padding: 12px 34px 0 38px;
+  padding: 12px 36px 0 40px;
   font-size: 13px;
   position: relative;
 }
@@ -2765,7 +2781,7 @@ textarea.ai-instructions {
 .note-tags button {
   border: none;
   border-radius: 12px;
-  padding: 2px 10px;
+  padding: 2px 12px;
   background: var(--bg-active);
   color: var(--accent);
   font: inherit;
@@ -2791,7 +2807,7 @@ textarea.ai-instructions {
   max-width: var(--editor-max);
   margin: 0 auto;
   /* Lines up with the editor's text (CodeMirror indents lines by 6px). */
-  padding: 4px 34px 16px 38px;
+  padding: 4px 36px 16px 40px;
   font-size: 16px;
   line-height: 1.7;
   overflow-wrap: anywhere;
@@ -2831,14 +2847,14 @@ textarea.ai-instructions {
 }
 .note-view a.tag {
   font-size: 0.9em;
-  padding: 1px 6px;
-  border-radius: 10px;
+  padding: 1px 8px;
+  border-radius: 8px;
   background: var(--bg-active);
 }
 .note-view mark {
   background: rgba(250, 204, 21, 0.4);
   color: inherit;
-  border-radius: 2px;
+  border-radius: 4px;
   padding: 0 2px;
 }
 .note-view code {
@@ -2846,12 +2862,12 @@ textarea.ai-instructions {
   font-size: 0.9em;
   background: var(--bg-hover);
   border-radius: 4px;
-  padding: 1px 5px;
+  padding: 1px 4px;
 }
 .note-view pre {
   background: var(--bg-hover);
   border-radius: 6px;
-  padding: 10px 12px;
+  padding: 12px 12px;
   overflow: auto;
 }
 .note-view pre code {
@@ -2886,7 +2902,7 @@ textarea.ai-instructions {
 .note-view .note-embed {
   display: block;
   margin: 0.8em 0;
-  padding: 6px 14px 8px;
+  padding: 8px 16px 8px;
   border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
   border-radius: 6px;
@@ -2908,7 +2924,7 @@ textarea.ai-instructions {
 }
 .note-view blockquote {
   margin: 0.8em 0;
-  padding: 2px 14px;
+  padding: 2px 16px;
   border-left: 3px solid var(--border);
   color: var(--muted);
 }
@@ -2946,12 +2962,12 @@ textarea.ai-instructions {
   place-items: center;
   width: 16px;
   height: 16px;
-  margin-right: 6px;
+  margin-right: 8px;
   border-radius: 50%;
   background: var(--co);
   color: #fff;
-  font-size: 11px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 600;
   font-style: normal;
   line-height: 1;
   /* The middle of a line sits below the middle of Korean letters. */
@@ -2965,13 +2981,13 @@ textarea.ai-instructions {
 }
 .note-view .callout {
   margin: 0.8em 0;
-  padding: 8px 14px;
+  padding: 8px 16px;
   border-left: 3px solid var(--co);
   border-radius: 4px;
   background: color-mix(in srgb, var(--co) 9%, transparent);
 }
 .note-view .callout-title {
-  font-weight: 700;
+  font-weight: 600;
   color: var(--co);
 }
 .note-view .callout-body {
@@ -2989,7 +3005,7 @@ textarea.ai-instructions {
   color: var(--text);
 }
 .cm-editor .cm-line.cm-callout-head {
-  font-weight: 700;
+  font-weight: 600;
   color: var(--co);
 }
 .cm-callout-label {
@@ -3012,9 +3028,9 @@ textarea.ai-instructions {
 .fb-callout {
   display: flex;
   align-items: center;
-  padding: 5px 8px;
+  padding: 4px 8px;
   border: none;
-  border-radius: 5px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -3034,7 +3050,7 @@ textarea.ai-instructions {
   margin-left: -1.3em;
 }
 .note-view input.task {
-  margin: 0 6px 0 0;
+  margin: 0 8px 0 0;
   vertical-align: -2px;
   accent-color: var(--accent);
   cursor: pointer;
@@ -3051,7 +3067,7 @@ textarea.ai-instructions {
 .note-view th,
 .note-view td {
   border: 1px solid var(--border);
-  padding: 4px 10px;
+  padding: 4px 12px;
   word-break: keep-all;
   overflow-wrap: normal;
 }
@@ -3081,10 +3097,10 @@ textarea.ai-instructions {
   position: relative;
   display: inline-block;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1;
-  padding: 1px 3px 3px;
-  border-radius: 3px;
+  padding: 1px 4px 4px;
+  border-radius: 4px;
 }
 .fb-color-bar {
   position: absolute;
@@ -3092,7 +3108,7 @@ textarea.ai-instructions {
   right: 0;
   bottom: -2px;
   height: 3px;
-  border-radius: 2px;
+  border-radius: 4px;
 }
 .fb-palette {
   position: absolute;
@@ -3115,15 +3131,15 @@ textarea.ai-instructions {
   border-radius: 6px;
   background: var(--bg);
   cursor: pointer;
-  font-weight: 700;
+  font-weight: 600;
   font-size: 14px;
   color: var(--text);
   padding: 0;
 }
 .fb-swatch span {
   display: inline-block;
-  padding: 1px 5px;
-  border-radius: 3px;
+  padding: 1px 4px;
+  border-radius: 4px;
 }
 .fb-swatch:hover,
 .fb-swatch.on {
@@ -3158,7 +3174,7 @@ textarea.ai-instructions {
   color: var(--text);
   font: inherit;
   font-weight: 600;
-  padding: 3px 8px;
+  padding: 4px 8px;
   border-radius: 6px;
   cursor: pointer;
 }
@@ -3167,8 +3183,10 @@ textarea.ai-instructions {
   background: var(--bg-hover);
 }
 .vault-menu .caret {
+  width: 12px;
+  height: 12px;
+  margin-left: 4px;
   color: var(--muted);
-  font-size: 11px;
 }
 .vault-menu .menu {
   position: absolute;
@@ -3184,7 +3202,7 @@ textarea.ai-instructions {
   font: inherit;
   font-size: 13px;
   text-align: left;
-  padding: 6px 10px;
+  padding: 8px 12px;
   border-radius: 4px;
   cursor: pointer;
   white-space: nowrap;
@@ -3199,7 +3217,7 @@ textarea.ai-instructions {
   overflow: auto;
   margin: 8px 0;
   padding: 8px;
-  font-size: 11px;
+  font-size: 12px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   background: var(--bg-sidebar);
@@ -3219,7 +3237,7 @@ textarea.ai-instructions {
   border: 0;
 }
 .plugin-body {
-  padding: 4px 12px 10px;
+  padding: 4px 12px 12px;
   font-size: 13px;
   overflow-wrap: anywhere;
 }
@@ -3229,9 +3247,9 @@ textarea.ai-instructions {
 .plugin-body button {
   font: inherit;
   font-size: 12px;
-  padding: 3px 10px;
+  padding: 4px 12px;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--bg);
   color: var(--text);
   cursor: pointer;
@@ -3252,7 +3270,7 @@ textarea.ai-instructions {
 .set-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   margin: 8px 0 12px;
 }
 .error-text {
@@ -3426,7 +3444,7 @@ textarea.ai-instructions {
   color: var(--text);
 }
 .cv-file-title {
-  padding: 6px 12px;
+  padding: 8px 12px;
   font-weight: 600;
   border-bottom: 1px solid var(--border);
   overflow: hidden;
@@ -3453,7 +3471,7 @@ textarea.ai-instructions {
   border: 2px solid var(--accent);
   cursor: crosshair;
   opacity: 0;
-  transition: opacity 0.1s;
+  transition: opacity 120ms var(--ease);
 }
 .cv-node:hover > .cv-dot,
 .cv-node.on > .cv-dot {
@@ -3485,7 +3503,7 @@ textarea.ai-instructions {
   width: 12px;
   height: 12px;
   background: var(--accent);
-  border-radius: 3px;
+  border-radius: 4px;
   cursor: nwse-resize;
 }
 .canvas-stage {
@@ -3538,9 +3556,9 @@ textarea.ai-instructions {
   cursor: pointer;
 }
 .ae-kind {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  padding: 1px 6px;
+  padding: 1px 8px;
   border-radius: 4px;
   color: #fff;
   background: var(--accent);
@@ -3573,14 +3591,14 @@ textarea.ai-instructions {
   color: var(--danger);
 }
 .ae-error {
-  padding: 6px 12px;
+  padding: 8px 12px;
 }
 .ae-diff {
   margin: 0;
   max-height: 320px;
   overflow: auto;
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: 13px;
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -3607,7 +3625,7 @@ textarea.ai-instructions {
   color: var(--muted);
   background: var(--bg-sidebar);
   font-family: var(--font);
-  font-size: 11px;
+  font-size: 12px;
 }
 .ae-foot {
   display: flex;
@@ -3664,7 +3682,7 @@ textarea.ai-instructions {
   left: 3px;
   width: 2px;
   background: transparent;
-  transition: background 0.15s;
+  transition: background-color 160ms var(--ease);
 }
 /* A quiet dark gray, not the accent color */
 .panel-resizer:hover::after,
@@ -3685,7 +3703,7 @@ body.resizing iframe {
 .menu li.menu-sep {
   height: 1px;
   padding: 0;
-  margin: 4px 6px;
+  margin: 4px 8px;
   background: var(--border);
   border-radius: 0;
   cursor: default;
@@ -3694,7 +3712,7 @@ body.resizing iframe {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 6px 4px 10px;
+  padding: 4px 8px 4px 12px;
   cursor: default;
 }
 .menu li.menu-row:hover {
@@ -3713,7 +3731,7 @@ body.resizing iframe {
   font-size: 12px;
   padding: 2px 8px;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--bg);
   color: var(--text);
   cursor: pointer;
@@ -3725,24 +3743,23 @@ body.resizing iframe {
 /* Folder colors now have lines of their own around them */
 .menu li.menu-colors {
   margin-top: 0;
-  padding-top: 6px;
+  padding-top: 8px;
   border-top: 0;
 }
 
 /* 폴더 보기 제목 아래 PARA 폴더 설명 */
 .folder-table > .folder-info {
   flex: none;
-  margin: -6px 0 8px;
+  margin: -8px 0 8px;
   padding: 0 24px;
 }
 .folder-table-head h2 {
   white-space: nowrap;
 }
 
-/* ---------- 심플한 화면: 흰 바탕, 회색, 강조색은 보라 하나. 위 규칙 중 모양만 덮어쓴다 ---------- */
+/* ---------- 심플한 화면: 흰 바탕, 회색, 강조색은 하나. 위 규칙 중 모양만 덮어쓴다 ---------- */
 body {
-  font-size: 13.5px;
-  letter-spacing: -0.005em;
+  font-size: 14px;
   font-feature-settings: "ss06" 1;
 }
 ::-webkit-scrollbar {
@@ -3779,27 +3796,28 @@ input[type="radio"] {
 /* 상단바, 탭 */
 .topbar {
   height: 44px;
-  padding: 0 10px;
+  padding: 0 12px;
   background: var(--bg);
 }
 .vault-name {
   font-weight: 600;
-  letter-spacing: -0.01em;
 }
 .crumbs {
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .crumbs .sep {
+  width: 12px;
+  height: 12px;
   opacity: 0.5;
 }
 .tabbar {
   gap: 2px;
-  padding: 6px 10px;
+  padding: 8px 12px;
   background: var(--bg);
   scrollbar-width: none;
 }
 .tab {
-  padding: 5px 6px 5px 11px;
+  padding: 4px 8px 4px 12px;
   border: none;
   border-radius: 6px;
 }
@@ -3810,13 +3828,13 @@ input[type="radio"] {
 /* 왼쪽 사이드바 */
 .side-tabs {
   gap: 2px;
-  padding: 8px 10px 4px;
+  padding: 8px 12px 4px;
 }
 .side-tabs button {
-  padding: 5px 0;
+  padding: 4px 0;
   border-radius: 6px;
   font-weight: 500;
-  font-size: 12.5px;
+  font-size: 13px;
 }
 .side-tabs button.on {
   color: var(--text);
@@ -3864,12 +3882,11 @@ input[type="radio"] {
 /* 편집기 */
 .note-title,
 .note-title-input {
-  font-weight: 650;
-  letter-spacing: -0.02em;
+  font-weight: 600;
 }
 .format-bar {
   gap: 0 2px;
-  padding: 2px 0 10px;
+  padding: 2px 0 12px;
   border-bottom: none;
 }
 .fb-group {
@@ -3885,12 +3902,12 @@ input[type="radio"] {
   padding: 2px;
   gap: 2px;
   border: none;
-  border-radius: 7px;
+  border-radius: 6px;
   background: var(--bg-hover);
 }
 .fb-mode button {
-  padding: 3px 9px;
-  border-radius: 5px;
+  padding: 4px 8px;
+  border-radius: 6px;
 }
 .fb-mode button.on {
   background: var(--bg);
@@ -3907,19 +3924,19 @@ input[type="radio"] {
   background: rgba(20, 20, 28, 0.28);
 }
 .modal {
-  border-radius: 14px;
+  border-radius: 12px;
   box-shadow: var(--shadow);
 }
 .menu,
 .palette {
-  border-radius: 10px;
+  border-radius: 8px;
   box-shadow: var(--shadow);
 }
 .palette-list li.sel {
   background: var(--bg-hover);
 }
 .toast {
-  border-radius: 10px;
+  border-radius: 8px;
   box-shadow: var(--shadow);
 }
 .settings-tabs button {
@@ -3941,8 +3958,7 @@ input[type="radio"] {
 }
 .start-brand h1 {
   font-size: 28px;
-  font-weight: 650;
-  letter-spacing: -0.02em;
+  font-weight: 600;
 }
 
 /* 드롭다운: 기본 화살표 대신 얇은 화살표 */
@@ -3964,17 +3980,17 @@ select {
 /* 제목을 본문 글자와 같은 선에 맞춘다 */
 .note-title,
 .note-title-input {
-  padding-left: 6px;
+  padding-left: 8px;
 }
 
 .recovery-code {
   display: block;
   margin: 0 0 12px;
-  padding: 10px 12px;
+  padding: 12px 12px;
   border: 1px solid var(--border);
   border-radius: 6px;
   font-family: var(--mono, monospace);
-  font-size: 15px;
+  font-size: 14px;
   letter-spacing: 0.04em;
   word-break: break-all;
   user-select: all;
