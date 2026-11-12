@@ -27,6 +27,14 @@ describe("noteToHtml", () => {
     expect(noteToHtml("`**(코드)**의`")).toContain("<code>**(코드)**의</code>");
   });
 
+  it("strikes text even with spaces just inside the tildes", () => {
+    expect(noteToHtml("~~ 품질관리 정리 및 보고자료  생성~~")).toContain("<del>품질관리 정리 및 보고자료  생성</del>");
+    expect(noteToHtml("a ~~b ~~ c")).toContain("<del>b</del>");
+    expect(noteToHtml("~~그대로~~이")).toContain("<del>그대로</del>이");
+    expect(noteToHtml("~~ ~~ 와 ~~~~")).not.toContain("<del>");
+    expect(noteToHtml("`~~ 코드 ~~`")).not.toContain("<del>");
+  });
+
   it("turns Notevine syntax into clickable elements", () => {
     const html = noteToHtml("[[회의록#결정|지난 회의]] ![[그림.png|300]] ==중요== #업무/기획 a#b\n[문서](https://x.y) [노트](../a.md)");
     expect(html).toContain('<a href="#" class="wikilink" data-target="회의록" data-heading="결정">지난 회의</a>');

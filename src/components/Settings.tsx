@@ -8,6 +8,7 @@ import {
   errorMessage,
   type AppSettings,
   type BackupStatus,
+  type CryptKeyStatus,
   type DriveConflict,
   type HistoryStats,
   type McpGrant,
@@ -18,6 +19,9 @@ import {
 import { useApp } from "../store";
 import { useAi } from "../aiStore";
 import { forgetApiModels, ProviderFix } from "./AiPanel";
+import { CryptKeyDialog, type CryptKeyDialogMode } from "./CryptKeyDialog";
+import { BACKUP_CHANGED_EVENT } from "../lib/backupBadge";
+import { Icon } from "./Icon";
 import { PERMISSION_LABEL, usePlugins } from "../plugins";
 import { checkForUpdate } from "../updates";
 
@@ -525,7 +529,10 @@ function ShortcutSettings() {
         {tx("단추를 누르고 새 단축키를 누르세요. Backspace는 단축키 없애기, Esc는 취소입니다. 다른 명령이 쓰던 단축키를 고르면 그 명령의 단축키는 없어집니다. 편집기 안의 서식 단축키(Ctrl+B 등)와 다른 프로그램에서 쓰는 빠른 메모(Ctrl+Alt+N)는 바꿀 수 없습니다.")}
       </p>
       <div className="keys-tools">
-        <input placeholder={tx("명령 찾기")} value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <label className="field-search">
+          <Icon name="search" />
+          <input placeholder={tx("명령 찾기")} aria-label={tx("명령 찾기")} value={filter} onChange={(e) => setFilter(e.target.value)} />
+        </label>
         <button
           className="btn small"
           disabled={!Object.keys(config.keybindings).length}
@@ -963,7 +970,10 @@ function BackupSettings() {
   const [st, setSt] = useState<BackupStatus | null>(null);
   const [remote, setRemote] = useState("");
   const [busy, setBusy] = useState(false);
-  const load = () =>
+  const [key, setKey] = useState<CryptKeyStatus | null>(null);
+  const [keyDlg, setKeyDlg] = useState<CryptKeyDialogMode | null>(null);
+  const [movedAside, setMovedAside] = useState<string | null>(null);
+  const load = () => {
     void api
       .backupStatus()
       .then((s) => {
@@ -971,6 +981,13 @@ function BackupSettings() {
         setRemote(s.remote ?? "");
       })
       .catch((e) => toast(errorMessage(e), "error"));
+    void api
+      .cryptKeyStatus()
+      .then(setKey)
+      .catch((e) => toast(errorMessage(e), "error"));
+    // 허용·초기화·원격 주소·열쇠가 바뀌었을 수 있으니 상단바 백업 단추도 다시 읽는다.
+    window.dispatchEvent(new Event(BACKUP_CHANGED_EVENT));
+  };
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
   const run = async (f: () => Promise<unknown>) => {
     setBusy(true);
@@ -993,6 +1010,44 @@ function BackupSettings() {
     if (ok) await run(api.backupTrust);
   };
 
+  const createKey = async () => {
+    setBusy(true);
+    try {
+      setKeyDlg({ kind: "created", code: await api.cryptCreateKey() });
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    } finally {
+      setBusy(false);
+      load();
+    }
+  };
+  const showCode = async () => {
+    try {
+      setKeyDlg({ kind: "show", code: await api.cryptShowRecoveryCode() });
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    }
+  };
+  const enableEncryption = async () => {
+    const ok = await ask(
+      tx("이 노트 폴더 암호화 켜기"),
+      tx("새 저장소로 시작합니다. 지금 저장소는 .git-before-encryption-…로 옮겨 둡니다. 원격 저장소는 새 빈 저장소를 만들어 주소를 넣어 주세요. 옛 원격 저장소는 직접 지워 주세요."),
+      tx("암호화 켜기"),
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const moved = await api.backupEnableEncryption();
+      setMovedAside(moved ?? "");
+      toast(moved ? tx("암호화를 켰습니다 · 옛 저장소는 {0}로 옮겼습니다. 새 빈 원격 저장소를 만들어 주소를 넣어 주세요", moved) : tx("암호화를 켰습니다 · 새 빈 원격 저장소를 만들어 주소를 넣어 주세요"));
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    } finally {
+      setBusy(false);
+      load();
+    }
+  };
+
   if (!st) return <p className="muted small">{tx("확인하는 중…")}</p>;
   if (!st.git) {
     return (
@@ -1006,9 +1061,41 @@ function BackupSettings() {
   }
   return (
     <>
+      {keyDlg && (
+        <CryptKeyDialog
+          mode={keyDlg}
+          onClose={() => {
+            setKeyDlg(null);
+            load();
+          }}
+        />
+      )}
       <p className="muted small">
         {tx("노트 폴더를 Git 저장소로 백업합니다. 백업할 때마다 그 순간의 노트 전체가 남아 언제든 되돌릴 수 있습니다. 원격 저장소(예: GitHub 비공개 저장소)를 넣으면 그곳으로도 보내고, 다른 PC에서 백업한 변경을 받아 와 여러 PC에서 같은 노트를 쓸 수 있습니다. 검색 인덱스·히스토리 DB는 넣지 않습니다.")}
       </p>
+      <Row
+        label={tx("암호화 열쇠")}
+        hint={
+          key?.has_key
+            ? tx("이 PC에 열쇠가 있습니다. 다른 PC에서 암호화된 저장소를 받으려면 복구 코드가 필요합니다")
+            : tx("이 PC에 암호화 열쇠가 없습니다. 새로 만들거나, 다른 PC에서 만든 복구 코드를 넣으세요")
+        }
+      >
+        {key?.has_key ? (
+          <button className="btn small" disabled={busy} onClick={() => void showCode()}>
+            {tx("복구 코드 보기")}
+          </button>
+        ) : (
+          <>
+            <button className="btn small primary" disabled={busy} onClick={() => void createKey()}>
+              {tx("열쇠 만들기")}
+            </button>
+            <button className="btn small" disabled={busy} onClick={() => setKeyDlg({ kind: "import" })}>
+              {tx("복구 코드 입력")}
+            </button>
+          </>
+        )}
+      </Row>
       {st.repo && !st.trusted ? (
         <Row label={tx("저장소 확인")} hint={tx("이미 있던 Git 저장소입니다. 허용하기 전에는 이 PC에서 Git을 실행하지 않습니다")}>
           <button className="btn small primary" disabled={busy} onClick={() => void allow()}>
@@ -1040,6 +1127,37 @@ function BackupSettings() {
               {busy ? tx("백업하는 중…") : tx("지금 백업")}
             </button>
           </Row>
+          {st.problem && <p className="error small">{tx("지금은 백업할 수 없습니다: {0}", st.problem)}</p>}
+          <Row
+            label={tx("암호화")}
+            hint={
+              st.encrypted
+                ? tx("원격 저장소에는 노트가 암호화되어 올라갑니다. 열쇠는 이 PC에만 있고, 다른 PC에는 복구 코드로 넣습니다")
+                : tx("노트를 암호화해서 원격 저장소에 올립니다. 켜면 새 저장소로 다시 시작합니다")
+            }
+          >
+            {st.encrypted ? (
+              <span className="small">
+                {st.key_ok
+                  ? tx("암호화됨 · 열쇠 확인됨")
+                  : key?.has_key
+                    ? tx("암호화됨 · 이 PC의 열쇠가 이 노트 폴더와 맞지 않습니다")
+                    : tx("암호화됨 · 이 PC에 열쇠가 없습니다")}
+              </span>
+            ) : key?.has_key ? (
+              <button className="btn small primary" disabled={busy} onClick={() => void enableEncryption()}>
+                {tx("이 노트 폴더 암호화 켜기")}
+              </button>
+            ) : (
+              <span className="small muted">{tx("먼저 위에서 열쇠를 만들거나 복구 코드를 넣으세요")}</span>
+            )}
+          </Row>
+          {movedAside !== null && (
+            <p className="muted small">
+              {movedAside ? tx("옛 저장소는 {0}로 옮겨 두었습니다. ", movedAside) : ""}
+              {tx("새 빈 원격 저장소를 만들어 아래 원격 저장소 칸에 주소를 넣고, 옛 원격 저장소는 직접 지워 주세요.")}
+            </p>
+          )}
           <Row label={tx("원격 저장소")} hint={tx("비워 두면 이 PC에만 백업합니다. 넣으면 백업할 때 노트가 그 저장소로 전송됩니다(비공개 저장소를 쓰세요)")}>
             <input
               className="api-input"

@@ -80,6 +80,26 @@ const PUNCT = /[\p{P}\p{S}]/u;
  * with punctuation after a letter), and Korean puts a particle right there. Such a pair
  * is taken as bold/italic too; every other one is left to the standard rule.
  */
+/**
+ * `~~ text~~`: GFM only strikes when no space touches the inner side of the tildes, so a
+ * note written as "~~ 할 일~~" (or made by selecting a word with its space) showed the
+ * tildes. Such a pair is struck too; the space inside is dropped.
+ */
+const looseStrike: TokenizerAndRendererExtension = {
+  name: "looseStrike",
+  level: "inline",
+  start: (src) => src.indexOf("~~"),
+  tokenizer(src) {
+    const m = /^~~(?!~)([^\n]*?)~~(?!~)/.exec(src);
+    const inner = m?.[1].trim();
+    if (!m || !inner || inner.includes("~~")) return undefined;
+    return { type: "looseStrike", raw: m[0], tokens: this.lexer.inlineTokens(inner) };
+  },
+  renderer(t) {
+    return `<del>${this.parser.parseInline((t as Tokens.Generic).tokens!)}</del>`;
+  },
+};
+
 const cjkEmphasis: TokenizerAndRendererExtension = {
   name: "cjkEmphasis",
   level: "inline",
@@ -194,7 +214,7 @@ const koDate: TokenizerAndRendererExtension = {
 function makeMarked() {
   const m = new Marked({ gfm: true, breaks: true });
   m.use({
-    extensions: [koDate, mathBlock, wiki, highlight, cjkEmphasis, tag, mathInline, blockId],
+    extensions: [koDate, mathBlock, wiki, highlight, cjkEmphasis, looseStrike, tag, mathInline, blockId],
     renderer: {
       // Clickable task boxes: data-task is the n-th task in the note (see toggleTask).
       // ```mermaid blocks show as code until drawn. The source stays in the <code> text, not an

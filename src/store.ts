@@ -20,6 +20,7 @@ import { unseenConflicts } from "./lib/driveConflicts";
 import { setProperty, type Prop } from "./lib/frontmatter";
 import { buildReview, period, reviewFolder, reviewName, type ReviewKind } from "./lib/review";
 import { day } from "./lib/folderTable";
+import { BACKUP_CHANGED_EVENT } from "./lib/backupBadge";
 import { opensWithoutAsking } from "./lib/openSafety";
 import { annotationEntry, annotationNote, annotationPath } from "./lib/pdfNotes";
 import type { ParaFolder } from "./lib/para";
@@ -341,6 +342,7 @@ const seenDriveConflicts = new Set<string>();
 /** Largest file taken from a drop (as for attachments in the editor). */
 const MAX_IMPORT_BYTES = 50 * 1024 * 1024;
 let backingUp = false;
+let remoteWarned = false;
 
 function parentOf(p: string) {
   const i = p.lastIndexOf("/");
@@ -1198,12 +1200,20 @@ export const useApp = create<AppStore>((set, get) => {
           ];
           get().toast(tx("백업했습니다 · {0}", parts.join(" · ")));
         }
+        // Not quiet-able: the user thinks the notes are on the remote when they aren't.
+        // A manual backup always says so; automatic ones only once per run.
+        if (r.remote_missing && (!quiet || !remoteWarned)) {
+          remoteWarned = true;
+          get().toast(tx("원격 저장소 주소가 없어 이 PC에만 저장했습니다. 설정 > 백업에서 주소를 넣어 주세요"), "error");
+        }
         return true;
       } catch (e) {
         get().toast(tx("백업하지 못했습니다: {0}", errorMessage(e)), "error");
         return false;
       } finally {
         backingUp = false;
+        // The top bar's 백업 button reads the status again.
+        window.dispatchEvent(new Event(BACKUP_CHANGED_EVENT));
       }
     },
 

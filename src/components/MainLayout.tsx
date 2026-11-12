@@ -5,7 +5,9 @@ import { listen } from "@tauri-apps/api/event";
 import { useApp } from "../store";
 import { dispatchKey, setKeyOverrides } from "../commands";
 import { VaultRail } from "./VaultRail";
-import { api } from "../api";
+import { BackupButton } from "./BackupButton";
+import { Icon } from "./Icon";
+import { api, errorMessage } from "../api";
 import { Explorer } from "./Explorer";
 import { Editor } from "./Editor";
 import { TabBar } from "./TabBar";
@@ -89,7 +91,7 @@ function VaultMenu({ name, root }: { name: string; root: string }) {
   return (
     <div className="vault-menu" ref={box}>
       <button className="vault-name" title={tx("{0}\n노트 폴더 메뉴", root)} aria-haspopup="true" aria-expanded={open} onClick={() => setOpen(!open)}>
-        {name} <span className="caret">▾</span>
+        {name} <Icon name="down" className="ui-icon caret" />
       </button>
       {open && (
         <div className="menu" role="menu">
@@ -159,13 +161,23 @@ export function MainLayout() {
 
   // Git backup on a timer (settings → 백업), only when the vault is a repository with changes.
   const backupMinutes = useApp((s) => s.trust.backup_minutes);
+  // A reason it can't run (e.g. no key for an encrypted vault) is told once, not every tick.
   useEffect(() => {
     if (!backupMinutes) return;
+    let told: string | null = null;
+    const tell = (problem: string | null) => {
+      if (problem && problem !== told) useApp.getState().toast(tx("자동 백업을 하지 못했습니다: {0}", problem), "error");
+      told = problem;
+    };
     const id = window.setInterval(() => {
       void api
         .backupStatus()
-        .then((s) => s.repo && s.trusted && (s.changed > 0 || s.ahead > 0) && useApp.getState().backupNow(true))
-        .catch(() => {});
+        .then((s) => {
+          if (!s.repo || !s.trusted) return;
+          tell(s.problem);
+          if (!s.problem && (s.changed > 0 || s.ahead > 0)) void useApp.getState().backupNow(true);
+        })
+        .catch((e) => tell(errorMessage(e)));
     }, backupMinutes * 60_000);
     return () => window.clearInterval(id);
   }, [backupMinutes, vault?.root]);
@@ -199,17 +211,17 @@ export function MainLayout() {
         >
           <PanelIcon side="left" open={leftOpen} />
         </button>
-        <button className="icon-btn" title={tx("이전 노트 (Alt+←)")} disabled={!canBack} onClick={goBack}>
-          ‹
+        <button className="icon-btn" title={tx("이전 노트 (Alt+←)")} aria-label={tx("이전 노트")} disabled={!canBack} onClick={goBack}>
+          <Icon name="back" />
         </button>
-        <button className="icon-btn" title={tx("다음 노트 (Alt+→)")} disabled={!canForward} onClick={goForward}>
-          ›
+        <button className="icon-btn" title={tx("다음 노트 (Alt+→)")} aria-label={tx("다음 노트")} disabled={!canForward} onClick={goForward}>
+          <Icon name="forward" />
         </button>
         <VaultMenu name={vault?.name ?? ""} root={vault?.root ?? ""} />
         <nav className="crumbs">
           {crumbs.map((c, i) => (
             <span key={i}>
-              {i > 0 && <span className="sep">›</span>}
+              {i > 0 && <Icon name="forward" className="ui-icon sep" />}
               {i === crumbs.length - 1 ? c.replace(/\.md$/i, "") : c}
             </span>
           ))}
@@ -225,14 +237,15 @@ export function MainLayout() {
             {tx("기본 구조 만들기")}
           </button>
         )}
+        <BackupButton root={vault?.root ?? ""} />
         <button className="btn ghost small" onClick={() => setModal("quickMemo")} title={tx("Ctrl+Shift+N · 다른 프로그램을 쓰는 중에는 Ctrl+Alt+N")}>
           {tx("빠른 메모")}
         </button>
-        <button className="icon-btn" title={tx("명령 팔레트 (Ctrl+P)")} onClick={() => setModal("palette")}>
-          ⌘
+        <button className="icon-btn" title={tx("명령 팔레트 (Ctrl+P)")} aria-label={tx("명령 팔레트")} onClick={() => setModal("palette")}>
+          <Icon name="command" />
         </button>
-        <button className="icon-btn" title={tx("설정 (Ctrl+,)")} onClick={() => setModal("settings")}>
-          ⚙
+        <button className="icon-btn" title={tx("설정 (Ctrl+,)")} aria-label={tx("설정")} onClick={() => setModal("settings")}>
+          <Icon name="settings" />
         </button>
         <button
           className="icon-btn"

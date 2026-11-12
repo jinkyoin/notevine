@@ -1,6 +1,6 @@
 [package]
 name = "notevine"
-version = "0.3.1"
+version = "0.4.0"
 description = "Notevine — 로컬 마크다운 지식관리·기록 앱"
 authors = ["jkin"]
 license = "MIT"
@@ -43,8 +43,11 @@ quick-xml = "0.42"
 keyring = { version = "3", features = ["windows-native"] }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
-
-[dev-dependencies]
+# Git backup encryption (docs/암호화-형식.md)
+aes-siv = "0.7"
+hkdf = "0.12"
+sha2 = "0.10"
+getrandom = "0.2"
 tempfile = "3"
 
 [profile.release]

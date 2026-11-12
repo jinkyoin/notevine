@@ -1,13 +1,16 @@
 mod ai;
 mod ai_api;
-mod backup;
+pub mod backup;
 mod canvas;
 mod commands;
+pub mod crypt;
+pub mod crypt_key;
 mod drive;
 mod error;
 mod extras;
 mod file_open;
 mod filetext;
+pub mod git_filter;
 mod history;
 mod index;
 mod mcp;
@@ -74,6 +77,18 @@ pub fn mcp_requested(args: &[String]) -> bool {
 /// Runs the MCP server until the AI tool closes it; returns the exit code.
 pub fn run_mcp(args: &[String]) -> i32 {
     mcp::serve(args)
+}
+
+/// `notevine --git-filter | --git-textconv | --git-merge`: Git runs these as its filter,
+/// diff text converter and merge driver for an encrypted backup. Like `--mcp`, `main`
+/// checks this before [`run`] so no window or single-instance hand-off happens.
+pub fn git_tool_requested(args: &[String]) -> bool {
+    git_filter::requested(args)
+}
+
+/// Runs the Git tool; returns the exit code (0 done, 1 merge conflict, 2 error).
+pub fn run_git_tool(args: &[String]) -> i32 {
+    git_filter::run(args)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -207,6 +222,12 @@ pub fn run() {
             plugins::set_plugin_grant,
             backup::backup_set_remote,
             backup::backup_now,
+            backup::backup_enable_encryption,
+            backup::backup_clone,
+            crypt_key::crypt_key_status,
+            crypt_key::crypt_create_key,
+            crypt_key::crypt_show_recovery_code,
+            crypt_key::crypt_import_key,
             canvas::create_canvas,
             canvas::save_canvas,
             plugins::list_plugins,
