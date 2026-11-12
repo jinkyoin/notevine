@@ -90,6 +90,9 @@ pub struct BackupResult {
     pub pushed: bool,
     /// Changes from the remote were brought in.
     pub pulled: bool,
+    /// An encrypted vault has no remote, so nothing was sent anywhere. (A plain vault
+    /// may be kept local on purpose, so it never sets this.)
+    pub remote_missing: bool,
 }
 
 fn git(dir: &Path, args: &[&str]) -> AppResult<String> {
@@ -431,9 +434,41 @@ fn write_if_changed(path: &Path, text: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// The `origin` address of a repository that has no commits of its own, so nothing in
+/// it can be plain history. Read from its files only (it may not be allowed yet).
+fn remote_of_empty_repo(git_dir: &Path) -> Option<String> {
+    fn has_files(dir: &Path) -> bool {
+        std::fs::read_dir(dir)
+            .map(|d| d.flatten().any(|e| if e.path().is_dir() { has_files(&e.path()) } else { true }))
+            .unwrap_or(false)
+    }
+    if has_files(&git_dir.join("refs").join("heads")) {
+        return None;
+    }
+    if std::fs::read_to_string(git_dir.join("packed-refs")).is_ok_and(|t| t.contains(" refs/heads/")) {
+        return None;
+    }
+    let config = std::fs::read_to_string(git_dir.join("config")).ok()?;
+    let mut in_origin = false;
+    for line in config.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_origin = line.replace(' ', "").eq_ignore_ascii_case("[remote\"origin\"]");
+        } else if in_origin
+            && let Some((k, v)) = line.split_once('=')
+            && k.trim().eq_ignore_ascii_case("url")
+            && !v.trim().is_empty()
+        {
+            return Some(v.trim().trim_matches('"').to_string());
+        }
+    }
+    None
+}
+
 /// Makes the vault an encrypted repository. A `.git` already there is moved aside
 /// (its new name is returned) because its history holds the notes in plain text; the
-/// fresh repository starts with no commits and no remote, so nothing old can be sent.
+/// fresh repository starts with no commits. Its remote is not carried over, except the
+/// address of a repository that had no commits (nothing plain to send, and a backup
+/// still refuses a remote that isn't this encrypted repository).
 pub fn enable_encryption_in(
     dir: &Path,
     key: &MasterKey,
@@ -446,6 +481,7 @@ pub fn enable_encryption_in(
     if old.exists() && marked.as_deref().and_then(crypt_file_key_id).is_some_and(|id| id == key_id(key)) {
         return Err(AppError::System("이미 암호화된 노트 폴더입니다".into()));
     }
+    let kept_remote = if old.is_dir() { remote_of_empty_repo(&old) } else { None };
     let moved = if old.exists() {
         let stamp = now.format("%Y%m%d-%H%M%S").to_string();
         let mut name = format!("{MOVED_ASIDE}{stamp}");
@@ -466,6 +502,9 @@ pub fn enable_encryption_in(
     configure_filter(dir, exe)?;
     write_if_changed(&dir.join(".gitattributes"), GITATTRIBUTES)?;
     ignore_moved_aside(dir)?;
+    if let Some(url) = kept_remote {
+        set_remote_in(dir, &url)?;
+    }
     Ok(moved)
 }
 
@@ -705,6 +744,7 @@ pub fn backup_with_exe(dir: &Path, message: &str, key: Option<&MasterKey>, exe: 
         r.committed = true;
     }
     if git(dir, &["remote", "get-url", "origin"]).is_err() {
+        r.remote_missing = crypt.is_some();
         return Ok(r);
     }
     let branch = git(dir, &["rev-parse", "--abbrev-ref", "HEAD"])?;

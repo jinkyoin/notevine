@@ -251,6 +251,7 @@ export interface BackupResult {
   files: number;
   pushed: boolean;
   pulled: boolean;
+  remote_missing: boolean;
 }
 
 export type PluginPermission = "read" | "write" | "network";

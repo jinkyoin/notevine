@@ -20,6 +20,7 @@ import { useApp } from "../store";
 import { useAi } from "../aiStore";
 import { forgetApiModels, ProviderFix } from "./AiPanel";
 import { CryptKeyDialog, type CryptKeyDialogMode } from "./CryptKeyDialog";
+import { BACKUP_CHANGED_EVENT } from "../lib/backupBadge";
 import { PERMISSION_LABEL, usePlugins } from "../plugins";
 import { checkForUpdate } from "../updates";
 
@@ -980,6 +981,8 @@ function BackupSettings() {
       .cryptKeyStatus()
       .then(setKey)
       .catch((e) => toast(errorMessage(e), "error"));
+    // 허용·초기화·원격 주소·열쇠가 바뀌었을 수 있으니 상단바 백업 단추도 다시 읽는다.
+    window.dispatchEvent(new Event(BACKUP_CHANGED_EVENT));
   };
   useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
   const run = async (f: () => Promise<unknown>) => {

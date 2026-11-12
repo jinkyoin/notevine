@@ -132,6 +132,21 @@ button {
   padding: 4px 10px;
   font-size: 12px;
 }
+/* 상단바 백업 단추: 글자 옆의 작은 점 하나. pending은 강조색, warn은 오류색. */
+.backup-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.backup-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.backup-dot.warn {
+  background: var(--danger);
+}
 
 .icon-btn {
   border: none;

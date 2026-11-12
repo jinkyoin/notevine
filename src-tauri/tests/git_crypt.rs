@@ -195,6 +195,47 @@ fn enabling_moves_the_old_repository_aside() {
 }
 
 #[test]
+fn enabling_keeps_the_remote_of_a_repository_with_no_commits() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let tmp = tempfile::tempdir().unwrap();
+    let a = vault(tmp.path(), "a");
+    std::fs::write(a.join("회의.md"), "예산 확정\n").unwrap();
+    // The address was put in first, before anything was backed up.
+    init_in(&a).unwrap();
+    set_remote_in(&a, "https://example.com/new.git").unwrap();
+
+    let moved = enable_encryption_in(&a, &key, exe(), now()).unwrap();
+    assert!(moved.is_some());
+    assert_eq!(git(&a, &["remote", "get-url", "origin"]), "https://example.com/new.git");
+    assert_eq!(git(&a, &["rev-list", "--all", "--count"]), "0");
+}
+
+#[test]
+fn an_encrypted_backup_without_a_remote_says_so() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let a = vault(tmp.path(), "a");
+    std::fs::write(a.join("회의.md"), "예산 확정\n").unwrap();
+    enable_encryption_in(&a, &key, exe(), now()).unwrap();
+
+    let r = backup_with_exe(&a, "백업", Some(&key), exe()).unwrap();
+    assert!(r.committed && !r.pushed && r.remote_missing, "{r:?}");
+
+    // A plain vault may be backed up locally on purpose: no warning there.
+    let p = vault(tmp.path(), "p");
+    std::fs::write(p.join("a.md"), "x\n").unwrap();
+    let r = backup_in(&p, "평문", None).unwrap();
+    assert!(r.committed && !r.remote_missing, "{r:?}");
+}
+
+#[test]
 fn backup_without_key_commits_nothing() {
     if !installed() {
         return;

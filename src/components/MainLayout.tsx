@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useApp } from "../store";
 import { dispatchKey, setKeyOverrides } from "../commands";
 import { VaultRail } from "./VaultRail";
+import { BackupButton } from "./BackupButton";
 import { api, errorMessage } from "../api";
 import { Explorer } from "./Explorer";
 import { Editor } from "./Editor";
@@ -235,6 +236,7 @@ export function MainLayout() {
             {tx("기본 구조 만들기")}
           </button>
         )}
+        <BackupButton root={vault?.root ?? ""} />
         <button className="btn ghost small" onClick={() => setModal("quickMemo")} title={tx("Ctrl+Shift+N · 다른 프로그램을 쓰는 중에는 Ctrl+Alt+N")}>
           {tx("빠른 메모")}
         </button>
