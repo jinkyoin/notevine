@@ -1128,21 +1128,6 @@ function BackupSettings() {
             </button>
           </Row>
           {st.problem && <p className="error small">{tx("지금은 백업할 수 없습니다: {0}", st.problem)}</p>}
-          <Row label={tx("원격 저장소")} hint={tx("비워 두면 이 PC에만 백업합니다. 넣으면 백업할 때 노트가 그 저장소로 전송됩니다(비공개 저장소를 쓰세요)")}>
-            <input
-              className="api-input"
-              value={remote}
-              placeholder={tx("https://github.com/이름/notes.git")}
-              onChange={(e) => setRemote(e.target.value)}
-            />
-            <button
-              className="btn small"
-              disabled={busy || remote.trim() === (st.remote ?? "")}
-              onClick={() => void run(() => api.backupSetRemote(remote))}
-            >
-              {tx("저장")}
-            </button>
-          </Row>
           <Row
             label={tx("암호화")}
             hint={
@@ -1170,9 +1155,24 @@ function BackupSettings() {
           {movedAside !== null && (
             <p className="muted small">
               {movedAside ? tx("옛 저장소는 {0}로 옮겨 두었습니다. ", movedAside) : ""}
-              {tx("새 빈 원격 저장소를 만들어 위 원격 저장소 칸에 주소를 넣고, 옛 원격 저장소는 직접 지워 주세요.")}
+              {tx("새 빈 원격 저장소를 만들어 아래 원격 저장소 칸에 주소를 넣고, 옛 원격 저장소는 직접 지워 주세요.")}
             </p>
           )}
+          <Row label={tx("원격 저장소")} hint={tx("비워 두면 이 PC에만 백업합니다. 넣으면 백업할 때 노트가 그 저장소로 전송됩니다(비공개 저장소를 쓰세요)")}>
+            <input
+              className="api-input"
+              value={remote}
+              placeholder={tx("https://github.com/이름/notes.git")}
+              onChange={(e) => setRemote(e.target.value)}
+            />
+            <button
+              className="btn small"
+              disabled={busy || remote.trim() === (st.remote ?? "")}
+              onClick={() => void run(() => api.backupSetRemote(remote))}
+            >
+              {tx("저장")}
+            </button>
+          </Row>
           <Row label={tx("자동 백업")} hint={tx("바뀐 것이 있을 때만 정해진 간격으로 백업합니다. 실패하면 알림으로 알려 드립니다")}>
             <select value={trust.backup_minutes} onChange={(e) => void run(() => api.setBackupMinutes(Number(e.target.value)))}>
               <option value={0}>{tx("끄기 (직접 백업)")}</option>

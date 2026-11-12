@@ -206,7 +206,9 @@ pub fn status_with_key(dir: &Path, key: Option<&MasterKey>) -> AppResult<BackupS
     s.remote = git(dir, &["remote", "get-url", "origin"]).ok().filter(|r| !r.is_empty());
     // Without the key (or with a filter Git can't start) Git may not say how many
     // changed; the reason goes to `problem` so a timed backup doesn't stop silently.
-    s.changed = match git(dir, &["status", "--porcelain", "-uall"]) {
+    // The repository moved aside by "enable encryption" is never backed up, so it isn't a change.
+    let skip_moved = format!(":(exclude,glob){MOVED_ASIDE}*/**");
+    s.changed = match git(dir, &["status", "--porcelain", "-uall", "--", ".", &skip_moved]) {
         Ok(out) => out.lines().count() as u32,
         Err(e) if s.encrypted => {
             s.problem.get_or_insert(e.to_string());
@@ -714,6 +716,30 @@ pub fn backup_with_exe(dir: &Path, message: &str, key: Option<&MasterKey>, exe: 
         configure_filter(dir, exe)?;
     }
     let mut r = BackupResult::default();
+    if let Some(id) = &crypt
+        && git(dir, &["rev-parse", "-q", "--verify", "HEAD"]).is_err()
+        && git(dir, &["remote", "get-url", "origin"]).is_ok()
+    {
+        // A fresh encrypted folder (no backup yet) whose remote already holds this
+        // vault's notes: start from them instead of committing the three app files as an
+        // unrelated history. Only the files the app just wrote are replaced.
+        git(dir, &["fetch", "-q", "--prune", "origin", "+refs/heads/*:refs/remotes/origin/*"])?;
+        let branch = git(dir, &["symbolic-ref", "--short", "HEAD"])?;
+        let remote_branch = format!("origin/{branch}");
+        if git(dir, &["rev-parse", "--verify", "-q", &remote_branch]).is_ok() {
+            let theirs = git(dir, &["show", &format!("{remote_branch}:{CRYPT_FILE}")]).ok();
+            // Another repository: leave it to the checks below, after the local commit.
+            if theirs.as_deref().and_then(crypt_file_key_id).is_some_and(|t| Some(t) == *id) {
+                // The app's own files come back from the remote; a note of the user's with
+                // the same name makes the checkout stop instead of being overwritten.
+                for f in PLAIN_FILES {
+                    let _ = std::fs::remove_file(dir.join(f));
+                }
+                git(dir, &["checkout", "-q", "-B", &branch, &remote_branch])?;
+                r.pulled = true;
+            }
+        }
+    }
     git(dir, &["add", "-A"])?;
     if crypt.is_some() {
         let links = links_staged(dir).inspect_err(|_| {

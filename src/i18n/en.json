@@ -970,7 +970,7 @@
  "복구 코드 보기": "Show recovery code",
  "열쇠 만들기": "Create key",
  "옛 저장소는 {0}로 옮겨 두었습니다. ": "The old repository was moved to {0}. ",
- "새 빈 원격 저장소를 만들어 위 원격 저장소 칸에 주소를 넣고, 옛 원격 저장소는 직접 지워 주세요.": "Create a new empty remote repository, enter its address in the Remote repository field above, and delete the old remote repository yourself.",
+ "새 빈 원격 저장소를 만들어 아래 원격 저장소 칸에 주소를 넣고, 옛 원격 저장소는 직접 지워 주세요.": "Create a new empty remote repository, enter its address in the Remote repository field below, and delete the old remote repository yourself.",
  "Git 저장소에서 받기": "Get from a Git repository",
  "백업해 둔 Git 저장소를 새 폴더로 받아 노트 폴더로 엽니다. 암호화된 저장소는 이 PC의 열쇠로 풀어서 받습니다.": "Downloads a backed-up Git repository into a new folder and opens it as a note folder. An encrypted repository is decrypted with this PC's key.",
  "저장소를 받을 위치 선택": "Choose where to put the repository",

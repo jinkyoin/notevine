@@ -876,3 +876,52 @@ fn a_refused_push_recovers_after_resetting_to_the_remote() {
     assert_eq!(read(&a.join("비밀.md")), "평문 비밀\n");
     assert_eq!(read(&a.join("회의.md")), "예산 확정\n몰래 고침\n");
 }
+
+#[test]
+fn a_remote_put_in_before_encryption_receives_the_first_backup() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let bare = tmp.path().join("remote.git");
+    std::fs::create_dir_all(&bare).unwrap();
+    git(&bare, &["init", "-q", "--bare"]);
+    let a = vault(tmp.path(), "a");
+    std::fs::write(a.join("회의.md"), "예산 확정\n").unwrap();
+    init_in(&a).unwrap();
+    set_remote_in(&a, bare.to_str().unwrap()).unwrap();
+
+    enable_encryption_in(&a, &key, exe(), now()).unwrap();
+    let r = backup_with_exe(&a, "백업", Some(&key), exe()).unwrap();
+    assert!(r.committed && r.pushed && !r.remote_missing, "{r:?}");
+    assert_ne!(git(&bare, &["rev-list", "--all", "--count"]), "0");
+}
+
+#[test]
+fn a_fresh_encrypted_folder_starts_from_the_notes_already_on_the_remote() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let bare = tmp.path().join("remote.git");
+    std::fs::create_dir_all(&bare).unwrap();
+    git(&bare, &["init", "-q", "--bare"]);
+    // PC 1 backs up.
+    let a = vault(tmp.path(), "a");
+    std::fs::write(a.join("회의.md"), "예산 확정\n").unwrap();
+    enable_encryption_in(&a, &key, exe(), now()).unwrap();
+    set_remote_in(&a, bare.to_str().unwrap()).unwrap();
+    backup_with_exe(&a, "백업", Some(&key), exe()).unwrap();
+
+    // PC 2: an empty folder, encryption on with the same key, then the remote.
+    let b = vault(tmp.path(), "b");
+    enable_encryption_in(&b, &key, exe(), now()).unwrap();
+    set_remote_in(&b, bare.to_str().unwrap()).unwrap();
+    let r = backup_with_exe(&b, "백업", Some(&key), exe()).unwrap();
+    assert!(r.pulled, "{r:?}");
+    assert_eq!(std::fs::read_to_string(b.join("회의.md")).unwrap(), "예산 확정\n");
+}
