@@ -210,6 +210,9 @@ export function StartScreen({ adding = false }: { adding?: boolean }) {
     if (path === checking) cancelChoice();
     await api.forgetVault(path);
     setRecent((list) => list.filter((v) => v.path !== path));
+    // A folder taken off this list also leaves the rail on the left.
+    const { rail, closeRailVault } = useApp.getState();
+    if (rail.some((e) => samePath(e.path, path))) await closeRailVault(path);
   }
 
   return (

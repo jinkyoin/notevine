@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   openVault: vi.fn(),
   switchVault: vi.fn(),
   setAdding: vi.fn(),
+  closeRailVault: vi.fn(),
+  rail: [] as { path: string; name: string }[],
   railList: vi.fn(),
   dialogOpen: vi.fn(),
 }));
@@ -26,10 +28,16 @@ vi.mock("../api", () => ({
     railList: mocks.railList,
   },
 }));
-vi.mock("../store", () => ({
-  useApp: (select: (s: object) => unknown) =>
-    select({ openVault: mocks.openVault, switchVault: mocks.switchVault, setAdding: mocks.setAdding }),
-}));
+vi.mock("../store", () => {
+  const state = () => ({
+    openVault: mocks.openVault,
+    switchVault: mocks.switchVault,
+    setAdding: mocks.setAdding,
+    closeRailVault: mocks.closeRailVault,
+    rail: mocks.rail,
+  });
+  return { useApp: Object.assign((select: (s: object) => unknown) => select(state()), { getState: state }) };
+});
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: mocks.dialogOpen }));
 
 const LOCAL = { path: "C:\\notes", name: "notes", opened_at: 2 };
@@ -50,6 +58,18 @@ const row = (name: string) => rows().find((li) => li.querySelector(".recent-name
 const pathText = (name: string) => row(name).querySelector(".recent-path")?.textContent;
 
 describe("start screen recent folders", () => {
+  it("takes a forgotten folder off the rail too", async () => {
+    mocks.rail = [{ path: "c:/notes", name: "notes" }];
+    mocks.folderExists.mockResolvedValue(true);
+    await show([LOCAL, OFFLINE]);
+    await act(async () => {
+      row("notes").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+    });
+    expect(mocks.forgetVault).toHaveBeenCalledWith(LOCAL.path);
+    expect(mocks.closeRailVault).toHaveBeenCalledExactlyOnceWith(LOCAL.path);
+    mocks.rail = [];
+  });
+
   let root: Root;
   let host: HTMLElement;
 
