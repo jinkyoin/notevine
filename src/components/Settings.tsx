@@ -21,6 +21,7 @@ import { useAi } from "../aiStore";
 import { forgetApiModels, ProviderFix } from "./AiPanel";
 import { CryptKeyDialog, type CryptKeyDialogMode } from "./CryptKeyDialog";
 import { BACKUP_CHANGED_EVENT } from "../lib/backupBadge";
+import { Icon } from "./Icon";
 import { PERMISSION_LABEL, usePlugins } from "../plugins";
 import { checkForUpdate } from "../updates";
 
@@ -528,7 +529,10 @@ function ShortcutSettings() {
         {tx("단추를 누르고 새 단축키를 누르세요. Backspace는 단축키 없애기, Esc는 취소입니다. 다른 명령이 쓰던 단축키를 고르면 그 명령의 단축키는 없어집니다. 편집기 안의 서식 단축키(Ctrl+B 등)와 다른 프로그램에서 쓰는 빠른 메모(Ctrl+Alt+N)는 바꿀 수 없습니다.")}
       </p>
       <div className="keys-tools">
-        <input placeholder={tx("명령 찾기")} value={filter} onChange={(e) => setFilter(e.target.value)} />
+        <label className="field-search">
+          <Icon name="search" />
+          <input placeholder={tx("명령 찾기")} aria-label={tx("명령 찾기")} value={filter} onChange={(e) => setFilter(e.target.value)} />
+        </label>
         <button
           className="btn small"
           disabled={!Object.keys(config.keybindings).length}

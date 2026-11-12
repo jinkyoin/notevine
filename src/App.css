@@ -2,14 +2,14 @@
 :root {
   --bg: #ffffff;
   --bg-sidebar: #f8f8f9;
-  --bg-rail: #f1f1f2;
+  --bg-rail: #efedf5;
   --bg-hover: #f0f0f2;
-  --bg-active: #e9eaec;
+  --bg-active: #ece8f6;
   --text: #1c1c1f;
   --muted: #73737c;
-  --selection: rgba(31, 111, 120, 0.18);
+  --selection: rgba(90, 58, 148, 0.18);
   --border: #e8e8eb;
-  --accent: #1f6f78;
+  --accent: #5a3a94;
   --accent-text: #ffffff;
   --danger: #c4342b;
   --danger-bg: #fdecea;
@@ -26,17 +26,17 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --selection: rgba(108, 195, 203, 0.26);
+    --selection: rgba(184, 161, 232, 0.28);
     --bg: #18181b;
     --bg-sidebar: #1e1e21;
     --bg-rail: #141416;
     --bg-hover: #2a2a2e;
-    --bg-active: #303136;
+    --bg-active: #322b44;
     --text: #ececef;
     --muted: #9a9aa3;
     --border: #2c2c30;
-    --accent: #6cc3cb;
-    --accent-text: #0b2528;
+    --accent: #b8a1e8;
+    --accent-text: #1b1330;
     --danger: #f07167;
     --danger-bg: #3a2322;
     --scroll: rgba(236, 236, 239, 0.22);
@@ -46,17 +46,17 @@
 }
 
 :root[data-theme="dark"] {
-    --selection: rgba(108, 195, 203, 0.26);
+    --selection: rgba(184, 161, 232, 0.28);
     --bg: #18181b;
     --bg-sidebar: #1e1e21;
     --bg-rail: #141416;
     --bg-hover: #2a2a2e;
-    --bg-active: #303136;
+    --bg-active: #322b44;
     --text: #ececef;
     --muted: #9a9aa3;
     --border: #2c2c30;
-    --accent: #6cc3cb;
-    --accent-text: #0b2528;
+    --accent: #b8a1e8;
+    --accent-text: #1b1330;
     --danger: #f07167;
     --danger-bg: #3a2322;
     --scroll: rgba(236, 236, 239, 0.22);
@@ -1908,7 +1908,7 @@ kbd {
   color: var(--accent);
 }
 .hist-tag.o-mcp {
-  color: #1c7ed6;
+  color: #7a4fc4;
 }
 .mcp-cmd {
   display: flex;
@@ -2237,10 +2237,46 @@ textarea.ai-instructions {
 .keys-tools {
   display: flex;
   gap: 8px;
+  align-items: center;
   margin: 4px 0 8px;
 }
-.keys-tools input {
+.keys-tools .btn {
+  height: 32px;
+}
+/* 검색칸: 앞에 돋보기, 배경과 글꼴은 다른 입력칸과 같게. 입력 테두리는 칸 전체가 그린다 */
+.field-search {
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: text;
+}
+.field-search:hover {
+  border-color: var(--muted);
+}
+.field-search:focus-within {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.field-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  outline: none;
+}
+.field-search input::placeholder {
+  color: var(--muted);
 }
 .keys-row {
   padding: 8px 0;
@@ -3757,7 +3793,7 @@ body.resizing iframe {
   white-space: nowrap;
 }
 
-/* ---------- 심플한 화면: 흰 바탕, 회색, 강조색은 하나. 위 규칙 중 모양만 덮어쓴다 ---------- */
+/* ---------- 심플한 화면: 흰 바탕, 회색, 강조색은 보라 하나. 위 규칙 중 모양만 덮어쓴다 ---------- */
 body {
   font-size: 14px;
   font-feature-settings: "ss06" 1;
