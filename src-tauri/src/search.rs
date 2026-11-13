@@ -229,10 +229,8 @@ pub fn search(ix: &Index, q: &SearchQuery) -> AppResult<SearchResult> {
         });
     }
 
-    let total = if filtered_after {
-        cands.len() as i64
-    } else if cands.len() < limit {
-        cands.len() as i64 // fewer than asked for: that is all of them
+    let total = if filtered_after || cands.len() < limit {
+        cands.len() as i64 // every match is in hand (filtered afterwards, or fewer than asked for)
     } else {
         conn.query_row(&count_sql, params_from_iter(count_args), |r| r.get::<_, i64>(0))?
     };
