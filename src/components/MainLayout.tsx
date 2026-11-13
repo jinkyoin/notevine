@@ -37,6 +37,7 @@ import { CommandPalette } from "./CommandPalette";
 import { QuickMemo } from "./QuickMemo";
 import { TemplatePicker } from "./TemplatePicker";
 import { Settings } from "./Settings";
+import { autoBackupDue, CHECK_MINUTES } from "../lib/autoBackup";
 import { AiPanel } from "./AiPanel";
 import { AiPreview, AiSendConfirm } from "./AiDialogs";
 import { AiEdits } from "./AiEdits";
@@ -112,6 +113,9 @@ function VaultMenu({ name, root }: { name: string; root: string }) {
 
 let updateChecked = false;
 
+/** When the timed backup last tried each folder in this run (a failing one is retried after the interval). */
+const lastTimedTry = new Map<string, number>();
+
 export function MainLayout() {
   const vault = useApp((s) => s.vault);
   const openPath = useApp((s) => s.openPath);
@@ -160,26 +164,36 @@ export function MainLayout() {
   }, []);
 
   // Git backup on a timer (settings → 백업), only when the vault is a repository with changes.
+  // It looks every few minutes but backs up once `backupMinutes` have passed since the LAST backup,
+  // so switching folders (which restarts this effect) neither delays nor skips it.
   const backupMinutes = useApp((s) => s.trust.backup_minutes);
   // A reason it can't run (e.g. no key for an encrypted vault) is told once, not every tick.
   useEffect(() => {
     if (!backupMinutes) return;
+    const root = vault?.root ?? "";
     let told: string | null = null;
     const tell = (problem: string | null) => {
       if (problem && problem !== told) useApp.getState().toast(tx("자동 백업을 하지 못했습니다: {0}", problem), "error");
       told = problem;
     };
-    const id = window.setInterval(() => {
+    const check = () =>
       void api
         .backupStatus()
         .then((s) => {
           if (!s.repo || !s.trusted) return;
           tell(s.problem);
-          if (!s.problem && (s.changed > 0 || s.ahead > 0)) void useApp.getState().backupNow(true);
+          const now = Date.now();
+          if (!autoBackupDue(s, now, backupMinutes, lastTimedTry.get(root) ?? null)) return;
+          lastTimedTry.set(root, now);
+          void useApp.getState().backupNow(true);
         })
         .catch((e) => tell(errorMessage(e)));
-    }, backupMinutes * 60_000);
-    return () => window.clearInterval(id);
+    const first = window.setTimeout(check, 20_000); // a folder opened long after its last backup doesn't wait for the first tick
+    const id = window.setInterval(check, Math.min(backupMinutes, CHECK_MINUTES) * 60_000);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(id);
+    };
   }, [backupMinutes, vault?.root]);
 
   // A new version, once per run, only for someone who turned this on (settings → 정보).

@@ -1173,7 +1173,7 @@ function BackupSettings() {
               {tx("저장")}
             </button>
           </Row>
-          <Row label={tx("자동 백업")} hint={tx("바뀐 것이 있을 때만 정해진 간격으로 백업합니다. 실패하면 알림으로 알려 드립니다")}>
+          <Row label={tx("자동 백업")} hint={tx("바뀐 것이 있을 때만, 마지막 백업에서 정해진 간격이 지나면 백업합니다. 실패하면 알림으로 알려 드립니다")}>
             <select value={trust.backup_minutes} onChange={(e) => void run(() => api.setBackupMinutes(Number(e.target.value)))}>
               <option value={0}>{tx("끄기 (직접 백업)")}</option>
               <option value={15}>{tx("15분마다")}</option>

@@ -634,7 +634,7 @@
  "비워 두면 이 PC에만 백업합니다. 넣으면 백업할 때 노트가 그 저장소로 전송됩니다(비공개 저장소를 쓰세요)": "Leave empty to back up on this PC only. If set, notes are sent to that repository when backing up (use a private repository)",
  "https://github.com/이름/notes.git": "https://github.com/name/notes.git",
  "자동 백업": "Auto backup",
- "바뀐 것이 있을 때만 정해진 간격으로 백업합니다. 실패하면 알림으로 알려 드립니다": "Backs up at the chosen interval, only when something changed. You'll get a notice if it fails",
+ "바뀐 것이 있을 때만, 마지막 백업에서 정해진 간격이 지나면 백업합니다. 실패하면 알림으로 알려 드립니다": "Backs up only when something changed, once the chosen interval has passed since the last backup. You'll get a notice if it fails",
  "끄기 (직접 백업)": "Off (back up by hand)",
  "15분마다": "Every 15 minutes",
  "30분마다": "Every 30 minutes",
