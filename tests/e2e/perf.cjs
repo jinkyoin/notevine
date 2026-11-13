@@ -48,6 +48,9 @@ function kill(proc) {
   await page.waitForSelector(".start-card, .tree-row, .empty", { timeout: 20000 });
   const t0 = Date.now();
   await invoke(page, "open_vault", { path: VAULT });
+  // The app reopens the rail's active folder at start (not the last one opened): put this one there.
+  await invoke(page, "rail_add", { path: VAULT, name: path.basename(VAULT) });
+  await invoke(page, "rail_set_active", { path: VAULT });
   let n = 0;
   while (Date.now() - t0 < 120000) {
     n = (await invoke(page, "list_notes", {})).length;
