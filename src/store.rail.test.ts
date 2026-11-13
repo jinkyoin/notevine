@@ -123,6 +123,42 @@ describe("note folder rail in the store", () => {
     expect(railPaths()).toEqual(["D:/a", "D:/b"]);
   });
 
+  it("changes the screen once: the new folder never shows without its tree", async () => {
+    await useApp.getState().openVault("D:/a");
+    const seen: { root: string | undefined; tree: number }[] = [];
+    const stop = useApp.subscribe((st) => seen.push({ root: st.vault?.root, tree: st.tree.length }));
+    await useApp.getState().switchVault("D:/b");
+    stop();
+    // Used to show "D:/b" with an empty tree (and no note) until the reads were done.
+    expect(seen.filter((x) => x.root === "D:/b" && x.tree === 0)).toEqual([]);
+  });
+
+  it("brings a folder back with its tree at once, and reads the tree again after", async () => {
+    const s = useApp.getState();
+    await s.openVault("D:/a");
+    await s.switchVault("D:/b");
+    // The disk is slow this time: the answer for D:/a is not there when D:/a is shown.
+    let answer: (t: TreeNode[]) => void = () => {};
+    vi.mocked(api.listTree).mockImplementation(() => new Promise((r) => (answer = r)));
+    await s.switchVault("D:/a");
+    expect(useApp.getState().tree.map((n) => n.path)).toEqual(["x.md", "y.md"]);
+    answer([note("x.md"), note("y.md"), note("new.md")]);
+    await vi.waitFor(() => expect(useApp.getState().tree.map((n) => n.path)).toEqual(["x.md", "y.md", "new.md"]));
+  });
+
+  it("ignores a tree that was read for the folder shown before", async () => {
+    const s = useApp.getState();
+    await s.openVault("D:/a");
+    let late: (t: TreeNode[]) => void = () => {};
+    vi.mocked(api.listTree).mockImplementationOnce(() => new Promise((r) => (late = r)));
+    const reading = s.refreshTree();
+    await s.switchVault("D:/b");
+    late([note("from-a.md")]);
+    await reading;
+    expect(useApp.getState().tree.map((n) => n.path)).toEqual(["x.md", "y.md"]);
+    expect(root()).toBe("D:/b");
+  });
+
   it("AI edits stay with their folder", async () => {
     const s = useApp.getState();
     await s.openVault("D:/a");

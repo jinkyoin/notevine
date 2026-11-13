@@ -182,9 +182,12 @@ pub fn rail_set_active(state: State<AppState>, path: String) -> AppResult<()> {
     state.rail.set_active(&path)
 }
 
-#[tauri::command]
+/// Off the main thread and without holding the vault: walking a big folder takes seconds,
+/// and neither the window nor other commands (opening a note) may wait for it.
+#[tauri::command(async)]
 pub fn list_tree(state: State<AppState>) -> AppResult<Vec<TreeNode>> {
-    with_vault(&state, |v| v.tree())
+    let root = with_vault(&state, |v| Ok(v.root().to_path_buf()))?;
+    crate::vault::read_tree(&root)
 }
 
 /// Off the main thread, and in a drive vault the download happens without holding the
@@ -285,7 +288,7 @@ pub fn rebuild_index(state: State<AppState>) -> AppResult<usize> {
     Index::rebuild(&crate::index::file_in(&store), &root)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn list_notes(state: State<AppState>) -> AppResult<Vec<NoteRef>> {
     with_vault(&state, |v| v.index().notes())
 }
@@ -311,8 +314,9 @@ pub fn reveal_entry(state: State<AppState>, path: String) -> AppResult<String> {
     with_vault(&state, |v| Ok(v.abs(&path)?.display().to_string()))
 }
 
-/// Full-text search with tag/property/date filters (FR-SRC-02..05).
-#[tauri::command]
+/// Full-text search with tag/property/date filters (FR-SRC-02..05). Off the main thread: a
+/// word in most notes of a big folder takes a while, and the window must not wait for it.
+#[tauri::command(async)]
 pub fn search(state: State<AppState>, query: SearchQuery) -> AppResult<SearchResult> {
     with_vault(&state, |v| crate::search::search(v.index(), &query))
 }

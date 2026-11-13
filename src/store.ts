@@ -479,6 +479,8 @@ export const useApp = create<AppStore>((set, get) => {
       pdfView: s.pdfView,
       canvasView: s.canvasView,
       ai: useAi.getState().snapshot(),
+      tree: s.tree,
+      notes: s.notes,
     };
   }
 
@@ -588,29 +590,52 @@ export const useApp = create<AppStore>((set, get) => {
       const temporary = !!opts?.temporary;
       // What this folder had on screen earlier in this run, if it was shown before (FR-VLT-07).
       const snap = takeSnapshot(info.root);
-      set({ vault: info, tempVault: temporary ? info.root : null, trust: NO_TRUST, tree: [], expanded: new Set(), openPath: null, editing: null, back: [], forward: [], tabs: [], closedTabs: [], tableView: null, pdfView: null, canvasView: null, splitPath: null });
+      // Everything the folder shows is read first and put on screen in one go: the screen used to
+      // go empty ("열린 노트가 없습니다") for as long as these reads took, one after the other.
+      // A folder shown before comes back with the tree it had, and the tree is read again after.
+      const [railed, config, trust, listed, noteList, ws] = await Promise.all([
+        temporary ? null : api.railAdd(info.root, info.name).catch(() => null),
+        api.getConfig().catch(() => DEFAULT_CONFIG),
+        api.deviceTrust().catch(() => NO_TRUST),
+        snap?.tree ? null : attempt(() => api.listTree()),
+        snap?.tree ? null : api.listNotes().catch(() => null),
+        snap ? null : api.getWorkspace().catch(() => null),
+      ]);
+      set({
+        vault: info,
+        tempVault: temporary ? info.root : null,
+        trust,
+        config,
+        tree: snap?.tree ?? listed ?? [],
+        notes: snap?.notes ?? noteList ?? [],
+        expanded: new Set(),
+        openPath: null,
+        editing: null,
+        back: [],
+        forward: [],
+        tabs: [],
+        closedTabs: [],
+        tableView: null,
+        pdfView: null,
+        canvasView: null,
+        splitPath: null,
+        sidebarTab: get().sidebarTab === "ideas" && !config.preset_enabled ? "files" : get().sidebarTab,
+      });
+      if (railed) set({ rail: railed.entries });
       useAi.getState().restore(snap?.ai);
-      if (!temporary) {
-        const rail = await api.railAdd(info.root, info.name).catch(() => null);
-        if (rail) set({ rail: rail.entries });
-        await api.railSetActive(info.root).catch(() => {});
-      }
-      const config = await api.getConfig().catch(() => DEFAULT_CONFIG);
-      const trust = await api.deviceTrust().catch(() => NO_TRUST);
-      set({ config, trust, sidebarTab: get().sidebarTab === "ideas" && !config.preset_enabled ? "files" : get().sidebarTab });
+      if (!temporary) await api.railSetActive(info.root).catch(() => {});
       if (info.store_warning) {
         get().toast(tx("이전 히스토리를 드라이브 밖으로 옮기지 못했습니다. 원본은 .app 폴더에 그대로 있고, 다음에 열 때 다시 시도합니다: {0}", info.store_warning), "error");
       }
       seenDriveConflicts.clear();
       void reportDriveConflicts();
       applyTheme(config.theme);
-      await get().refreshTree();
 
       if (snap) {
         restoreSnapshot(snap);
+        if (snap.tree) void get().refreshTree();
       } else {
         // Reopen the tabs and the note that were open last time (FR-VLT-02).
-        const ws = await api.getWorkspace().catch(() => null);
         const exists = (p: string) => !!findNode(get().tree, p);
         const saved = (ws?.tabs ?? []).filter(exists);
         if (saved.length) set({ tabs: saved.map((path) => ({ path, back: [], forward: [] })) });
@@ -768,7 +793,10 @@ export const useApp = create<AppStore>((set, get) => {
     },
 
     async refreshTree() {
+      const root = get().vault?.root;
       const [tree, notes] = await Promise.all([attempt(() => api.listTree()), api.listNotes().catch(() => null)]);
+      // The folder was switched while this was read: the answer is the previous folder's.
+      if (get().vault?.root !== root) return;
       if (notes) set({ notes });
       if (!tree) return;
       set({ tree });

@@ -142,7 +142,9 @@ pub fn search(ix: &Index, q: &SearchQuery) -> AppResult<SearchResult> {
     let terms: Vec<String> = q.text.iter().map(|t| nfc(t.trim())).filter(|t| !t.is_empty()).collect();
     let (long, short): (Vec<&String>, Vec<&String>) = terms.iter().partition(|t| t.chars().count() >= 3);
 
-    let mut sql = String::from("SELECT n.id, n.path, n.title, n.mtime, n.ctime, n.fm_lines FROM notes n");
+    const SELECT: &str = "SELECT n.id, n.path, n.title, n.mtime, n.ctime, n.fm_lines";
+    let mut sql = String::from(SELECT);
+    sql.push_str(" FROM notes n");
     let mut wh: Vec<&str> = Vec::new();
     let mut args: Vec<Value> = Vec::new();
     if !terms.is_empty() {
@@ -184,11 +186,22 @@ pub fn search(ix: &Index, q: &SearchQuery) -> AppResult<SearchResult> {
         sql.push_str(" WHERE ");
         sql.push_str(&wh.join(" AND "));
     }
+    // Property and creation-date filters are applied to the rows afterwards, so those searches
+    // need every match. Without them the database returns just the top `limit` and counts the
+    // rest separately: ranking and sorting thousands of matches, only to show 100, was most of the time.
+    let limit = q.limit.unwrap_or(DEFAULT_LIMIT) as usize;
+    let filtered_after = !q.props.is_empty() || q.date.as_ref().is_some_and(|d| d.field == DateField::Created);
+    let count_sql = format!("SELECT COUNT(*){}", &sql[SELECT.len()..]);
+    let count_args = args.clone();
     sql.push_str(if long.is_empty() {
         " ORDER BY n.mtime DESC, n.title, n.path"
     } else {
         " ORDER BY bm25(notes_fts), n.title, n.path"
     });
+    if !filtered_after {
+        sql.push_str(" LIMIT ?");
+        args.push(Value::Integer(i64::try_from(limit).unwrap_or(i64::MAX)));
+    }
 
     let mut cands: Vec<Candidate> = {
         let mut st = conn.prepare(&sql)?;
@@ -216,8 +229,15 @@ pub fn search(ix: &Index, q: &SearchQuery) -> AppResult<SearchResult> {
         });
     }
 
-    let total = u32::try_from(cands.len()).unwrap_or(u32::MAX);
-    cands.truncate(q.limit.unwrap_or(DEFAULT_LIMIT) as usize);
+    let total = if filtered_after {
+        cands.len() as i64
+    } else if cands.len() < limit {
+        cands.len() as i64 // fewer than asked for: that is all of them
+    } else {
+        conn.query_row(&count_sql, params_from_iter(count_args), |r| r.get::<_, i64>(0))?
+    };
+    let total = u32::try_from(total).unwrap_or(u32::MAX);
+    cands.truncate(limit);
 
     let folded: Vec<Vec<char>> = terms.iter().map(|t| t.chars().map(fold).collect()).collect();
     let mut body_st = conn.prepare_cached("SELECT body FROM notes_fts WHERE rowid = ?1")?;

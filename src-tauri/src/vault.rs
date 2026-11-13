@@ -229,10 +229,10 @@ impl Vault {
     /// Whole file tree, hiding `.app/` and every dot-entry (FR-VLT-05).
     /// Folders come first, then entries sorted by case-insensitive name.
     pub fn tree(&self) -> AppResult<Vec<TreeNode>> {
-        self.read_dir_rec(&self.root)
+        read_tree(&self.root)
     }
 
-    fn read_dir_rec(&self, dir: &Path) -> AppResult<Vec<TreeNode>> {
+    fn read_dir_rec(root: &Path, dir: &Path) -> AppResult<Vec<TreeNode>> {
         let mut out = Vec::new();
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
@@ -241,7 +241,7 @@ impl Vault {
                 continue;
             }
             let path = entry.path();
-            let Some(rel) = paths::to_rel(&self.root, &path) else {
+            let Some(rel) = paths::to_rel(root, &path) else {
                 continue;
             };
             let meta = match entry.metadata() {
@@ -257,7 +257,7 @@ impl Vault {
             let name = file_name(&rel).to_string();
             if meta.is_dir() {
                 out.push(TreeNode {
-                    children: Some(self.read_dir_rec(&path)?),
+                    children: Some(Self::read_dir_rec(root, &path)?),
                     path: rel,
                     name,
                     kind: EntryKind::Folder,
@@ -268,11 +268,8 @@ impl Vault {
                 out.push(TreeNode { path: rel, name, kind, mtime, children: None });
             }
         }
-        out.sort_by(|a, b| {
-            (a.kind != EntryKind::Folder)
-                .cmp(&(b.kind != EntryKind::Folder))
-                .then_with(|| name_key(&a.name).cmp(&name_key(&b.name)))
-        });
+        // The key (NFC, lower case) is built once per entry, not once per comparison.
+        out.sort_by_cached_key(|n| (n.kind != EntryKind::Folder, name_key(&n.name)));
         Ok(out)
     }
 
@@ -646,6 +643,12 @@ impl Vault {
     }
 }
 
+/// The file tree of the folder at `root`. Needs no open vault, so a big folder can be read
+/// without holding the vault (see `list_tree`).
+pub fn read_tree(root: &Path) -> AppResult<Vec<TreeNode>> {
+    Vault::read_dir_rec(root, root)
+}
+
 fn title_of(rel: &str) -> String {
     let name = file_name(rel);
     if is_note(name) { name[..name.len() - 3].to_string() } else { name.to_string() }
@@ -705,6 +708,26 @@ mod tests {
         let old = v.workspace();
         assert_eq!(old.open_path.as_deref(), Some("a.md"));
         assert!(old.tabs.is_empty());
+    }
+
+    #[test]
+    fn the_tree_can_be_read_without_the_vault_held() {
+        // `list_tree` reads a big folder off the main thread and without the vault lock.
+        let (dir, v) = vault();
+        fs::create_dir(dir.path().join("폴더")).unwrap();
+        fs::write(dir.path().join("폴더/안.md"), "").unwrap();
+        fs::write(dir.path().join("a.md"), "").unwrap();
+        fn paths(nodes: &[TreeNode], out: &mut Vec<String>) {
+            for n in nodes {
+                out.push(n.path.clone());
+                paths(n.children.as_deref().unwrap_or(&[]), out);
+            }
+        }
+        let (mut loose, mut held) = (Vec::new(), Vec::new());
+        paths(&read_tree(v.root()).unwrap(), &mut loose);
+        paths(&v.tree().unwrap(), &mut held);
+        assert_eq!(loose, held);
+        assert_eq!(loose, ["폴더", "폴더/안.md", "a.md"]);
     }
 
     #[test]

@@ -1,5 +1,6 @@
 // 노트 폴더마다 화면에 있던 것 (FR-VLT-07). 앱이 켜져 있는 동안만 메모리에 둔다.
 // 폴더를 바꿀 때 떼어 두었다가 그 폴더로 돌아올 때 되살린다.
+import type { NoteRef, TreeNode } from "../api";
 import type { ClosedTab, Tab } from "./tabs";
 import { norm } from "./rail";
 
@@ -14,6 +15,12 @@ export interface VaultSnapshot {
   canvasView: string | null;
   /** The AI panel's chat and proposals (aiStore's snapshot). */
   ai: unknown;
+  /**
+   * The file tree and note list as last read. Shown at once when the folder comes back, and
+   * read again in the background: a big folder takes seconds to read from the disk.
+   */
+  tree?: TreeNode[];
+  notes?: NoteRef[];
 }
 
 const snapshots = new Map<string, VaultSnapshot>();

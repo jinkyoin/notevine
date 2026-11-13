@@ -1,15 +1,22 @@
 // AI에 보낼 파일의 글자 (FR-AI-03). PDF는 화면의 PDF 엔진(pdfjs)으로, 나머지는 앱(filetext.rs)이 뽑는다.
-import * as pdfjs from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { api } from "../api";
-
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
 /** Stop reading a PDF's pages once this much text is in hand: more is cut before sending anyway. */
 const PDF_TEXT_MAX = 60_000;
 
+/**
+ * The PDF engine is a third of the start-up script, and is needed only when a PDF is sent to AI:
+ * it is loaded then (PdfView loads the same files, so the PDF screen shares them).
+ */
+async function loadPdfjs() {
+  const [pdfjs, worker] = await Promise.all([import("pdfjs-dist"), import("pdfjs-dist/build/pdf.worker.min.mjs?url")]);
+  pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+  return pdfjs;
+}
+
 async function pdfText(path: string): Promise<string> {
+  const pdfjs = await loadPdfjs();
   const doc = await pdfjs.getDocument({
     url: convertFileSrc(await api.attachmentPath(path)),
     cMapUrl: "/pdfjs/cmaps/",
