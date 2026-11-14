@@ -191,8 +191,16 @@ pub fn search(ix: &Index, q: &SearchQuery) -> AppResult<SearchResult> {
     // rest separately: ranking and sorting thousands of matches, only to show 100, was most of the time.
     let limit = q.limit.unwrap_or(DEFAULT_LIMIT) as usize;
     let filtered_after = !q.props.is_empty() || q.date.as_ref().is_some_and(|d| d.field == DateField::Created);
+    // Searches without a trigram term (1-2 character words) scan every body with LIKE, which is
+    // the slow part: their total comes out of the same scan as the top rows (a window count is
+    // taken before LIMIT) instead of scanning everything a second time. bm25() can't share a query
+    // with a window function, so searches with a trigram term count separately (that is fast).
+    let windowed = !filtered_after && long.is_empty();
     let count_sql = format!("SELECT COUNT(*){}", &sql[SELECT.len()..]);
     let count_args = args.clone();
+    if windowed {
+        sql.insert_str(SELECT.len(), ", COUNT(*) OVER ()");
+    }
     sql.push_str(if long.is_empty() {
         " ORDER BY n.mtime DESC, n.title, n.path"
     } else {
@@ -203,9 +211,13 @@ pub fn search(ix: &Index, q: &SearchQuery) -> AppResult<SearchResult> {
         args.push(Value::Integer(i64::try_from(limit).unwrap_or(i64::MAX)));
     }
 
+    let mut counted: Option<i64> = None;
     let mut cands: Vec<Candidate> = {
         let mut st = conn.prepare(&sql)?;
         let rows = st.query_map(params_from_iter(args), |r| {
+            if windowed && counted.is_none() {
+                counted = Some(r.get(6)?); // the window count is the last column, the same on every row
+            }
             Ok(Candidate {
                 id: r.get(0)?,
                 path: r.get(1)?,
@@ -229,8 +241,12 @@ pub fn search(ix: &Index, q: &SearchQuery) -> AppResult<SearchResult> {
         });
     }
 
-    let total = if filtered_after || cands.len() < limit {
+    let total = if filtered_after || (!windowed && cands.len() < limit) {
         cands.len() as i64 // every match is in hand (filtered afterwards, or fewer than asked for)
+    } else if let Some(n) = counted.filter(|_| windowed) {
+        n
+    } else if windowed && limit > 0 {
+        0 // asked for rows and none came back: nothing matches
     } else {
         conn.query_row(&count_sql, params_from_iter(count_args), |r| r.get::<_, i64>(0))?
     };
@@ -957,6 +973,26 @@ mod tests {
             println!("search {term:?}: {ms} ms, total {}, took_ms {}", r.total, r.took_ms);
             assert!(ms < 200, "{term}: {ms} ms");
         }
+    }
+
+    #[test]
+    fn total_counts_every_match_for_short_and_long_terms_beyond_the_limit() {
+        let (_dir, ix) = setup();
+        for i in 0..30 {
+            ix.upsert(&format!("n{i}.md"), "회의 보고와 업무개선 내용", 0, i, 0).unwrap();
+        }
+        ix.upsert("other.md", "관계없는 글", 0, 99, 0).unwrap();
+        for terms in [&["회의"][..], &["업무개선"][..], &["회의", "보고"][..]] {
+            let mut q = text(terms);
+            q.limit = Some(10);
+            let r = search(&ix, &q).unwrap();
+            assert_eq!((r.hits.len(), r.total), (10, 30), "{terms:?}");
+            q.limit = Some(100);
+            let r = search(&ix, &q).unwrap();
+            assert_eq!((r.hits.len(), r.total), (30, 30), "{terms:?}");
+        }
+        let none = search(&ix, &text(&["없는단어"])).unwrap();
+        assert_eq!((none.hits.len(), none.total), (0, 0));
     }
 
     #[test]
