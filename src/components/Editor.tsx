@@ -354,6 +354,8 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
                   ] as [string, FormatAction][]
                 ).map(([key, a]) => ({ key, run: (v: EditorView) => (v.dispatch(a(v.state)), true), preventDefault: true })),
                 indentWithTab,
+                // Esc switches to read mode. Popups (autocomplete, search) handle Esc first; during IME composition Esc belongs to the IME.
+                { key: "Escape", run: (v) => (v.composing ? false : (setReadMode(true), true)) },
                 ...defaultKeymap,
                 ...historyKeymap,
               ]),
