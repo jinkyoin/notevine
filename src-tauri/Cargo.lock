@@ -2546,7 +2546,7 @@ dependencies = [
 
 [[package]]
 name = "notevine"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "aes-siv",
  "blake3",

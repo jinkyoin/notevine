@@ -113,6 +113,9 @@ function NoteTitle({ path, f2 = true }: { path: string; f2?: boolean }) {
  * Edits a note. `side`: the split view's right pane, which keeps its own read mode
  * and saving and leaves the shared hooks (AI, properties panel, F2, jumps) to the main editor.
  */
+// Which pane (main or side) was clicked last; the Insert key goes to that one.
+let lastClickedSide = false;
+
 export function Editor({ path, side = false }: { path: string; side?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -138,6 +141,22 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
     if (readMode) setReadText(v.state.doc.toString());
     else v.focus();
   }, [readMode]);
+
+  // Insert key in read mode switches to edit mode. With a side pane open, the
+  // pane last clicked (the main one by default) takes the key.
+  useEffect(() => {
+    if (!readMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Insert" || e.ctrlKey || e.altKey || e.shiftKey || e.metaKey || e.isComposing) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (side !== lastClickedSide) return;
+      e.preventDefault();
+      setReadMode(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [readMode, setReadMode, side]);
 
   // A jump within this note ([[#제목]], a search hit here): the note is already
   // loaded, so move the cursor now. Jumps into a newly opened note happen on load.
@@ -453,6 +472,9 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
     <div
       className="editor"
       ref={scroller}
+      onMouseDownCapture={() => {
+        lastClickedSide = side;
+      }}
       // Files from Windows Explorer may land beside or below the text, not only on it.
       onDragOver={(e) => {
         if (!readMode && (e.dataTransfer.types.includes("Files") || e.dataTransfer.types.includes(TREE_DRAG_TYPE))) e.preventDefault();
@@ -480,7 +502,18 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
       ) : (
         <>
           <div className="cm-host" ref={host} hidden={readMode} />
-          {readMode && readText !== null && <NoteView path={path} text={readText} onToggleTask={toggleTaskAt} />}
+          {readMode && readText !== null && (
+            // Double-click on plain text switches to edit mode (links, checkboxes, images, etc. keep their own behavior).
+            <div
+              onDoubleClick={(e) => {
+                const t = e.target as HTMLElement;
+                if (t.closest("a, input, button, img, svg, video, audio, iframe, summary, .note-embed-body")) return;
+                setReadMode(false);
+              }}
+            >
+              <NoteView path={path} text={readText} onToggleTask={toggleTaskAt} />
+            </div>
+          )}
           <NoteTags path={path} />
           <div
             className="editor-tail"
