@@ -2222,6 +2222,20 @@ kbd {
   font-size: 13px;
   color: var(--muted);
 }
+.set-sub.first {
+  margin-top: 4px;
+  font-size: 15px;
+  color: var(--text);
+}
+.mcp-state {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: normal;
+  color: var(--muted);
+}
+.mcp-state.on {
+  color: var(--accent);
+}
 /* 설정 → AI → 답변 지침 */
 textarea.ai-instructions {
   width: 100%;

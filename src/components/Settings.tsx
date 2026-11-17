@@ -26,7 +26,7 @@ import { PERMISSION_LABEL, usePlugins } from "../plugins";
 import { checkForUpdate } from "../updates";
 
 import { getLang, setLang, dateLocale, tx, type Lang } from "../i18n";
-type Tab = "general" | "editor" | "keys" | "files" | "preset" | "ai" | "plugins" | "history" | "backup" | "about";
+type Tab = "general" | "editor" | "keys" | "files" | "preset" | "ai" | "mcp" | "plugins" | "history" | "backup" | "about";
 const TABS: [Tab, string][] = [
   ["general", tx("일반")],
   ["editor", tx("편집기")],
@@ -34,6 +34,7 @@ const TABS: [Tab, string][] = [
   ["files", tx("파일·링크")],
   ["preset", tx("프리셋")],
   ["ai", "AI"],
+  ["mcp", tx("AI 도구 연결")],
   ["plugins", tx("플러그인")],
   ["history", tx("히스토리")],
   ["backup", tx("백업")],
@@ -227,6 +228,7 @@ function SettingsDialog({ close }: { close: () => void }) {
               </>
             )}
             {tab === "ai" && <AiSettings />}
+            {tab === "mcp" && <McpSettings />}
             {tab === "history" && (
               <>
                 <HistoryUsage />
@@ -591,6 +593,7 @@ function AiSettings() {
       <Row label={tx("AI 도우미")} hint={tx("켜도 노트는 AI 입력창에 끌어다 놓은 것만 보냅니다")}>
         <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
       </Row>
+      <h3 className="set-sub">{tx("사용할 AI")}</h3>
       <Row label={tx("연결된 AI")} hint={tx("PC에 설치·로그인된 공식 CLI를 그대로 씁니다. Notevine은 로그인 정보를 읽지 않습니다")}>
         <button className="btn small" onClick={() => void detect(true)}>
           {tx("다시 찾기")}
@@ -638,9 +641,8 @@ function AiSettings() {
       <p className="muted small pad">
         {tx("Claude Code는 Claude Pro/Max 구독, Codex는 ChatGPT 구독으로 동작합니다. 로그인 버튼을 누르면 각 AI의 공식 로그인 창이 열리고, 브라우저에서 로그인을 마치면 자동으로 연결됩니다. 선택: {0}", providerId || tx("자동"))}
       </p>
-      <AiInstructions />
       <ApiConnections />
-      <McpSettings />
+      <AiInstructions />
     </>
   );
 }
@@ -697,7 +699,10 @@ function McpSettings() {
   const copy = (text: string) => void navigator.clipboard.writeText(text).then(() => toast(tx("복사했습니다")));
   return (
     <>
-      <h3 className="set-sub">{tx("외부 AI 도구 연결 (MCP)")}</h3>
+      <h3 className="set-sub first">
+        {tx("외부 AI 도구 연결 (MCP)")}{" "}
+        <span className={`mcp-state ${g.enabled ? "on" : ""}`}>{g.enabled ? tx("연결 켜짐") : tx("연결 꺼짐")}</span>
+      </h3>
       <p className="muted small">
         {tx("Claude Code, Claude Desktop, Codex 같은 이 PC의 AI 도구가 이 노트 폴더의 노트를 찾고 읽게 합니다. 네트워크 포트는 열지 않습니다. #비공개 노트와 아래에서 뺀 폴더는 AI 도구에 보이지 않습니다.")}
       </p>
