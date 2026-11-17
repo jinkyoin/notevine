@@ -128,7 +128,7 @@ const tag: TokenizerAndRendererExtension = {
   },
   tokenizer(src) {
     const m = /^#([^\s#.,;:!?()[\]{}<>"'`]+)/.exec(src);
-    if (!m || /^\d+$/.test(m[1])) return undefined;
+    if (!m) return undefined;
     return { type: "tag", raw: m[0], name: m[1] };
   },
   renderer(t) {

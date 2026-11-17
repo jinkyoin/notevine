@@ -497,7 +497,7 @@ impl Line<'_> {
             .map(char::len_utf8)
             .sum();
         let tag = self.text[body_start..body_start + len].trim_end_matches('/');
-        if tag.is_empty() || tag.chars().all(char::is_numeric) {
+        if tag.is_empty() {
             return None;
         }
         tags.add(tag);
@@ -715,7 +715,7 @@ meta:\n  a: 1\n  b: [x, y]\n\
 ~~~\n#틸드안\n~~~\n\
 #끝/ #Case #case";
         let p = parse(src);
-        assert_eq!(p.tags, ["업무개선", "프로젝트/notevine", "괄호", "a1", "밖", "끝", "Case"]);
+        assert_eq!(p.tags, ["업무개선", "프로젝트/notevine", "괄호", "123", "a1", "밖", "끝", "Case"]);
     }
 
     #[test]
@@ -836,5 +836,11 @@ meta:\n  a: 1\n  b: [x, y]\n\
             "<span style=\"color: #1c7ed6\">2026. 11. 30</span> #진짜 <mark style='background:#fff3bf'>x</mark> a < #b <!-- #주석 -->",
         );
         assert_eq!(p.tags, ["진짜", "b"]);
+    }
+
+    #[test]
+    fn numeric_colors_in_html_are_not_tags() {
+        let p = parse("<span style=\"color:#123456\">a</span> <font color=\"#400\">b</font> <mark style='background: #400'>c</mark> #400");
+        assert_eq!(p.tags, ["400"]);
     }
 }

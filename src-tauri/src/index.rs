@@ -16,7 +16,7 @@ use crate::paths::{APP_DIR, is_hidden, is_note, name_key, parent_rel, resolve_re
 
 /// Bump when the schema or what `parse` extracts changes: an index built by an
 /// older version is thrown away and rebuilt from the files.
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7;
 
 const SCHEMA: &str = "
 CREATE TABLE notes (
