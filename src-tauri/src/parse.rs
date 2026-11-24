@@ -840,7 +840,9 @@ meta:\n  a: 1\n  b: [x, y]\n\
 
     #[test]
     fn numeric_colors_in_html_are_not_tags() {
-        let p = parse("<span style=\"color:#123456\">a</span> <font color=\"#400\">b</font> <mark style='background: #400'>c</mark> #400");
+        let p = parse(
+            "<span style=\"color:#123456\">a</span> <font color=\"#400\">b</font> <mark style='background: #400'>c</mark> #400",
+        );
         assert_eq!(p.tags, ["400"]);
     }
 }

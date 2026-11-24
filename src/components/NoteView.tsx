@@ -161,8 +161,8 @@ export function NoteView({ path, text, onToggleTask }: { path: string; text: str
     if (!a) return;
     // Never let the app window navigate away.
     e.preventDefault();
-    // Ctrl+click (or a middle click, see onAuxClick) opens a note link in a new tab.
-    const opts = { newTab: e.ctrlKey || e.metaKey || e.button === 1 };
+    // A note link opens in a tab of its own (an open note's tab is reused).
+    const opts = { newTab: true };
     const { followLink, searchTag } = useApp.getState();
     if (a.dataset.tag) searchTag(a.dataset.tag);
     else if (a.dataset.target !== undefined) void followLink(a.dataset.target, a.dataset.heading ?? null, opts);

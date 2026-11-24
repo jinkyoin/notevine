@@ -301,11 +301,12 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
               wikiLinks({
                 path: () => path,
                 notes: () => useApp.getState().notes,
-                follow: (target, heading) => void useApp.getState().followLink(target, heading),
+                // A note link opens in a tab of its own (an open note's tab is reused).
+                follow: (target, heading) => void useApp.getState().followLink(target, heading, { newTab: true }),
                 openPath: (p) => {
                   const st = useApp.getState();
                   const node = findNode(st.tree, p);
-                  if (node?.kind === "note") st.openNote(p);
+                  if (node?.kind === "note") st.openNote(p, undefined, undefined, { newTab: true });
                   else if (node && /\.pdf$/i.test(p)) st.openPdf(p);
                   else if (node) void st.openExternal(p);
                   else st.toast(tx("첨부 파일을 찾을 수 없음: {0}", p), "error");
