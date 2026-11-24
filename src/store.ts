@@ -79,6 +79,11 @@ export type Modal = "palette" | "quickMemo" | "template" | "settings" | "deleted
 export type SidebarTab = "files" | "search" | "tasks" | "ideas";
 /** How a folder is shown in place of the editor: properties table, status board, calendar or link graph. */
 export type FolderMode = "table" | "board" | "calendar" | "graph";
+export interface ViewTab {
+  folder: string;
+  mode: FolderMode;
+}
+export const sameView = (a: ViewTab, b: ViewTab) => a.folder === b.folder && a.mode === b.mode;
 
 /** Defaults used until the vault's config is loaded (mirrors the backend defaults). */
 export const DEFAULT_CONFIG: VaultConfig = {
@@ -164,6 +169,8 @@ interface AppStore {
   /** Canvas board (.canvas) shown in place of the editor, or null. */
   canvasView: string | null;
   folderMode: FolderMode;
+  /** Folder views (표·보드·캘린더·그래프) open as tabs next to the note tabs; the one on screen is `tableView` + `folderMode`. */
+  viewTabs: ViewTab[];
   /** Note shown beside the current one, in the right pane of the split view (FR-EDT-07), or null. */
   splitPath: string | null;
   leftOpen: boolean;
@@ -265,8 +272,13 @@ interface AppStore {
   /** Asks in an in-app dialog; resolves true when the user agrees. */
   ask(title: string, message: string, okLabel: string): Promise<boolean>;
   setVersionView(v: { path: string; id: number | null } | null): void;
-  /** Shows a folder in place of the editor, in `mode` or the mode used last. */
-  setTableView(folder: string | null, mode?: FolderMode): void;
+  /**
+   * Opens a folder view as its own tab (or shows the one already open), in `mode` or the mode used last.
+   * `replace` changes the mode of the view tab on screen instead of opening another. `null` closes the view tab on screen.
+   */
+  setTableView(folder: string | null, mode?: FolderMode, opts?: { replace?: boolean }): void;
+  /** Closes one folder view tab. */
+  closeViewTab(tab: ViewTab): void;
   /** Sets (or with undefined removes) a frontmatter property, through the editor when the note is open. */
   setNoteProperty(path: string, key: string, value: Prop["value"] | undefined): Promise<void>;
   /**
@@ -476,6 +488,8 @@ export const useApp = create<AppStore>((set, get) => {
       splitPath: s.splitPath,
       expanded: [...s.expanded],
       tableView: s.tableView,
+      viewTabs: s.viewTabs,
+      folderMode: s.folderMode,
       pdfView: s.pdfView,
       canvasView: s.canvasView,
       ai: useAi.getState().snapshot(),
@@ -491,8 +505,11 @@ export const useApp = create<AppStore>((set, get) => {
     const active = snap.openPath && tabs.some((t) => t.path === snap.openPath) ? snap.openPath : (tabs[0]?.path ?? null);
     set({ closedTabs: snap.closedTabs, expanded: new Set(snap.expanded), splitPath: exists(snap.splitPath) ? snap.splitPath : null });
     applyTabs({ tabs, active });
+    const folderOk = (p: string) => p === "" || exists(p);
     set({
-      tableView: snap.tableView !== null && (snap.tableView === "" || exists(snap.tableView)) ? snap.tableView : null,
+      viewTabs: (snap.viewTabs ?? []).filter((v) => folderOk(v.folder)),
+      folderMode: snap.folderMode ?? get().folderMode,
+      tableView: snap.tableView !== null && folderOk(snap.tableView) ? snap.tableView : null,
       pdfView: snap.pdfView && exists(snap.pdfView.path) ? snap.pdfView : null,
       canvasView: exists(snap.canvasView) ? snap.canvasView : null,
     });
@@ -502,7 +519,7 @@ export const useApp = create<AppStore>((set, get) => {
   function showStart() {
     unlistenChanges?.();
     unlistenChanges = null;
-    set({ vault: null, tempVault: null, trust: NO_TRUST, tree: [], openPath: null, editing: null, tabs: [], back: [], forward: [], splitPath: null, tableView: null, pdfView: null, canvasView: null });
+    set({ vault: null, tempVault: null, trust: NO_TRUST, tree: [], openPath: null, editing: null, tabs: [], back: [], forward: [], splitPath: null, tableView: null, viewTabs: [], pdfView: null, canvasView: null });
   }
 
   return {
@@ -534,6 +551,7 @@ export const useApp = create<AppStore>((set, get) => {
     pdfView: null,
     canvasView: null,
     folderMode: "table",
+    viewTabs: [],
     splitPath: null,
     leftOpen: true,
     rightOpen: true,
@@ -802,6 +820,9 @@ export const useApp = create<AppStore>((set, get) => {
       set({ tree });
       const canvas = get().canvasView;
       if (canvas && !findNode(tree, canvas)) set({ canvasView: null });
+      // A folder view whose folder went away closes.
+      const gone = get().viewTabs.filter((v) => v.folder !== "" && !findNode(tree, v.folder));
+      gone.forEach((v) => get().closeViewTab(v));
       if (dropMissing((p) => !!findNode(tree, p))) get().toast(tx("열려 있던 노트가 다른 프로그램에서 삭제되거나 이동되었습니다"));
     },
 
@@ -1034,9 +1055,25 @@ export const useApp = create<AppStore>((set, get) => {
       set({ splitPath: null });
     },
 
-    setTableView(tableView, mode) {
-      if (tableView !== null) void get().flushEditor();
-      set(mode ? { tableView, folderMode: mode, pdfView: null, canvasView: null } : { tableView, pdfView: null, canvasView: null });
+    setTableView(tableView, mode, opts) {
+      const { viewTabs, folderMode } = get();
+      if (tableView === null) {
+        const cur = get().tableView;
+        set({ tableView: null, viewTabs: cur === null ? viewTabs : viewTabs.filter((v) => !sameView(v, { folder: cur, mode: folderMode })) });
+        return;
+      }
+      void get().flushEditor();
+      const next: ViewTab = { folder: tableView, mode: mode ?? folderMode };
+      const cur = get().tableView;
+      let tabs = opts?.replace && cur !== null ? viewTabs.filter((v) => !sameView(v, { folder: cur, mode: folderMode })) : viewTabs;
+      if (!tabs.some((v) => sameView(v, next))) tabs = [...tabs, next];
+      set({ tableView, folderMode: next.mode, viewTabs: tabs, pdfView: null, canvasView: null });
+    },
+
+    closeViewTab(tab) {
+      const { viewTabs, tableView, folderMode } = get();
+      const showing = tableView !== null && sameView(tab, { folder: tableView, mode: folderMode });
+      set({ viewTabs: viewTabs.filter((v) => !sameView(v, tab)), ...(showing ? { tableView: null } : {}) });
     },
 
     async setNoteProperty(path, key, value) {

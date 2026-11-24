@@ -5,6 +5,7 @@ import { noteTitle } from "../lib/tree";
 
 import { tx } from "../i18n";
 import { PopupMenu } from "./PopupMenu";
+import { MODE_LABEL } from "./FolderView";
 /**
  * Click handlers for anything that opens a note: a plain click opens it in the current
  * tab, Ctrl+click or a middle click in a new tab (as in a browser).
@@ -31,13 +32,16 @@ interface Menu {
 export function TabBar() {
   const tabs = useApp((s) => s.tabs);
   const active = useApp((s) => s.openPath);
+  const viewTabs = useApp((s) => s.viewTabs);
+  const tableView = useApp((s) => s.tableView);
+  const folderMode = useApp((s) => s.folderMode);
   const bar = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
 
   // Keep the tab on screen in view when there are more tabs than fit.
   useEffect(() => {
     bar.current?.querySelector<HTMLElement>(".tab.on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [active, tabs.length]);
+  }, [active, tabs.length, tableView, folderMode, viewTabs.length]);
 
   useEffect(() => {
     if (!menu) return;
@@ -50,8 +54,9 @@ export function TabBar() {
     };
   }, [menu]);
 
-  if (!tabs.length) return null;
-  const { openNote, closeTab, closeOtherTabs } = useApp.getState();
+  if (!tabs.length && !viewTabs.length) return null;
+  const { openNote, closeTab, closeOtherTabs, setTableView, closeViewTab } = useApp.getState();
+  const noteShown = tableView === null;
 
   return (
     <div className="tabbar" role="tablist" ref={bar}>
@@ -59,10 +64,10 @@ export function TabBar() {
         <div
           key={t.path}
           role="tab"
-          aria-selected={t.path === active}
-          className={`tab${t.path === active ? " on" : ""}`}
+          aria-selected={t.path === active && noteShown}
+          className={`tab${t.path === active && noteShown ? " on" : ""}`}
           title={t.path}
-          // The active tab is clickable too while a folder table covers its note.
+          // The active tab is clickable too while a folder view is on screen.
           onClick={() => (t.path !== active || useApp.getState().tableView !== null) && openNote(t.path)}
           // Middle click closes, as in a browser.
           onMouseDown={(e) => e.button === 1 && e.preventDefault()}
@@ -90,6 +95,39 @@ export function TabBar() {
           </button>
         </div>
       ))}
+      {viewTabs.map((v) => {
+        const on = tableView === v.folder && folderMode === v.mode;
+        const label = `${MODE_LABEL[v.mode]} · ${v.folder ? noteTitle(v.folder) : tx("노트 폴더 전체")}`;
+        return (
+          <div
+            key={`${v.mode}:${v.folder}`}
+            role="tab"
+            aria-selected={on}
+            className={`tab view-tab${on ? " on" : ""}`}
+            title={`${MODE_LABEL[v.mode]}: ${v.folder || tx("노트 폴더 전체")}`}
+            onClick={() => !on && setTableView(v.folder, v.mode)}
+            onMouseDown={(e) => e.button === 1 && e.preventDefault()}
+            onAuxClick={(e) => {
+              if (e.button !== 1) return;
+              e.preventDefault();
+              closeViewTab(v);
+            }}
+          >
+            <span className="tab-label">{label}</span>
+            <button
+              className="tab-close"
+              aria-label={tx("{0} 탭 닫기", label)}
+              title={tx("탭 닫기")}
+              onClick={(e) => {
+                e.stopPropagation();
+                closeViewTab(v);
+              }}
+            >
+              ×
+            </button>
+          </div>
+        );
+      })}
       {menu && (
         <PopupMenu x={menu.x} y={menu.y}>
           {(

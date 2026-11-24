@@ -17,6 +17,8 @@ export interface AttachEnv {
   error(message: string): void;
   /** Link text for a vault file dragged from the file tree; null for a folder or a missing file. */
   linkTo(path: string): string | null;
+  /** Link text for a Markdown file dropped from outside the folder: a link to the note of that name, not a copy. */
+  noteLink(fileName: string): string;
 }
 
 /** What the file tree puts on a drag: the dragged entry's vault path. */
@@ -32,7 +34,15 @@ export function linkFor(path: string, notes: { path: string; title: string }[]):
   const title = path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/i, "");
   const key = title.normalize("NFC").toLowerCase();
   const same = notes.filter((n) => n.title.normalize("NFC").toLowerCase() === key).length;
-  return `[[${same > 1 ? path.replace(/\.md$/i, "") : title}]]`;
+  return noteLinkText(same > 1 ? path.replace(/\.md$/i, "") : title);
+}
+
+/**
+ * `[[이름]]`, or `[[이름.md]]` when the name ends like a file extension (`v1.2`, `2026.11`):
+ * links read that as an attachment ("첨부 파일을 찾을 수 없음") unless it ends in .md.
+ */
+export function noteLinkText(target: string): string {
+  return /\.[a-z0-9]{1,8}$/i.test(target) ? `[[${target}.md]]` : `[[${target}]]`;
 }
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
@@ -53,9 +63,14 @@ export function attachmentLink(rel: string): string {
   return IMAGE.test(rel) ? `![[${rel}]]` : `[[${rel}]]`;
 }
 
-async function saveFiles(view: EditorView, env: AttachEnv, files: File[], at: number) {
+async function saveFiles(view: EditorView, env: AttachEnv, files: File[], at: number, linkMd = false) {
   const links: string[] = [];
   for (const f of files) {
+    // With Ctrl held, a Markdown file becomes a link to the note instead of an attachment copy.
+    if (linkMd && /\.md$/i.test(f.name)) {
+      links.push(env.noteLink(f.name));
+      continue;
+    }
     if (f.size > MAX_BYTES) {
       env.error(tx("\"{0}\"은(는) 50MB가 넘어 첨부하지 않았습니다", f.name));
       continue;
@@ -175,7 +190,7 @@ function dropAt(view: EditorView, env: AttachEnv, e: DragEvent, pos: number, own
   const files = [...(e.dataTransfer?.files ?? [])];
   if (!files.length) return false;
   e.preventDefault();
-  void saveFiles(view, env, files, pos);
+  void saveFiles(view, env, files, pos, e.ctrlKey || e.metaKey);
   return true;
 }
 

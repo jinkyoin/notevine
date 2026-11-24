@@ -58,7 +58,7 @@ export function FolderView({ folder }: { folder: string }) {
         <span className="spacer" />
         <div className="fb-mode" role="tablist" aria-label={tx("보기 방식")}>
           {(Object.keys(MODE_LABEL) as FolderMode[]).map((m) => (
-            <button key={m} role="tab" aria-selected={m === mode} className={m === mode ? "on" : ""} onClick={() => setTableView(folder, m)}>
+            <button key={m} role="tab" aria-selected={m === mode} className={m === mode ? "on" : ""} onClick={() => setTableView(folder, m, { replace: true })}>
               {MODE_LABEL[m]}
             </button>
           ))}

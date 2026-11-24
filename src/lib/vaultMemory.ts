@@ -11,6 +11,9 @@ export interface VaultSnapshot {
   splitPath: string | null;
   expanded: string[];
   tableView: string | null;
+  /** Folder view tabs and the mode of the one on screen. Optional: older snapshots lack them. */
+  viewTabs?: { folder: string; mode: "table" | "board" | "calendar" | "graph" }[];
+  folderMode?: "table" | "board" | "calendar" | "graph";
   pdfView: { path: string; page: number; seq: number } | null;
   canvasView: string | null;
   /** The AI panel's chat and proposals (aiStore's snapshot). */
