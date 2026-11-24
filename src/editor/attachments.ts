@@ -17,8 +17,6 @@ export interface AttachEnv {
   error(message: string): void;
   /** Link text for a vault file dragged from the file tree; null for a folder or a missing file. */
   linkTo(path: string): string | null;
-  /** Link text for a Markdown file dropped from outside the folder: a link to the note of that name, not a copy. */
-  noteLink(fileName: string): string;
 }
 
 /** What the file tree puts on a drag: the dragged entry's vault path. */
@@ -63,14 +61,9 @@ export function attachmentLink(rel: string): string {
   return IMAGE.test(rel) ? `![[${rel}]]` : `[[${rel}]]`;
 }
 
-async function saveFiles(view: EditorView, env: AttachEnv, files: File[], at: number, linkMd = false) {
+async function saveFiles(view: EditorView, env: AttachEnv, files: File[], at: number) {
   const links: string[] = [];
   for (const f of files) {
-    // With Ctrl held, a Markdown file becomes a link to the note instead of an attachment copy.
-    if (linkMd && /\.md$/i.test(f.name)) {
-      links.push(env.noteLink(f.name));
-      continue;
-    }
     if (f.size > MAX_BYTES) {
       env.error(tx("\"{0}\"은(는) 50MB가 넘어 첨부하지 않았습니다", f.name));
       continue;
@@ -190,7 +183,7 @@ function dropAt(view: EditorView, env: AttachEnv, e: DragEvent, pos: number, own
   const files = [...(e.dataTransfer?.files ?? [])];
   if (!files.length) return false;
   e.preventDefault();
-  void saveFiles(view, env, files, pos, e.ctrlKey || e.metaKey);
+  void saveFiles(view, env, files, pos);
   return true;
 }
 

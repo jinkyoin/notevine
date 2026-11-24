@@ -12,7 +12,7 @@ import { useApp } from "../store";
 import { noteTitle } from "../lib/tree";
 import { frontmatterEnd, livePreview, livePreviewTheme } from "../editor/livePreview";
 import { frontmatterFold } from "../editor/frontmatterFold";
-import { attachments, dropFilesOn, linkFor, noteLinkText, TREE_DRAG_TYPE } from "../editor/attachments";
+import { attachments, dropFilesOn, linkFor, TREE_DRAG_TYPE } from "../editor/attachments";
 import { noteHighlight } from "../editor/highlight";
 import { refreshLinks, wikiLinks } from "../editor/wikilinks";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -339,13 +339,6 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
                   const { tree, notes } = useApp.getState();
                   const node = findNode(tree, p);
                   return node && node.kind !== "folder" ? linkFor(p, notes) : null;
-                },
-                noteLink: (fileName) => {
-                  const { notes } = useApp.getState();
-                  const title = fileName.replace(/\.md$/i, "");
-                  const key = title.normalize("NFC").toLowerCase();
-                  const hit = notes.find((n) => n.title.normalize("NFC").toLowerCase() === key);
-                  return hit ? linkFor(hit.path, notes) : noteLinkText(title);
                 },
               }),
               keymap.of([
