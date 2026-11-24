@@ -1,6 +1,8 @@
 # Notevine MCP 서버 개발 계획서
 
-2026-11-10 (초안, 같은 날 8장 확정·구현. 구현 현황은 9장)
+2026-11-10 (초안, 같은 날 8장 확정. 구현 현황은 9장)
+
+> **구현 상태: 구현됨** (v0.2.0, 커밋 `94b5a82`, 2026-11-11). 아래 본문은 계획 당시 내용이고, 실제 구현과 달라진 점은 9장에 정리했다. 도구 이름·입력·출력은 `src-tauri/src/mcp.rs`, 설정 화면은 `src/components/Settings.tsx`의 `McpSettings`가 기준이다. 설정 화면은 계획의 "설정 > AI 맨 아래"에서 v0.4.5부터 **설정 > AI 도구 연결** 탭으로 옮겨졌다.
 
 > Claude Code, Claude Desktop, Codex 같은 AI 도구가 Notevine 볼트의 노트를 검색하고, 읽고, (허용하면) 쓰게 하는 MCP(Model Context Protocol) 서버를 Notevine에 넣는다.
 
@@ -65,7 +67,7 @@ flowchart LR
 
 반드시 지킬 구현 조건:
 
-- **Tauri 시작 전에 분기한다.** `lib.rs:81`의 `tauri_plugin_single_instance`가 먼저 돌면, 두 번째 실행으로 보고 인자를 기존 창에 넘긴 뒤 종료해 버린다. `main.rs`에서 인자에 `--mcp`가 있으면 `notevine_lib::mcp::serve()`를 부르고 `run()`은 부르지 않는다.
+- **Tauri 시작 전에 분기한다.** `lib.rs:81`의 `tauri_plugin_single_instance`가 먼저 돌면, 두 번째 실행으로 보고 인자를 기존 창에 넘긴 뒤 종료해 버린다. `main.rs`에서 `notevine_lib::mcp_requested(&args)`가 참이면 `notevine_lib::run_mcp(&args)`를 부르고 `run()`은 부르지 않는다.
 - **릴리스 빌드는 GUI 서브시스템**(`main.rs`의 `windows_subsystem = "windows"`)이다. 콘솔은 없지만 부모 프로세스가 파이프로 넘긴 stdin/stdout은 그대로 쓸 수 있다(추정). 1단계에서 Claude Code·Claude Desktop 양쪽으로 실제 동작을 먼저 확인한다.
 - **stdout은 MCP 메시지 전용.** 로그·경고는 모두 stderr로 보낸다. `println!`이 섞이면 통신이 깨지므로 `mcp.rs`에서는 사용을 금지하고 테스트로 막는다.
 
@@ -73,7 +75,7 @@ flowchart LR
 
 1. `--vault <경로>`가 있으면 그 폴더에 고정한다.
 2. 없으면 앱의 최근 볼트 목록(`recent.rs`)에서 가장 최근 볼트를 열고, **도구를 부를 때마다 다시 확인해** 앱에서 다른 볼트를 열었으면 그 볼트로 옮긴다(색인 갱신을 새로 시작하고, 그 도구의 답 앞에 바뀐 사실과 이전 경로·hash가 맞지 않는다는 안내를 붙인다). 설정 화면의 연결 명령은 이 방식(`--vault` 없음)으로 안내한다.
-3. 어느 쪽이든 그 볼트에 MCP가 허용돼 있지 않으면 시작 시 오류를 stderr에 쓰고, 모든 도구 호출에 "Notevine 설정에서 이 볼트의 AI 도구 연결을 켜 주세요"를 돌려준다.
+3. 어느 쪽이든 그 볼트에 MCP가 허용돼 있지 않으면 시작 시 오류를 stderr에 쓰고, 모든 도구 호출에 "이 노트 폴더는 AI 도구 연결이 꺼져 있습니다. … 켜 주세요"라는 안내를 돌려준다(코드의 안내문은 아직 "설정 → AI → 외부 AI 도구 연결"로 적혀 있어 지금 화면 위치와 다르다).
 
 볼트는 `Vault::open_placed`로 연다. 클라우드 드라이브 안의 볼트는 DB를 드라이브 밖에 두므로(`drive.rs`), 앱과 **같은 배치 규칙과 같은 `local_base`**를 써야 같은 `index.db`·`history.db`를 본다. 개발 빌드는 `.dev` 설정 폴더를 쓰는 규칙(`lib.rs`의 `config_dir`)도 그대로 따른다.
 
@@ -92,21 +94,21 @@ flowchart LR
 
 | 도구 | 입력 | 출력 | 감쌀 함수 |
 | --- | --- | --- | --- |
-| `list_notes` | `folder?` (기본: 볼트 전체), `depth?` | 폴더·노트 트리 (경로, 수정 시각) | `Vault::tree` (`vault.rs:231`) |
-| `read_note` | `path` | 본문(Markdown), 속성(frontmatter) | `Vault::read_note` (`vault.rs:279`), `parse.rs` |
-| `search_notes` | `text[]`, `tags[]`, `props[]`, `date?`, `limit?` | 경로, 제목, 일치 부분(snippet) | `search::search` (`search.rs:138`), `SearchQuery` 그대로 |
-| `get_backlinks` | `path` | 이 노트를 링크한 노트와 해당 줄 | `Vault::backlinks` (`vault.rs:603`) |
-| `get_note_history` | `path`, `limit?` | 저장 시점 목록(시각, 출처) | `history.rs` |
+| `list_notes` | `folder?` (기본: 볼트 전체). `depth`는 없음 | 폴더·노트·파일을 펼친 목록 `entries`(경로, `kind`, 수정 시각)와 `truncated`. 최대 1,000개 | `Vault::tree` (`vault.rs:231`) |
+| `read_note` | `path` | `path`, `hash` 다음에 본문(frontmatter 포함 Markdown 전체)을 글 하나로 돌려줌. 속성을 따로 나누지 않음 | `Vault::read_note` (`vault.rs:279`), `parse.rs` |
+| `search_notes` | `text[]`, `tags[]`, `props[]`(`key`, `op`: eq·ne·contains·empty, `value`), `modified_from?`, `modified_to?`(YYYY-MM-DD), `limit?`. 조건이 하나는 있어야 함 | `hits`(경로, 제목, 수정 시각, 줄, snippet)와 `total_matches` | `search::search` (`search.rs:138`), `SearchQuery` 그대로 |
+| `get_backlinks` | `path` | `backlinks`(경로, 제목, 줄, 앞뒤 글) | `Vault::backlinks` (`vault.rs:603`) |
+| `get_note_history` | `path`, `limit?` | 저장 시점 목록(`saved_at`, `origin`, `size`). 최신순, 기본 20건·최대 200건 | `history.rs` |
 
 ### 3.2 쓰기 도구 (쓰기를 따로 허용해야 사용 가능)
 
 | 도구 | 입력 | 동작 | 감쌀 함수 |
 | --- | --- | --- | --- |
-| `create_note` | `folder`, `name?`, `content` | 새 노트 생성. 이름이 겹치면 번호를 붙임 | `Vault::create_note` (`vault.rs:450`) |
+| `create_note` | `folder?`(없으면 볼트 맨 위, 없는 폴더는 만듦), `name?`(없으면 "제목 없음"), `content` | 새 노트 생성. 이름이 겹치면 번호를 붙임 | `Vault::create_note` (`vault.rs:450`) |
 | `append_to_note` | `path`, `content`, `heading?` | 노트 끝(또는 지정 제목 아래)에 덧붙임 | `read_note` + `save_note` |
 | `update_note` | `path`, `content`, `expected_hash` | 노트 전체 교체. `read_note`가 준 해시와 다르면 거부 | `save_note` (`vault.rs:323`) |
 
-- 쓰기 도구는 모두 `save_note`를 거쳐 버전 기록에 **출처 "AI 도구(MCP)"**로 남긴다. `history.rs`의 `Origin`에 값을 하나 추가한다.
+- 쓰기 도구는 모두 `save_note`를 거쳐 버전 기록에 **출처 `mcp`**(`Origin::Mcp`)로 남기고, 히스토리 패널에는 "AI 도구"로 보인다.
 - 삭제·이름 변경·이동은 1차 범위에서 뺀다. 링크 일괄 수정(`rename`의 `update_links`)까지 얽혀 되돌리기가 어렵기 때문이다.
 
 ### 3.3 공통 제한
@@ -143,18 +145,19 @@ flowchart LR
 
 MCP 서버는 도구를 호출할 때마다 `vault-trust.json`을 다시 읽는다. 앱에서 연결을 끄면 서버를 다시 시작하지 않아도 바로 막힌다.
 
-### 4.2 설정 화면 (설정 > AI > 외부 AI 도구 연결)
+### 4.2 설정 화면 (설정 > AI 도구 연결 탭)
 
 ```
-┌ 외부 AI 도구 연결 (MCP) ───────────────────────────┐
+┌ 외부 AI 도구 연결 (MCP)  [연결 켜짐/꺼짐] ─────────┐
 │ [ ] 이 볼트를 AI 도구에 연결                        │
 │     [ ] 노트 만들기·고치기도 허용                    │
 │                                                     │
 │ 연결하지 않을 폴더   [개인] [일기] [+ 추가]          │
 │                                                     │
 │ 연결 방법                                           │
-│  Claude Code   claude mcp add notevine -- "C:\…\notevine.exe" --mcp  [복사] │
+│  Claude Code    claude mcp add --scope user notevine -- "C:\…\notevine.exe" --mcp  [복사] │
 │  Claude Desktop 설정 파일에 넣을 내용                                   [복사] │
+│  Codex CLI      codex mcp add notevine -- "C:\…\notevine.exe" --mcp   [복사] │
 │                                                     │
 │ 최근 AI 도구 활동                                   │
 │  14:32  search_notes  "회의"                        │
@@ -162,7 +165,7 @@ MCP 서버는 도구를 호출할 때마다 `vault-trust.json`을 다시 읽는�
 └─────────────────────────────────────────────────────┘
 ```
 
-- 실행 파일 경로와 볼트 경로를 채운 설정 명령을 만들어 복사 단추로 준다.
+- 실행 파일 경로를 채운 설정 명령을 만들어 복사 단추로 준다. 볼트 경로(`--vault`)는 넣지 않아 AI 도구가 앱에서 마지막으로 연 노트 폴더를 따라간다(2.3). 연결 명령은 연결을 켰을 때만 보인다.
 - **최근 활동**은 볼트 밖 앱 설정 폴더의 `mcp-activity.log`에 최근 200건만 남긴다. 노트 본문은 남기지 않고 도구 이름·경로·검색어만 남긴다.
 
 ## 5. 구현 계획
@@ -225,7 +228,7 @@ MCP 서버는 도구를 호출할 때마다 `vault-trust.json`을 다시 읽는�
 | 대상 버전 | v0.1.x 다음 배포 (추정) | 모바일 앱은 보류 중이라 일정 충돌 없음 |
 | 첨부 파일 텍스트(PDF·hwpx) 제공 | 2차 | `filetext.rs` 재사용 가능 |
 
-## 9. 구현 현황 (2026-11-10)
+## 9. 구현 현황 (v0.2.0, 2026-11-11 커밋)
 
 1~6단계를 하루에 구현했다. 계획과 달라진 점은 다음과 같다.
 
@@ -236,6 +239,11 @@ MCP 서버는 도구를 호출할 때마다 `vault-trust.json`을 다시 읽는�
 | 연결 안내 | Claude Code·Claude Desktop | Codex CLI 추가. Claude Code는 `--scope user`로 모든 프로젝트에서 쓰게 함 | |
 | 활동 기록 | `mcp-activity.log` | `mcp-activity.jsonl` (한 줄에 JSON 하나, 200줄) | 화면에서 노트 폴더별로 걸러 보여 주기 쉬움 |
 | 요구사항 ID | `FR-MCP-01`~ | FR-MCP-01~06 (`docs/요구사항정의서.md` 3.12) | |
+| 설정 화면 위치 | 설정 > AI 맨 아래 | **설정 > AI 도구 연결** 탭 (v0.4.5, 커밋 `2820d5c`). v0.2.0에서는 AI 탭 안에 있었음 | AI 탭에서 따로 뺌. 제목 옆에 연결 켜짐·꺼짐 표시 추가 |
+| 도구 입력·출력 | `list_notes`의 `depth?`, `search_notes`의 `date?`, `read_note`가 본문·속성을 따로 돌려줌 | `depth` 없음, 검색은 `modified_from`·`modified_to`, `read_note`는 `path`·`hash`·본문을 글 하나로 | 코드의 `TOOLS` 정의와 각 도구 함수 기준 |
+| 도구 개수·이름 | 읽기 5종·쓰기 3종 | 같음 (`list_notes`, `read_note`, `search_notes`, `get_backlinks`, `get_note_history` / `create_note`, `append_to_note`, `update_note`) | |
+| 권한 모델 | `enabled`, `write`, `excluded` | 같음 (`trust.rs`의 `McpGrant`, `vault-trust.json`의 `mcp`). `write`는 `enabled`가 켜져 있을 때만 효력이 있고, 설정 화면은 연결이 꺼져 있으면 쓰기 체크를 비활성으로 둠 | |
+| 기록 출처 | 출처 "AI 도구(MCP)" | `Origin::Mcp`(문자열 `mcp`), 화면에는 "AI 도구" | |
 
 **바뀐 파일**: `src-tauri/src/mcp.rs`(신규), `main.rs`(`--mcp` 분기), `lib.rs`, `trust.rs`(`McpGrant`), `vault.rs`(`save_note_from`·`create_note_from`), `history.rs`(`Origin::Mcp`), `src/components/Settings.tsx`(외부 AI 도구 연결), `HistoryPanel.tsx`("AI 도구" 표시), `api.ts`, `App.css`, `i18n/en.json`, `docs/요구사항정의서.md`, `docs/사용자매뉴얼.md`(10.7).
 
