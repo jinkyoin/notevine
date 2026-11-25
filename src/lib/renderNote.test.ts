@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { noteToHtml, toggleTask } from "./renderNote";
+import { setLangForTest } from "../i18n";
 
 describe("noteToHtml", () => {
   it("renders standard markdown and drops the properties block", () => {
@@ -141,5 +142,74 @@ describe("Korean dates", () => {
     expect(html).toContain("<p>2026. 06. 22 ~ 2029. 06. 21</p>");
     expect(noteToHtml("2026.6.22 **마감**")).toContain("<strong>마감</strong>");
     expect(noteToHtml("1. 첫째\n2. 둘째")).toContain("<ol>");
+  });
+});
+
+describe("sheet block", () => {
+  const sheet = (body: string) => noteToHtml("```sheet\n" + body + "\n```\n");
+
+  it("renders a table with header, number cells and a total row", () => {
+    const html = sheet("항목 | 금액\n a | 1,200\n b | 800");
+    expect(html).toContain('class="sheet-block"');
+    expect(html).toContain("<th>항목</th>");
+    expect(html).toContain('<td class="num">1,200</td>');
+    expect(html).toContain("sheet-total");
+    expect(html).toContain("합계");
+    expect(html).toContain("2,000");
+  });
+
+  it("shows formula results, not the formula text", () => {
+    const html = sheet("품목 | 수량 | 단가 | 금액\n a | 3 | 1,200 | =B2*C2");
+    expect(html).toContain("3,600");
+    expect(html).not.toContain("=B2*C2");
+  });
+
+  it("escapes cell text", () => {
+    const html = sheet("항목 | 값\n <img src=x onerror=alert(1)> | 1");
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;img");
+  });
+
+  it("marks error cells and error totals", () => {
+    const html = sheet("항목 | 값\n a | =1/0\n b | 2");
+    expect(html).toContain('class="err"');
+    expect(html).toContain("#나누기0");
+    expect(html).toContain("#오류");
+  });
+
+  it("has no total row without numeric columns", () => {
+    expect(sheet("항목 | 메모\n a | x")).not.toContain("sheet-total");
+  });
+
+  it("shows plain cells as typed, only formula results are formatted", () => {
+    const html = sheet("항목 | 값 | 합\n a | 1200원 | =1000+200\n b | 2026 | 007");
+    expect(html).toContain('<td class="num">1200원</td>');
+    expect(html).toContain('<td class="num">2026</td>');
+    expect(html).toContain('<td class="num">007</td>');
+    expect(html).toContain('<td class="num">1,200</td>');
+  });
+
+  it("shows the total label in the current language", () => {
+    setLangForTest("en");
+    try {
+      expect(sheet("항목 | 금액\n a | 1\n b | 2")).toContain(">Total</td>");
+    } finally {
+      setLangForTest("ko");
+    }
+  });
+
+  it("renders an empty sheet block as an ordinary code block", () => {
+    const html = noteToHtml("```sheet\n\n```\n");
+    expect(html).not.toContain("<table");
+    expect(html).toContain("<pre>");
+  });
+
+  it("accepts an uppercase fence name", () => {
+    expect(noteToHtml("```Sheet\n항목 | 금액\n a | 1\n```\n")).toContain('class="sheet-block"');
+  });
+
+  it("leaves other code blocks unchanged", () => {
+    expect(noteToHtml("```js\nlet a = 1;\n```\n")).not.toContain("sheet-block");
+    expect(noteToHtml("```mermaid\ngraph TD\n```\n")).toContain('class="mermaid-block"');
   });
 });

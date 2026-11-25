@@ -3124,6 +3124,21 @@ textarea.ai-instructions {
 .note-view th {
   background: var(--bg-hover);
 }
+/* ```sheet block: read-only table with a total row. */
+.note-view .sheet-block th {
+  background: var(--bg-sidebar);
+}
+.note-view .sheet-block .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.note-view .sheet-block .err {
+  color: var(--danger);
+}
+.note-view .sheet-block .sheet-total td {
+  font-weight: 700;
+  background: var(--bg-hover);
+}
 .note-view hr {
   border: none;
   border-top: 1px solid var(--border);
@@ -4054,4 +4069,96 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* SCR-04 ```sheet block in the editor: an editable grid (src/editor/sheetBlock.ts). */
+.cm-sheet {
+  margin: 4px 0 10px;
+  font-family: var(--font);
+  font-size: 13px;
+  overflow-x: auto;
+}
+.cm-sheet-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 2px;
+}
+.cm-sheet-btn {
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 0 6px;
+  cursor: pointer;
+}
+.cm-sheet-btn:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+.cm-sheet-grid {
+  border-collapse: collapse;
+}
+.cm-sheet-grid th,
+.cm-sheet-grid td {
+  border: 1px solid var(--border);
+  padding: 0;
+}
+.cm-sheet-grid th {
+  background: var(--bg-sidebar);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: normal;
+  padding: 0 4px;
+  white-space: nowrap;
+  text-align: center;
+}
+.cm-sheet-grid .cm-sheet-corner {
+  background: none;
+  border-color: transparent;
+}
+.cm-sheet-grid th .cm-sheet-btn {
+  padding: 0 3px;
+  visibility: hidden;
+}
+.cm-sheet-grid th:hover .cm-sheet-btn,
+.cm-sheet-grid .cm-sheet-corner .cm-sheet-btn {
+  visibility: visible;
+}
+.cm-sheet-cell {
+  width: 9em;
+  min-width: 4em;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  padding: 3px 6px;
+  outline: none;
+}
+.cm-sheet-cell:focus {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.cm-sheet-cell.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.cm-sheet-cell.err,
+.cm-sheet-total .err {
+  color: var(--danger);
+}
+.cm-sheet-head .cm-sheet-cell {
+  font-weight: 600;
+}
+.cm-sheet-total td {
+  font-weight: 700;
+  padding: 3px 6px;
+  background: var(--bg-sidebar);
+}
+.cm-sheet-total .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.cm-sheet-add {
+  margin-top: 2px;
 }

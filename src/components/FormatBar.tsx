@@ -1,7 +1,7 @@
 // SCR-04 서식 막대: 자주 쓰는 마크다운을 아이콘으로 넣고, 편집/읽기 모드를 바꾼다.
 import { useEffect, useRef, useState } from "react";
 import type { EditorState, TransactionSpec } from "@codemirror/state";
-import { callout, codeBlock, insertBlock, TABLE, toggleLines, toggleWrap, webLink, wikiLink } from "../editor/format";
+import { callout, codeBlock, insertBlock, SHEET, SHEET_CURSOR, TABLE, toggleLines, toggleWrap, webLink, wikiLink } from "../editor/format";
 import { CALLOUTS } from "../lib/callout";
 import { applyColor, BG_COLORS, TEXT_COLORS, type ColorProp } from "../editor/colors";
 import { useApp } from "../store";
@@ -123,6 +123,17 @@ const GROUPS: Tool[][] = [
         </>,
       ),
       run: (s) => insertBlock(s, TABLE, TABLE.lastIndexOf("|  |") + 2),
+    },
+    {
+      label: tx("시트"),
+      icon: svg(
+        <>
+          <rect x="2" y="3" width="12" height="10" rx="1" />
+          <path d="M2 6.5h12M2 9.8h12M7 3v10" />
+          <path d="M9.2 11.9h3.6" strokeWidth="1.8" />
+        </>,
+      ),
+      run: (s) => insertBlock(s, SHEET, SHEET_CURSOR),
     },
     {
       label: tx("코드 블록"),

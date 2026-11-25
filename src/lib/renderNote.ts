@@ -3,7 +3,10 @@
 // 결과는 신뢰하지 않는 HTML이므로 화면에 넣기 전에 반드시 정화(DOMPurify)한다.
 // 수식($…$, $$…$$)과 ```mermaid 블록은 원문만 data-* 속성에 담아 두고, 정화가 끝난 뒤 읽기 화면이 그린다.
 import { Marked, type TokenizerAndRendererExtension, type Tokens } from "marked";
+import { tx } from "../i18n";
 import { calloutHead } from "./callout";
+import { computeTotals, displayCell, formatNumber, parseSheet } from "./sheet";
+import { evaluateSheet } from "./sheetFormula";
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i;
 const FRONTMATTER = /^---\r?\n[\s\S]*?\r?\n---[ \t]*(\r?\n|$)/;
@@ -211,6 +214,44 @@ const koDate: TokenizerAndRendererExtension = {
   },
 };
 
+/** ```sheet block → read-only table. Every cell goes through esc(); formulas show only their result, other cells show the typed text. */
+function renderSheetHtml(body: string): string | false {
+  const rows = parseSheet(body);
+  if (rows.length === 0) return false;
+  const grid = evaluateSheet(rows);
+  const cell = (tag: "th" | "td", cls: string, text: string) =>
+    `<${tag}${cls ? ` class="${cls}"` : ""}>${esc(text)}</${tag}>`;
+  const line = (r: number) =>
+    "<tr>" +
+    grid[r]
+      .map((e, c) => {
+        const raw = rows[r][c] ?? "";
+        const text = raw.startsWith("=") ? displayCell(e) : raw;
+        if (r === 0) return cell("th", "", text);
+        const cls = e.kind === "number" ? "num" : e.kind === "error" ? "err" : "";
+        return cell("td", cls, text);
+      })
+      .join("") +
+    "</tr>";
+  const head = `<thead>${line(0)}</thead>`;
+  const bodyRows = grid.slice(1).map((_, i) => line(i + 1)).join("");
+  const totals = computeTotals(rows);
+  const totalRow = totals
+    ? '<tr class="sheet-total">' +
+      totals
+        .map((t, c) => {
+          if (c === 0) return cell("td", "", tx("합계"));
+          if (t.kind === "sum") return cell("td", "num", formatNumber(t.value));
+          if (t.kind === "error") return cell("td", "err", "#오류");
+          return cell("td", "", "");
+        })
+        .join("") +
+      "</tr>"
+    : "";
+  return `<table class="sheet-block">${head}<tbody>${bodyRows}${totalRow}</tbody></table>
+`;
+}
+
 function makeMarked() {
   const m = new Marked({ gfm: true, breaks: true });
   m.use({
@@ -220,7 +261,9 @@ function makeMarked() {
       // ```mermaid blocks show as code until drawn. The source stays in the <code> text, not an
       // attribute: DOMPurify drops attributes containing "-->", and every arrow has one.
       code({ text, lang }) {
-        if ((lang ?? "").trim().toLowerCase() !== "mermaid") return false;
+        const kind = (lang ?? "").trim().toLowerCase();
+        if (kind === "sheet") return renderSheetHtml(text);
+        if (kind !== "mermaid") return false;
         return `<div class="mermaid-block" data-mermaid=""><pre><code>${esc(text)}</code></pre></div>\n`;
       },
       // "> [!중요] 제목": a colored box (see callout.ts) instead of a plain quote.

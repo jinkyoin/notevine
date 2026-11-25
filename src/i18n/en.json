@@ -991,5 +991,12 @@
  "AI 도구 연결": "AI tool connection",
  "사용할 AI": "AI to use",
  "연결 켜짐": "On",
- "연결 꺼짐": "Off"
+ "연결 꺼짐": "Off",
+ "원문 편집": "Edit source",
+ "행 추가": "Add row",
+ "열 추가": "Add column",
+ "삭제하면 수식의 칸 참조가 어긋날 수 있습니다": "Deleting may break cell references in formulas",
+ "합계": "Total",
+ "시트": "Sheet",
+ "시트: 합계가 나오는 표 (수식은 =로 시작)": "Sheet: a table with totals (formulas start with =)"
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EditorSelection, EditorState, type TransactionSpec } from "@codemirror/state";
-import { callout, codeBlock, insertBlock, toggleLines, toggleWrap, webLink, wikiLink } from "./format";
+import { callout, codeBlock, insertBlock, SHEET, SHEET_CURSOR, toggleLines, toggleWrap, webLink, wikiLink } from "./format";
 import { CALLOUTS } from "../lib/callout";
 
 /** Text with "|" as the cursor or "[" "]" around a selection, e.g. "a [bc] d". */
@@ -81,5 +81,14 @@ describe("format", () => {
     expect(run(at("> [!중요]\n> 가"), (s) => callout(s, warning)).doc).toBe("> [!주의]\n> 가");
     expect(run(at("> [!중요]\n> 가\n\n다"), box).doc).toBe("가\n\n다");
     expect(run(at("> [!중요] 제목\n> 가"), box).doc).toBe("제목\n가");
+  });
+
+  it("inserts a sheet block with the cursor in the first data cell", () => {
+    const at = SHEET.indexOf("\n |  |") + 2;
+    const next = st("|").update(insertBlock(st("|"), SHEET, SHEET_CURSOR)).state;
+    expect(next.doc.toString()).toBe(SHEET + "\n");
+    expect(SHEET.startsWith("```sheet\n")).toBe(true);
+    expect(next.selection.main.head).toBe(at);
+    expect(next.doc.lineAt(next.selection.main.head).text).toBe(" |  |  | ");
   });
 });

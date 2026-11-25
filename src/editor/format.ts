@@ -196,3 +196,6 @@ export function callout(state: EditorState, type: CalloutType): TransactionSpec 
 }
 
 export const TABLE ="| 항목 | 내용 |\n| --- | --- |\n|  |  |";
+/** SCR-04: a ```sheet block (header row + two empty rows); the cursor goes to the first data cell. */
+export const SHEET = "```sheet\n항목 | 수량 | 단가 | 금액\n |  |  | \n |  |  | \n```";
+export const SHEET_CURSOR = SHEET.indexOf("\n |  |") + 2;

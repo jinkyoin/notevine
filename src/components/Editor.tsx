@@ -12,6 +12,7 @@ import { useApp } from "../store";
 import { noteTitle } from "../lib/tree";
 import { frontmatterEnd, livePreview, livePreviewTheme } from "../editor/livePreview";
 import { frontmatterFold } from "../editor/frontmatterFold";
+import { flushSheetEdits, sheetBlock } from "../editor/sheetBlock";
 import { attachments, dropFilesOn, linkFor, TREE_DRAG_TYPE } from "../editor/attachments";
 import { noteHighlight } from "../editor/highlight";
 import { refreshLinks, wikiLinks } from "../editor/wikilinks";
@@ -210,6 +211,9 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
 
     /** Writes the note. `force` (Ctrl+S, app exit) always lands in a history version. */
     const save = (force = false) => {
+      // Text typed into a sheet cell not yet left (Ctrl+S, closing the note or app): into the doc first.
+      // Its change runs the update listener, which marks the note dirty.
+      if (view) flushSheetEdits(view);
       window.clearTimeout(timer);
       if (!view || (!dirty && !force)) return saving;
       const text = view.state.doc.toString();
@@ -262,7 +266,10 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
     // Another program changed this note: reload unless there are unsaved edits,
     // in which case the next save reports a conflict instead of overwriting.
     const unsubscribe = useApp.subscribe((s, prev) => {
-      if (s.externalSeq !== prev.externalSeq && s.externalPaths.includes(path) && !dirty) {
+      if (s.externalSeq !== prev.externalSeq && s.externalPaths.includes(path)) {
+        // A cell being typed in is not "dirty" until written: write it first, so it counts as an unsaved edit.
+        if (view) flushSheetEdits(view);
+        if (dirty) return;
         reload().catch((e) => toast(tx("노트를 다시 읽지 못했습니다: {0}", errorMessage(e)), "error"));
       }
     });
@@ -298,6 +305,7 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
               livePreviewTheme,
               colorSpans,
               frontmatterFold,
+              sheetBlock,
               wikiLinks({
                 path: () => path,
                 notes: () => useApp.getState().notes,
