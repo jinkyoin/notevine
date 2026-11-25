@@ -300,6 +300,42 @@ fn two_pcs_merge_encrypted_notes() {
     assert!(!a.join(".git/MERGE_HEAD").exists());
 }
 
+/// Git never runs a clean filter on a zero-byte file, but it treats a zero-byte file whose
+/// recorded blob is not the empty blob as changed for good. An empty note must therefore
+/// be stored as the empty blob, or the next merge dies in Git's own "stash failed".
+#[test]
+fn an_empty_note_does_not_stop_a_merge() {
+    if !installed() {
+        return;
+    }
+    let key = MasterKey::generate();
+    let _env = KeyEnv::new(Some(&key));
+    let tmp = tempfile::tempdir().unwrap();
+    let url = bare_remote(tmp.path());
+    let a = vault(tmp.path(), "a");
+    std::fs::write(a.join("회의.md"), "1\n2\n3\n4\n5\n").unwrap();
+    std::fs::write(a.join("빈 노트.md"), "").unwrap();
+    enable_encryption_in(&a, &key, exe(), now()).unwrap();
+    set_remote_in(&a, &url).unwrap();
+    backup_with_exe(&a, "A1", Some(&key), exe()).unwrap();
+    assert_eq!(
+        git(&a, &["rev-parse", "HEAD:빈 노트.md"]),
+        "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+        "empty stays empty"
+    );
+
+    let b = clone_encrypted(tmp.path(), &url, "b");
+    assert_eq!(read(&b.join("빈 노트.md")), "");
+    std::fs::write(b.join("회의.md"), "1 B\n2\n3\n4\n5\n").unwrap();
+    assert!(backup_with_exe(&b, "B1", Some(&key), exe()).unwrap().pushed);
+
+    std::fs::write(a.join("회의.md"), "1\n2\n3\n4\n5 A\n").unwrap();
+    let r = backup_with_exe(&a, "A2", Some(&key), exe()).unwrap();
+    assert!(r.committed && r.pulled && r.pushed, "{r:?}");
+    assert_eq!(read(&a.join("회의.md")), "1 B\n2\n3\n4\n5 A\n");
+    assert_eq!(read(&a.join("빈 노트.md")), "");
+}
+
 #[test]
 fn refuses_a_remote_that_is_not_this_encrypted_repo() {
     if !installed() {

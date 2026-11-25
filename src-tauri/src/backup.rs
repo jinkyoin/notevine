@@ -589,7 +589,7 @@ fn remote_has_encrypted_branch(dir: &Path) -> AppResult<bool> {
 const OUTGOING_CHUNK: u64 = 32 << 20;
 
 /// Paths of what a push would send that isn't encrypted: every new blob except the
-/// three root files must be ciphertext that `key` opens, and no new tree may hold a
+/// three root files (and the empty blob) must be ciphertext that `key` opens, and no new tree may hold a
 /// symlink or a submodule (gitlink). Anything Git can't account for is an error.
 fn unencrypted_outgoing(dir: &Path, key: &MasterKey) -> AppResult<Vec<String>> {
     let unsure = || AppError::System("원격으로 보낼 백업을 확인하지 못해 보내지 않았습니다".into());
@@ -622,6 +622,9 @@ fn unencrypted_outgoing(dir: &Path, key: &MasterKey) -> AppResult<Vec<String>> {
         let tree = match kind {
             "commit" => continue,
             "blob" if PLAIN_FILES.contains(path) => continue,
+            // The empty blob: an empty note is stored as it is (the filter's `clean`), and it
+            // holds nothing to protect.
+            "blob" if len == 0 => continue,
             "blob" => false,
             "tree" => true,
             _ => return Err(unsure()),

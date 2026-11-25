@@ -96,7 +96,11 @@ fn no_key() -> AppError {
 /// Only data that is really ours (full header, known version) is left as it is; any
 /// other input, even one that happens to start with the magic, is plain text to encrypt.
 fn clean(data: Vec<u8>, key: Option<&MasterKey>) -> AppResult<Vec<u8>> {
-    if crypt::is_encrypted(&data) {
+    // An empty note stays empty: Git never runs a clean filter on a zero-byte file, and a
+    // zero-byte file whose recorded blob is not the empty blob counts as changed for good,
+    // which makes `git merge` fail in its own "stash failed". `smudge` already passes an
+    // empty blob through as it is.
+    if data.is_empty() || crypt::is_encrypted(&data) {
         return Ok(data);
     }
     Ok(crypt::encrypt(key.ok_or_else(no_key)?, &data))
@@ -243,7 +247,8 @@ pub fn merge_driver(base: &Path, ours: &Path, theirs: &Path, key: &MasterKey, sc
     ))?;
     match out.status.code() {
         Some(0) => {
-            std::fs::write(ours, crypt::encrypt(key, &out.stdout))?;
+            // Same as `clean`: an empty merge result is stored empty, not encrypted.
+            std::fs::write(ours, if out.stdout.is_empty() { Vec::new() } else { crypt::encrypt(key, &out.stdout) })?;
             Ok(true)
         }
         // 1..=127 = number of conflicts; anything else is a failure of git itself.
@@ -453,6 +458,19 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_file_stays_empty_both_ways_even_without_a_key() {
+        let key = MasterKey::generate();
+        let (_, r) = run_filter(&[("clean", b"")], Some(&key));
+        assert_eq!(r[0], ("status=success".to_string(), Vec::new()));
+        let (_, r) = run_filter(&[("clean", b""), ("smudge", b"")], None);
+        assert_eq!(r[0], ("status=success".to_string(), Vec::new()));
+        assert_eq!(r[1], ("status=success".to_string(), Vec::new()));
+        // An empty file encrypted by an older version still decrypts to empty.
+        let (_, r) = run_filter(&[("smudge", &crypt::encrypt(&key, b""))], Some(&key));
+        assert_eq!(r[0], ("status=success".to_string(), Vec::new()));
+    }
+
+    #[test]
     fn smudge_of_plain_passes_through() {
         let (_, r) = run_filter(&[("smudge", b"plain note")], None);
         assert_eq!(r[0], ("status=success".to_string(), b"plain note".to_vec()));
@@ -484,6 +502,17 @@ mod tests {
         let merged = std::fs::read(&ours).unwrap();
         assert!(crypt::is_encrypted(&merged));
         assert_eq!(crypt::decrypt(&key, &merged).unwrap(), b"A\nb\nC\n");
+    }
+
+    #[test]
+    fn merge_driver_stores_an_empty_result_empty() {
+        let key = MasterKey::generate();
+        let d = tempfile::tempdir().unwrap();
+        let base = write_enc(d.path(), "b", &key, b"a\n");
+        let ours = write_enc(d.path(), "o", &key, b"");
+        let theirs = write_enc(d.path(), "t", &key, b"a\n");
+        assert!(merge_driver(&base, &ours, &theirs, &key, d.path()).unwrap());
+        assert!(std::fs::read(&ours).unwrap().is_empty());
     }
 
     #[test]
