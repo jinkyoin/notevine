@@ -240,6 +240,8 @@ export const livePreview = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations },
 );
 
+const CODE_BG = "color-mix(in srgb, var(--text) 4%, transparent)";
+
 export const livePreviewTheme = EditorView.baseTheme({
   ".cm-md-h": { fontWeight: "650", lineHeight: "1.4", letterSpacing: "-0.015em" },
   ".cm-md-h1": { fontSize: "1.7em", paddingTop: "0.4em" },
@@ -252,12 +254,13 @@ export const livePreviewTheme = EditorView.baseTheme({
   ".cm-md-code": {
     fontFamily: "var(--mono)",
     fontSize: "0.9em",
-    background: "var(--bg-sidebar)",
+    // Translucent: the selection is drawn behind the text, so an opaque fill would hide it.
+    background: CODE_BG,
     borderRadius: "3px",
     padding: "1px 3px",
   },
   ".cm-md-link": { color: "var(--accent)", textDecoration: "underline", textUnderlineOffset: "3px" },
-  ".cm-md-codeblock": { fontFamily: "var(--mono)", fontSize: "0.9em", background: "var(--bg-sidebar)" },
+  ".cm-md-codeblock": { fontFamily: "var(--mono)", fontSize: "0.9em", background: CODE_BG },
   ".cm-md-quote": { borderLeft: "3px solid var(--border)", paddingLeft: "12px", color: "var(--muted)" },
   ".cm-md-bullet": { color: "var(--muted)", display: "inline-block", width: "0.6em", textAlign: "center" },
   ".cm-md-task": { margin: "0 6px 0 0", verticalAlign: "middle", cursor: "pointer", accentColor: "var(--accent)" },
