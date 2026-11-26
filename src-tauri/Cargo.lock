@@ -2573,7 +2573,7 @@ dependencies = [
 
 [[package]]
 name = "notevine"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "aes-siv",
  "argon2",
