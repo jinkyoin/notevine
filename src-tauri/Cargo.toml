@@ -48,7 +48,25 @@ aes-siv = "0.7"
 hkdf = "0.12"
 sha2 = "0.10"
 getrandom = "0.2"
+# App lock password (NFR-SEC-04)
+argon2 = "0.5"
 tempfile = "3"
+
+[target.'cfg(windows)'.dependencies]
+# App lock (NFR-SEC-04): Windows Hello, session lock and sleep, idle time, window preview.
+windows = { version = "0.62", features = [
+    "Foundation",
+    "Security_Credentials_UI",
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_SystemInformation",
+    "Win32_System_WinRT",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+windows-future = "0.3"
 
 [profile.release]
 codegen-units = 1

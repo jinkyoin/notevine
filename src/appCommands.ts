@@ -2,6 +2,8 @@
 import { registerCommands } from "./commands";
 import { useApp } from "./store";
 import { useAi } from "./aiStore";
+import { api } from "./api";
+import { lockEnabled } from "./lock/lockStore";
 import { WRITE_LABEL, type WriteTask } from "./ai";
 import { findNode } from "./lib/tree";
 import { requestStartClone } from "./lib/startClone";
@@ -112,6 +114,8 @@ export function registerAppCommands(): () => void {
       run: () => st().setModal("manual"),
     },
     { id: "app.settings", title: tx("설정"), keys: "Ctrl+,", when: noModal, run: () => st().setModal("settings") },
+    // Also over a dialog: someone is leaving the desk (NFR-SEC-04).
+    { id: "app.lock", title: tx("지금 잠그기"), keywords: tx("잠금 화면 lock"), keys: "Ctrl+Alt+L", when: lockEnabled, run: () => api.lockNow() },
     {
       id: "note.rename",
       title: tx("현재 노트 이름 변경"),

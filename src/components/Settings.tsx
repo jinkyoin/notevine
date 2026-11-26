@@ -24,6 +24,8 @@ import { BACKUP_CHANGED_EVENT } from "../lib/backupBadge";
 import { Icon } from "./Icon";
 import { PERMISSION_LABEL, usePlugins } from "../plugins";
 import { checkForUpdate } from "../updates";
+import { LockSettings } from "../lock/LockSettings";
+import { Row } from "./SettingsRow";
 
 import { getLang, setLang, dateLocale, tx, type Lang } from "../i18n";
 type Tab = "general" | "editor" | "keys" | "files" | "preset" | "ai" | "mcp" | "plugins" | "history" | "backup" | "about";
@@ -123,6 +125,7 @@ function SettingsDialog({ close }: { close: () => void }) {
                   <span className="muted small">{tx("마지막 노트 폴더 열기 (항상)")}</span>
                 </Row>
                 <TraySettings />
+                <LockSettings />
                 <Row
                   label={tx("사용자 CSS")}
                   hint={tx("이 노트 폴더의 .app/custom.css로 색·글꼴·크기를 바꿉니다. 파일을 저장하고 Notevine 창으로 돌아오면 바로 반영됩니다")}
@@ -1282,18 +1285,6 @@ function PluginSettings() {
         );
       })}
     </>
-  );
-}
-
-function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div className="set-row">
-      <div>
-        <div>{label}</div>
-        {hint && <div className="muted small">{hint}</div>}
-      </div>
-      <div className="set-ctl">{children}</div>
-    </div>
   );
 }
 

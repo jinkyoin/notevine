@@ -36,6 +36,7 @@ npm run tauri dev
 | `src-tauri/src/commands.rs` ↔ `src/api.ts` | Tauri 명령과 그 TypeScript 래퍼 (이름·인자를 함께 바꿀 것) |
 | `src/editor/` | CodeMirror 6 확장: 라이브 미리보기, 위키링크, 첨부, frontmatter 접기 |
 | `src/components/` | 화면 (주석에 화면설계서의 SCR 번호) |
+| `src/lock/`, `src-tauri/src/lock/` | 앱 잠금: 잠금 화면·설정·입력 차단 / 잠금 상태·비밀번호·잠그는 때·Windows 연동 |
 | `src/lib/`, `src/i18n/`, `src/updates.ts` | 화면 없는 로직과 단위 테스트, 영어 번역(`en.json`), 앱 업데이트 |
 | `src/commands.ts`, `src/appCommands.ts` | 명령 레지스트리. 명령 팔레트와 단축키가 모두 여기서 나옴 |
 

@@ -4162,3 +4162,54 @@ select {
 .cm-sheet-add {
   margin-top: 2px;
 }
+
+/* 앱 잠금 (SCR-30). 잠긴 동안에는 잠금 화면 말고는 아무것도 보이지 않는다. */
+body.nv-locked > *:not(.lock-screen) {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+.lock-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  background: var(--bg);
+  color: var(--text);
+  text-align: center;
+}
+.lock-screen h1 {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+.lock-screen form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(280px, 100%);
+}
+.lock-screen input {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.lock-screen p {
+  margin: 0;
+}
+.lock-error {
+  color: var(--danger);
+}
+.lock-form {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 0;
+}

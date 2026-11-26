@@ -8,6 +8,7 @@ const PATHS = {
   command: "M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3",
   settings: "M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4",
   plus: "M12 5v14M5 12h14",
+  lock: "M7 11V7a5 5 0 0 1 10 0v4M5 11h14v10H5z",
   search: "M3 11a8 8 0 1 0 16 0a8 8 0 1 0-16 0M21 21l-4.3-4.3",
 } as const;
 

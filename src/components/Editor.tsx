@@ -194,7 +194,7 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
     let timer: number | undefined;
     let dirty = false;
     let disposed = false;
-    let saving: Promise<void> = Promise.resolve();
+    let saving: Promise<boolean> = Promise.resolve(true);
     let docTimer: number | undefined;
     // The right pane leaves the shared hooks alone: they belong to the main editor.
     const { setDocText, setEditText, setEditorApi } = side
@@ -209,7 +209,7 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
     scrollEl?.addEventListener("scroll", onScroll, { passive: true });
     const publishText = () => view && setDocText(view.state.doc.toString());
 
-    /** Writes the note. `force` (Ctrl+S, app exit) always lands in a history version. */
+    /** Writes the note. `force` (Ctrl+S, app exit) always lands in a history version. False: it could not be written. */
     const save = (force = false) => {
       // Text typed into a sheet cell not yet left (Ctrl+S, closing the note or app): into the doc first.
       // Its change runs the update listener, which marks the note dirty.
@@ -238,11 +238,13 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
           }
           if (!disposed && !dirty) setSaveState("saved");
           useApp.getState().noteSaved();
+          return true;
         })
         .catch((e) => {
           dirty = true;
           setSaveState("error");
           toast(tx("저장하지 못했습니다: {0}", errorMessage(e)), "error");
+          return false;
         });
       return saving;
     };

@@ -1,6 +1,5 @@
 // SCR-03 파일 탐색기: 트리, 새 노트·폴더, 우클릭 메뉴, 이름 변경, 드래그 이동.
 import { useEffect, useRef, useState } from "react";
-import { ask } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { api, type TreeNode } from "../api";
 import { useApp } from "../store";
@@ -43,7 +42,9 @@ function dropFiles(e: React.DragEvent, dir: string) {
 /** Asks, then moves a note, file or folder to the trash. True when it was asked to go. */
 async function confirmRemove(node: TreeNode): Promise<boolean> {
   const what = node.kind === "folder" ? tx("폴더 \"{0}\"와 안의 모든 파일", node.name) : `"${baseName(node.path)}"`;
-  if (!(await ask(tx("{0}을(를) 휴지통으로 옮길까요?", what), { title: tx("삭제"), kind: "warning" }))) return false;
+  // The app's own dialog: the lock screen can cover it, a Windows one it can't (NFR-SEC-04).
+  const ok = await useApp.getState().ask(tx("삭제"), tx("{0}을(를) 휴지통으로 옮길까요?", what), tx("삭제"));
+  if (!ok) return false;
   await useApp.getState().remove(node.path);
   return true;
 }

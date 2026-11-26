@@ -271,6 +271,28 @@ export interface PluginInfo {
   changed: boolean;
 }
 
+/** App lock (NFR-SEC-04). "broken": the settings file can't be read, so the app stays locked. */
+export type LockMode = "off" | "hello" | "password" | "broken";
+export type LockReason = "start" | "manual" | "idle" | "hidden" | "session" | "sleep";
+export interface LockStatus {
+  mode: LockMode;
+  locked: boolean;
+  reason: LockReason | null;
+  /** Grows with every new lock. */
+  epoch: number;
+  /** The Windows session is locked or disconnected. */
+  away: boolean;
+  idle_minutes: number;
+}
+export type HelloOutcome = "ok" | "cancelled" | "unavailable" | "failed";
+export type ChangeOutcome = { status: "ok" | "wrong" | "cancelled" | "unavailable" | "failed" } | { status: "wait"; seconds: number };
+export interface LockChange {
+  mode?: LockMode;
+  /** The new password. */
+  password?: string;
+  idle_minutes?: number;
+}
+
 /** App-wide settings (not per vault). */
 export interface AppSettings {
   /** Closing the window keeps Notevine in the tray. */
@@ -441,6 +463,15 @@ export const api = {
   pruneHistory: (dryRun: boolean) => invoke<number>("prune_history", { dryRun }),
   /** [path, text] of `.app/custom.css`; `create` makes a missing one with a short guide. */
   appSettings: () => invoke<AppSettings>("app_settings"),
+  lockStatus: () => invoke<LockStatus>("lock_status"),
+  lockNow: () => invoke<void>("lock_now"),
+  /** 0 right, -1 wrong, n > 0: wait n seconds. */
+  lockUnlockPassword: (password: string) => invoke<number>("lock_unlock_password", { password }),
+  lockUnlockHello: (message: string) => invoke<HelloOutcome>("lock_unlock_hello", { message }),
+  /** `proof`: the current password, when the lock is a password. */
+  lockChange: (change: LockChange, proof: string | null, message: string) =>
+    invoke<ChangeOutcome>("lock_change", { change, proof, message }),
+  lockPainted: () => invoke<void>("lock_painted"),
   /** Downloads a web page (http/https only) for clipping; `url` is where it ended up. */
   fetchPage: (url: string) => invoke<{ url: string; html: string }>("fetch_page", { url }),
   setTray: (on: boolean) => invoke<void>("set_tray", { on }),

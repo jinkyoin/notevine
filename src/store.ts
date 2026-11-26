@@ -135,6 +135,9 @@ export type Editing = { mode: "rename"; path: string } | { mode: "new-folder"; p
 /** How to open a note: in a new tab (Ctrl+click, middle click) instead of the current one. */
 export type OpenOpts = { newTab?: boolean };
 
+/** How an editor saves. Resolves false when it could not. */
+export type Flush = (force?: boolean) => Promise<boolean | void>;
+
 interface AppStore {
   vault: VaultInfo | null;
   tree: TreeNode[];
@@ -154,7 +157,7 @@ interface AppStore {
   sidebarTab: SidebarTab;
   editorApi: EditorApi | null;
   /** In-app confirmation waiting for an answer (see ConfirmDialog). */
-  confirm: { title: string; message: string; okLabel: string; resolve: (ok: boolean) => void } | null;
+  confirm: { title: string; message: string; okLabel: string; focusCancel?: boolean; resolve: (ok: boolean) => void } | null;
   config: VaultConfig;
   /** What this PC's user allowed the open vault to do. */
   trust: DeviceTrust;
@@ -205,8 +208,8 @@ interface AppStore {
   /** Bumped when another program changes notes; the editor reloads if `externalPaths` has its note. */
   externalSeq: number;
   externalPaths: string[];
-  /** Set by the editor; saves unsaved text before files move under it. */
-  flushEditor: (force?: boolean) => Promise<void>;
+  /** Set by the editor; saves unsaved text before files move under it. False: something could not be saved. */
+  flushEditor: Flush;
 
   /** Note folders on the rail at the window's left edge, in order (FR-VLT-07). */
   rail: RailEntry[];
@@ -269,8 +272,8 @@ interface AppStore {
   /** Opens the right panel and puts the cursor in the AI question box. */
   focusAi(): void;
   setEditorApi(e: EditorApi | null): void;
-  /** Asks in an in-app dialog; resolves true when the user agrees. */
-  ask(title: string, message: string, okLabel: string): Promise<boolean>;
+  /** Asks in an in-app dialog; resolves true when the user agrees. `focusCancel`: Enter means no. */
+  ask(title: string, message: string, okLabel: string, opts?: { focusCancel?: boolean }): Promise<boolean>;
   setVersionView(v: { path: string; id: number | null } | null): void;
   /**
    * Opens a folder view as its own tab (or shows the one already open), in `mode` or the mode used last.
@@ -344,7 +347,7 @@ interface AppStore {
   remove(path: string): Promise<void>;
   setEditing(e: Editing | null): void;
   /** Registers how the main editor (or, with `side`, the right pane's) saves; flushEditor saves both. */
-  setFlushEditor(fn: (force?: boolean) => Promise<void>, side?: boolean): void;
+  setFlushEditor(fn: Flush, side?: boolean): void;
   toast(message: string, kind?: ToastKind, action?: Toast["action"]): void;
   dismissToast(id: number): void;
 }
@@ -369,10 +372,11 @@ let switchSeq = 0;
 let switchChain: Promise<unknown> = Promise.resolve();
 let treeTimer: number | undefined;
 // The two editors' save functions: the main one and the split view's right pane.
-let flushMain = async (_force?: boolean) => {};
-let flushSide = async (_force?: boolean) => {};
-const flushBoth = async (force?: boolean) => {
-  await Promise.all([flushMain(force), flushSide(force)]);
+let flushMain: Flush = async () => {};
+let flushSide: Flush = async () => {};
+const flushBoth: Flush = async (force) => {
+  const saved = await Promise.all([flushMain(force), flushSide(force)]);
+  return saved.every((s) => s !== false);
 };
 
 export const useApp = create<AppStore>((set, get) => {
@@ -1038,8 +1042,10 @@ export const useApp = create<AppStore>((set, get) => {
       set({ editorApi });
     },
 
-    ask(title, message, okLabel) {
-      return new Promise((resolve) => set({ confirm: { title, message, okLabel, resolve } }));
+    ask(title, message, okLabel, opts) {
+      // One question on screen: the one it pushes aside is answered no, never left waiting.
+      get().confirm?.resolve(false);
+      return new Promise((resolve) => set({ confirm: { title, message, okLabel, focusCancel: opts?.focusCancel, resolve } }));
     },
 
     setVersionView(versionView) {

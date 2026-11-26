@@ -1,6 +1,5 @@
 // SCR-10 버전 보기·비교: 이 버전 / 현재와 비교 / 이전 버전과 비교, 내용 복사, 이 버전으로 복원 (FR-HIS-04~06).
 import { useEffect, useState } from "react";
-import { ask } from "@tauri-apps/plugin-dialog";
 import { api, errorMessage, type DiffLine } from "../api";
 import { useApp } from "../store";
 import { findNode, noteTitle } from "../lib/tree";
@@ -48,7 +47,9 @@ function Viewer({ path, initial, close }: { path: string; initial: number | null
 
   const restore = async () => {
     if (id === null) return;
-    const ok = await ask(tx("현재 내용은 새 버전으로 저장된 뒤 복원됩니다. 복원할까요?"), { title: tx("이 버전으로 복원"), kind: "warning" });
+    const ok = await useApp
+      .getState()
+      .ask(tx("이 버전으로 복원"), tx("현재 내용은 새 버전으로 저장된 뒤 복원됩니다. 복원할까요?"), tx("복원"));
     if (!ok) return;
     const st = useApp.getState();
     await st.flushEditor(true);

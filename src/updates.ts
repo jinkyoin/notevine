@@ -18,7 +18,11 @@ export async function checkForUpdate(quiet: boolean): Promise<void> {
     const notes = update.body?.trim() ? `\n\n${update.body.trim()}` : "";
     const ok = await ask(tx("새 버전 {0}", update.version), tx("지금 받아 설치하고 Notevine을 다시 시작할까요?{0}", notes), tx("설치"));
     if (!ok) return;
-    await flushEditor();
+    // Installing restarts the app: unsaved edits would be lost.
+    if ((await flushEditor()) === false) {
+      toast(tx("저장하지 못한 편집이 있어 업데이트를 설치하지 않았습니다"), "error");
+      return;
+    }
     toast(tx("업데이트를 받는 중입니다…"));
     await update.downloadAndInstall();
     await relaunch();

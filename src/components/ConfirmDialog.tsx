@@ -15,10 +15,10 @@ export function ConfirmDialog() {
         <h2>{c.title}</h2>
         <p className="confirm-msg">{c.message}</p>
         <div className="modal-actions">
-          <button className="btn ghost" onClick={() => answer(false)}>
+          <button className="btn ghost" autoFocus={c.focusCancel} onClick={() => answer(false)}>
             {tx("취소")}
           </button>
-          <button className="btn primary" autoFocus onClick={() => answer(true)}>
+          <button className="btn primary" autoFocus={!c.focusCancel} onClick={() => answer(true)}>
             {c.okLabel}
           </button>
         </div>

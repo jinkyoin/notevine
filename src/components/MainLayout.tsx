@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { listen } from "@tauri-apps/api/event";
 import { useApp } from "../store";
+import { useLock, whenUnlocked } from "../lock/lockStore";
 import { dispatchKey, setKeyOverrides } from "../commands";
 import { VaultRail } from "./VaultRail";
 import { BackupButton } from "./BackupButton";
@@ -129,6 +130,7 @@ export function MainLayout() {
   const rightOpen = useApp((s) => s.rightOpen);
   const canBack = useApp((s) => s.back.length > 0);
   const canForward = useApp((s) => s.forward.length > 0);
+  const lockOn = useLock((s) => !!s.status && s.status.mode !== "off");
   const { setSidebarTab, focusSearch, setPanels, setModal, goBack, goForward } = useApp.getState();
 
   // All shortcuts go through the command registry (FR-EXT-01).
@@ -156,10 +158,13 @@ export function MainLayout() {
 
   // Ctrl+Alt+N from any program (FR-PRS-08): the backend brings the window forward.
   useEffect(() => {
-    const off = listen("quick-memo", () => {
-      const { modal, setModal } = useApp.getState();
-      if (modal === null || modal === "palette") setModal("quickMemo");
-    });
+    const off = listen("quick-memo", () =>
+      // While the app is locked the memo waits (NFR-SEC-04).
+      whenUnlocked("memo", () => {
+        const { modal, setModal } = useApp.getState();
+        if (modal === null || modal === "palette") setModal("quickMemo");
+      }),
+    );
     return () => void off.then((f) => f());
   }, []);
 
@@ -258,6 +263,11 @@ export function MainLayout() {
         <button className="icon-btn" title={tx("명령 팔레트 (Ctrl+P)")} aria-label={tx("명령 팔레트")} onClick={() => setModal("palette")}>
           <Icon name="command" />
         </button>
+        {lockOn && (
+          <button className="icon-btn" title={tx("지금 잠그기 (Ctrl+Alt+L)")} aria-label={tx("지금 잠그기")} onClick={() => void api.lockNow()}>
+            <Icon name="lock" />
+          </button>
+        )}
         <button className="icon-btn" title={tx("설정 (Ctrl+,)")} aria-label={tx("설정")} onClick={() => setModal("settings")}>
           <Icon name="settings" />
         </button>

@@ -13,6 +13,7 @@ mod filetext;
 pub mod git_filter;
 mod history;
 mod index;
+mod lock;
 mod mcp;
 mod parse;
 mod paths;
@@ -161,6 +162,8 @@ pub fn run() {
             if tray_on && let Err(e) = tray::apply_tray(app.handle(), true) {
                 eprintln!("tray icon not shown: {e}");
             }
+            // Before the window shows: a locked app never shows a note first (NFR-SEC-04).
+            lock::start(app, &config_dir);
             // The window starts hidden (tauri.conf.json); started by Windows at
             // sign-in it stays in the tray, otherwise it shows now.
             let to_tray = tray_on && std::env::args().any(|a| a == tray::TRAY_ARG);
@@ -210,6 +213,12 @@ pub fn run() {
             tray::set_autostart,
             tray::set_ollama_url,
             tray::set_update_check,
+            lock::lock_status,
+            lock::lock_now,
+            lock::lock_unlock_password,
+            lock::lock_unlock_hello,
+            lock::lock_change,
+            lock::lock_painted,
             ai_api::ai_set_key,
             ai_api::ai_models,
             web::fetch_page,
