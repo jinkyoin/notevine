@@ -1091,7 +1091,8 @@ button {
   cursor: text;
 }
 .cm-host .cm-editor {
-  font-size: 16px;
+  /* --note-zoom: Ctrl+wheel on the note (src/lib/noteZoom.ts). */
+  font-size: calc(16px * var(--note-zoom, 1));
   line-height: 1.7;
   background: transparent;
 }
@@ -2861,6 +2862,10 @@ textarea.ai-instructions {
   font-size: 16px;
   line-height: 1.7;
   overflow-wrap: anywhere;
+}
+/* Only the note itself follows Ctrl+wheel, not the user manual. */
+.editor .note-view {
+  font-size: calc(16px * var(--note-zoom, 1));
 }
 .note-view h1,
 .note-view h2,

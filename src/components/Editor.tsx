@@ -24,6 +24,7 @@ import { koDate } from "../editor/koDate";
 import { toggleTask } from "../lib/renderNote";
 import { viewKey } from "../lib/vaultMemory";
 import { switchGuard } from "../editor/switchGuard";
+import { installNoteZoom, onNoteZoom } from "../lib/noteZoom";
 import { FormatBar, ModeSwitch, type FormatAction } from "./FormatBar";
 import { NoteView } from "./NoteView";
 import { NoteTags } from "./NoteTags";
@@ -142,6 +143,17 @@ export function Editor({ path, side = false }: { path: string; side?: boolean })
     if (readMode) setReadText(v.state.doc.toString());
     else v.focus();
   }, [readMode]);
+
+  // Ctrl+wheel on the note changes the text size; the editor measures its lines again afterwards.
+  useEffect(() => {
+    const el = scroller.current;
+    const stopWatching = onNoteZoom(() => viewRef.current?.requestMeasure());
+    const stopWheel = el ? installNoteZoom(el) : () => {};
+    return () => {
+      stopWatching();
+      stopWheel();
+    };
+  }, []);
 
   // Insert key in read mode switches to edit mode. With a side pane open, the
   // pane last clicked (the main one by default) takes the key.
